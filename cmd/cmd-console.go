@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/internal"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/pkg/browser"

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/internal"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"golang.org/x/crypto/ssh/terminal"

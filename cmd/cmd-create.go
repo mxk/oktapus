@@ -3,7 +3,7 @@ package cmd
 import (
 	"strings"
 
-	"oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsgw"
 )
 
 func init() {

@@ -12,7 +12,7 @@ import (
 	"math/rand"
 	"sort"
 
-	"oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsgw"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"

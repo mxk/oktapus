@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"oktapus/awsgw"
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/internal"
 )
 
 func init() {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/internal"
 )
 
 // Client provides access to Okta API.

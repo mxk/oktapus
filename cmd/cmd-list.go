@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/internal"
 )
 
 // TODO: Document 'all' and 'mine' implicit tags. Create common account-spec

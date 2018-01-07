@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"oktapus/cmd"
+	"github.com/LuminalHQ/oktapus/cmd"
 )
 
 func main() {

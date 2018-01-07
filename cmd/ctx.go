@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"oktapus/awsgw"
-	"oktapus/internal"
-	"oktapus/okta"
+	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/okta"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"oktapus/internal"
+	"github.com/LuminalHQ/oktapus/internal"
 )
 
 // helpArgs contains arguments that trigger help display.
