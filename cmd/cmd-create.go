@@ -1,0 +1,52 @@
+package cmd
+
+import (
+	"strings"
+
+	"oktapus/awsgw"
+)
+
+func init() {
+	register(&Create{command: command{
+		name:    []string{"create"},
+		summary: "Create new accounts",
+		usage:   "[options] name:email [name:email ...]",
+		minArgs: 1,
+	}})
+}
+
+// TODO: Restrict CreateServiceLinkedRole and CreateRole policies to other
+// accounts.
+
+type Create struct {
+	command
+	alloc bool // TODO: Implement immediate allocation
+}
+
+func (cmd *Create) Run(ctx *Ctx, args []string) error {
+	c := ctx.AWS()
+	out := make([]*AccountResultOutput, 0, len(args)-1)
+	type info struct{ name, email string }
+	in := make([]info, 0, len(args))
+	for _, arg := range args {
+		ne := strings.Split(arg, ":")
+		if len(ne) != 2 || ne[0] == "" || strings.IndexByte(ne[1], '@') == -1 {
+			usageErr(cmd, "invalid name:email combination %q", arg)
+		}
+		in = append(in, info{ne[0], ne[1]})
+	}
+	for _, v := range in {
+		id, err := c.CreateAccount(v.name, v.email)
+		ac := Account{Account: &awsgw.Account{
+			ID:   id,
+			Name: v.name,
+		}}
+		if err == nil {
+			// TODO: Figure out why this fails
+			//time.Sleep(3 * time.Second)
+			//err = c.CreateAdminRole(id, "")
+		}
+		out = append(out, newAccountResult(&ac, err))
+	}
+	return cmd.PrintOutput(out, nil, nil)
+}
