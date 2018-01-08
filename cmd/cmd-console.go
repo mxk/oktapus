@@ -5,8 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/LuminalHQ/oktapus/internal"
 
@@ -16,6 +18,7 @@ import (
 
 const (
 	fedURL  = "https://signin.aws.amazon.com/federation"
+	roleURL = "https://signin.aws.amazon.com/switchrole"
 	consURL = "https://console.aws.amazon.com/"
 )
 
@@ -52,11 +55,29 @@ func (cmd *Console) Run(ctx *Ctx, args []string) error {
 	default:
 		log.F("Multiple matching accounts found")
 	}
-	v, err := c.Creds(match[0].ID).Get()
+	ac := match[0]
+	if cmd.switchRole {
+		return cmd.SwitchRole(ac.ID, ac.Name, c.CommonRole)
+	}
+	v, err := c.Creds(ac.ID).Get()
 	if err == nil {
 		err = cmd.Open(v)
 	}
 	return err
+}
+
+// colors are predefined on the switch role page. Custom colors not accepted.
+var colors = []string{"F2B0A9", "FBBF93", "FAD791", "B7CA9D", "99BCE3"}
+
+// SwitchRole allows the user to access another account without logging out.
+func (*Console) SwitchRole(accountID, accountName, role string) error {
+	id, _ := strconv.ParseInt(accountID, 10, 64)
+	q := make(url.Values)
+	q.Set("account", accountID)
+	q.Set("roleName", role)
+	q.Set("displayName", accountName)
+	q.Set("color", colors[rand.New(rand.NewSource(id)).Intn(len(colors))])
+	return browser.OpenURL(roleURL + "?" + q.Encode())
 }
 
 // Open launches AWS management console using the process described here:
