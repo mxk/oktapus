@@ -38,5 +38,5 @@ func (cmd *Free) Run(ctx *Ctx, args []string) error {
 			out = append(out, newAccountResult(ac, ac.Save()))
 		}
 	}
-	return cmd.PrintOutput(out, nil, nil)
+	return cmd.PrintOutput(out)
 }

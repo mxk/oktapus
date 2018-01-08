@@ -27,7 +27,7 @@ type ListOutput struct {
 	Name        string
 	Owner       string
 	Description string
-	Tags        string `printer:"last"`
+	Tags        string `printer:",last"`
 	Error       string
 }
 
@@ -38,33 +38,35 @@ func (cmd *List) Run(ctx *Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	return cmd.PrintOutput(cmd.out(match))
-}
-
-func (cmd *List) out(match []*Account) ([]*ListOutput, internal.PrintCfgFunc, internal.PrintFunc) {
 	out := make([]*ListOutput, 0, len(match))
 	for _, ac := range match {
-		ctl := ac.Ctl()
-		sort.Strings(ctl.Tags)
-		out = append(out, &ListOutput{
-			AccountID:   ac.ID,
-			Name:        ac.Name,
-			Owner:       ctl.Owner,
-			Description: ctl.Desc,
-			Tags:        strings.Join(ctl.Tags, ","),
-			Error:       explainError(ac.Error()),
-		})
+		out = append(out, newListOutput(ac, nil))
 	}
-	return out, nil, cmd.print
+	return cmd.PrintOutput(out)
 }
 
-func (*List) print(p *internal.Printer, v interface{}) {
-	ac := v.(*ListOutput)
-	if ac.Error == "" {
-		internal.DefaultPrintFunc(p, v)
-		return
+func newListOutput(ac *Account, err error) *ListOutput {
+	ctl := ac.Ctl()
+	if err == nil {
+		err = ac.Error()
 	}
-	p.PrintCol(0, ac.AccountID, true)
-	p.PrintCol(1, ac.Name, true)
-	p.PrintErr(ac.Error)
+	sort.Strings(ctl.Tags)
+	return &ListOutput{
+		AccountID:   ac.ID,
+		Name:        ac.Name,
+		Owner:       ctl.Owner,
+		Description: ctl.Desc,
+		Tags:        strings.Join(ctl.Tags, ","),
+		Error:       explainError(err),
+	}
+}
+
+func (o *ListOutput) PrintRow(p *internal.Printer) {
+	if o.Error == "" {
+		internal.PrintRow(p, o)
+	} else {
+		p.PrintCol(0, o.AccountID, true)
+		p.PrintCol(1, o.Name, true)
+		p.PrintErr(o.Error)
+	}
 }

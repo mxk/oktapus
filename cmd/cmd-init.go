@@ -28,7 +28,7 @@ func (cmd *Init) Run(ctx *Ctx, args []string) error {
 	for _, ac := range match {
 		out = append(out, newAccountResult(ac, ac.Init()))
 	}
-	return cmd.PrintOutput(out, nil, nil)
+	return cmd.PrintOutput(out)
 }
 
 func newAccountResult(ac *Account, err error) *AccountResultOutput {

@@ -3,6 +3,7 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -10,7 +11,7 @@ func init() {
 	register(&Alloc{command: command{
 		name:    []string{"alloc"},
 		summary: "Allocate accounts",
-		usage:   "[options] count [account-spec]",
+		usage:   "[options] num [account-spec]",
 		minArgs: 1,
 		maxArgs: 2,
 	}})
@@ -23,51 +24,54 @@ type Alloc struct {
 
 func (cmd *Alloc) FlagCfg(fs *flag.FlagSet) {
 	cmd.command.FlagCfg(fs)
-	fs.StringVar(&cmd.owner, "owner", "", "Set explicit owner `id`")
+	fs.StringVar(&cmd.owner, "owner", "", "Override default owner `name`")
 }
 
 func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	cmd.PadArgs(&args)
 	n, err := strconv.Atoi(args[0])
-	if n <= 0 || err != nil {
-		return err
+	if err != nil {
+		usageErr(cmd, "first argument must be a number")
+	} else if n <= 0 {
+		usageErr(cmd, "number of accounts must be > 0")
 	}
 	c := ctx.AWS()
 	match, err := getAccounts(c, args[1])
 	if err != nil {
 		return err
 	}
+
+	// Select available accounts at random
 	shuffle(match)
 	alloc := make([]*Account, 0, n)
 	for _, ac := range match {
 		if ctl := ac.Ctl(); ac.Error() == nil && ctl.Owner == "" {
-			if alloc = append(alloc, ac); len(alloc) == n {
-				break
+			if _, err := c.Creds(ac.ID).Get(); err == nil {
+				if alloc = append(alloc, ac); len(alloc) == n {
+					break
+				}
 			}
 		}
 	}
 	if len(alloc) < n {
-		return fmt.Errorf("insufficient accounts (available=%d, want=%d)",
+		return fmt.Errorf("insufficient accounts (have=%d, want=%d)",
 			len(alloc), n)
 	}
-	creds := cmds["creds"].(*Creds)
-	out := creds.Get(c, alloc)
-	setOwner := true
-	for _, c := range out {
-		if c.Error != "" {
-			setOwner = false
-			break
-		}
+	sort.Sort(byName(alloc))
+
+	// Allocate selected accounts
+	owner := c.CommonRole
+	if cmd.owner != "" {
+		owner = cmd.owner
 	}
-	if setOwner {
-		owner := c.CommonRole
-		if cmd.owner != "" {
-			owner = cmd.owner
-		}
-		for i, ac := range alloc {
+	out := make([]*CredsOutput, 0, len(alloc))
+	for _, ac := range alloc {
+		cr := newCredsOutput(ac, c.Creds(ac.ID))
+		if cr.Error == "" {
 			ac.Ctl().Owner = owner
-			out[i].Error = explainError(ac.Save())
+			cr.Error = explainError(ac.Save())
 		}
+		out = append(out, cr)
 	}
-	return cmd.PrintOutput(creds.out(out))
+	return cmd.PrintOutput(out)
 }

@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 func init() {
@@ -23,7 +23,7 @@ type CredsOutput struct {
 	Expires         string // TODO: Implement
 	AccessKeyID     string
 	SecretAccessKey string
-	SessionToken    string `printer:"last"`
+	SessionToken    string `printer:",width=1,last"`
 	Error           string
 }
 
@@ -31,45 +31,33 @@ func (cmd *Creds) Run(ctx *Ctx, args []string) error {
 	c := ctx.AWS()
 	match, err := getAccounts(c, args[0])
 	if err != nil {
-		err = cmd.PrintOutput(cmd.out(cmd.Get(c, match)))
+		return err
 	}
-	return err
-}
-
-func (cmd *Creds) Get(c *awsgw.Client, match []*Account) []*CredsOutput {
 	out := make([]*CredsOutput, 0, len(match))
 	for _, ac := range match {
-		v, err := c.Creds(ac.ID).Get()
-		out = append(out, &CredsOutput{
-			AccountID:       ac.ID,
-			Name:            ac.Name,
-			AccessKeyID:     v.AccessKeyID,
-			SecretAccessKey: v.SecretAccessKey,
-			SessionToken:    v.SessionToken,
-			Error:           explainError(err),
-		})
+		out = append(out, newCredsOutput(ac, c.Creds(ac.ID)))
 	}
-	return out
+	return cmd.PrintOutput(out)
 }
 
-func (cmd *Creds) out(out []*CredsOutput) ([]*CredsOutput, internal.PrintCfgFunc, internal.PrintFunc) {
-	return out, cmd.printCfg, cmd.print
-}
-
-func (*Creds) printCfg(p *internal.Printer) {
-	// SessionTokens are too long to display in a table output
-	if i := p.ColIdx("SessionToken"); p.Widths[i] > 20 {
-		p.Widths[i] = 20
+func newCredsOutput(ac *Account, cr *credentials.Credentials) *CredsOutput {
+	v, err := cr.Get()
+	return &CredsOutput{
+		AccountID:       ac.ID,
+		Name:            ac.Name,
+		AccessKeyID:     v.AccessKeyID,
+		SecretAccessKey: v.SecretAccessKey,
+		SessionToken:    v.SessionToken,
+		Error:           explainError(err),
 	}
 }
 
-func (*Creds) print(p *internal.Printer, v interface{}) {
-	ac := v.(*CredsOutput)
-	if ac.Error == "" {
-		internal.DefaultPrintFunc(p, v)
-		return
+func (o *CredsOutput) PrintRow(p *internal.Printer) {
+	if o.Error == "" {
+		internal.PrintRow(p, o)
+	} else {
+		p.PrintCol(0, o.AccountID, true)
+		p.PrintCol(1, o.Name, true)
+		p.PrintErr(o.Error)
 	}
-	p.PrintCol(0, ac.AccountID, true)
-	p.PrintCol(1, ac.Name, true)
-	p.PrintErr(ac.Error)
 }

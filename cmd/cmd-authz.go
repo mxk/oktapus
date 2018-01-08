@@ -23,5 +23,5 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 	for _, ac := range match {
 		out = append(out, newAccountResult(ac, c.CreateAdminRole(ac.ID, user)))
 	}
-	return cmd.PrintOutput(out, nil, nil)
+	return cmd.PrintOutput(out)
 }

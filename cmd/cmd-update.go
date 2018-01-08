@@ -37,17 +37,16 @@ func (cmd *Update) Run(ctx *Ctx, args []string) error {
 	if !setDesc && len(tags.idx) == 0 {
 		usageErr(cmd, "either description or tags must be specified")
 	}
+	out := make([]*ListOutput, 0, len(match))
 	for _, ac := range match {
 		ctl := ac.Ctl()
 		if setDesc {
 			ctl.Desc = cmd.desc
 		}
 		ctl.Tags = cmd.updateTags(ctl.Tags, tags)
+		out = append(out, newListOutput(ac, ac.Save()))
 	}
-	for _, ac := range match {
-		ac.Save()
-	}
-	return cmd.PrintOutput(cmds["list"].(*List).out(match))
+	return cmd.PrintOutput(out)
 }
 
 func (cmd *Update) updateTags(tags []string, s *accountSpec) []string {

@@ -203,11 +203,11 @@ func (c *command) HaveOpt(name string) bool {
 
 // PrintOutput writes command output to stdout. When text format is used, cfg
 // and fn are forwarded to the printer.
-func (c *command) PrintOutput(v interface{}, cfg internal.PrintCfgFunc, fn internal.PrintFunc) error {
+func (c *command) PrintOutput(v interface{}) error {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
 	if c.OutFmt == "text" {
-		internal.NewPrinter(v, cfg).Print(w, fn)
+		internal.NewPrinter(v).Print(w, nil)
 		return nil
 	}
 	enc := json.NewEncoder(w)
