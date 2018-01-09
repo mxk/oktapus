@@ -5,6 +5,7 @@ import (
 	crand "crypto/rand"
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"strings"
+	"strconv"
 )
 
 // TODO: Check encoding length and compare with JSON
@@ -168,23 +171,41 @@ func (ctl *Ctl) decode(src *string) error {
 	if src == nil || *src == "" {
 		return nil
 	}
-	b, err := base64.StdEncoding.DecodeString(*src)
+	s, ver := *src, 0
+	if i := strings.IndexByte(s, '#'); i > 0 {
+		if v, err := strconv.Atoi(s[0:i]); err == nil {
+			s, ver = s[i+1:], v
+		}
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return err
 	}
-	err = gob.NewDecoder(bytes.NewReader(b)).Decode(&ctl)
+	switch ver {
+	case 1:
+		err = json.Unmarshal(b, &ctl)
+	default:
+		err = gob.NewDecoder(bytes.NewReader(b)).Decode(&ctl)
+	}
 	if err != nil {
 		*ctl = Ctl{}
 	}
 	return err
 }
 
+const encVer = "1#"
+
 // encode serializes ctl into a base64-encoded string.
 func (ctl *Ctl) encode() (string, error) {
 	sort.Strings(ctl.Tags)
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(ctl); err != nil {
+	// JSON encoding is slightly slower but more compact than gob, and provides
+	// better interoperability with non-Go clients.
+	b, err := json.Marshal(ctl)
+	if err != nil {
 		return "", err
 	}
-	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+	enc := base64.StdEncoding
+	buf := make([]byte, len(encVer)+enc.EncodedLen(len(b)))
+	enc.Encode(buf[copy(buf, encVer):], b)
+	return string(buf), nil
 }
