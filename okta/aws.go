@@ -76,28 +76,6 @@ func (a *AWSAuth) GetCreds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) *credenti
 	})
 }
 
-// AWSCredsProvider is a credentials.Provider.
-type AWSCredsProvider struct {
-	credentials.Expiry
-
-	Client *sts.STS
-	Input  *sts.AssumeRoleWithSAMLInput
-}
-
-// Retrieve exchanges SAML assertion for temporary security credentials.
-func (p *AWSCredsProvider) Retrieve() (credentials.Value, error) {
-	// TODO: Can these be refreshed with a regular AssumeRole call?
-	out, err := p.Client.AssumeRoleWithSAML(p.Input)
-	v := credentials.Value{ProviderName: "AWSCredsProvider"}
-	if err == nil {
-		v.AccessKeyID = *out.Credentials.AccessKeyId
-		v.SecretAccessKey = *out.Credentials.SecretAccessKey
-		v.SessionToken = *out.Credentials.SessionToken
-		p.SetExpiration(*out.Credentials.Expiration, 10*time.Second)
-	}
-	return v, err
-}
-
 // awsRole represents one IdP/role ARN pair in the "Role" attribute.
 type awsRole struct{ Principal, Role string }
 
