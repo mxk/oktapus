@@ -6,7 +6,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/aws/aws-sdk-go/service/sts"
 )
 
 // TODO: Figure out which account fields are mutable
@@ -22,8 +21,8 @@ type Account struct {
 	JoinTime   time.Time
 }
 
-// update updates account fields from src.
-func (ac *Account) update(src *orgs.Account) {
+// set updates account information.
+func (ac *Account) set(src *orgs.Account) {
 	if id := aws.StringValue(src.Id); ac.ID != id {
 		panic("awsgw: account id mismatch: " + ac.ID + " != " + id)
 	}
@@ -37,24 +36,27 @@ func (ac *Account) update(src *orgs.Account) {
 
 // accountCtx maintains runtime context for each account.
 type accountCtx struct {
-	AssumeRoleCredsProvider
-
-	info  Account
+	Account
+	CredsProvider
 	creds *credentials.Credentials
 }
 
+// accountState contains serialized accountCtx state.
+type accountState struct {
+	Account *Account
+	Creds   *StaticCreds
+}
+
 // newAccountCtx creates a new context for the specified account id.
-func newAccountCtx(c *Client, id string) *accountCtx {
+func newAccountCtx(c *Client, id string, s accountState) *accountCtx {
 	role := "arn:aws:iam::" + id + ":role/" + c.CommonRole
 	ac := &accountCtx{
-		AssumeRoleCredsProvider: AssumeRoleCredsProvider{
-			AssumeRoleInput: sts.AssumeRoleInput{
-				RoleArn:         aws.String(role),
-				RoleSessionName: aws.String(c.roleSessionName),
-			},
-			API: c.sts.AssumeRole,
-		},
-		info: Account{ID: id},
+		Account:       Account{ID: id},
+		CredsProvider: NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName),
+	}
+	if s.Account != nil {
+		ac.Account = *s.Account
+		ac.CredsProvider = NewChainCreds(c.minExp, s.Creds, ac.CredsProvider)
 	}
 	ac.creds = credentials.NewCredentials(ac)
 	return ac

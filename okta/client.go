@@ -137,7 +137,7 @@ func (c *Client) OpenAWS(appLink, roleARN string) (*AWSAuth, error) {
 	return newAWSAuth(sa, roleARN)
 }
 
-// state is used to serialize Client state.
+// state contains serialized Client state.
 type state struct {
 	BaseURL *url.URL
 	Session *Session

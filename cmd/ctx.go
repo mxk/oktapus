@@ -23,7 +23,7 @@ var log = internal.Log
 
 const (
 	oktaState = "okta"
-	//awsState  = "aws"
+	awsState  = "aws"
 )
 
 // Ctx provides global configuration information.
@@ -114,7 +114,7 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	// TODO: Figure out what to do with regions
 	var cfg aws.Config
 	if ctx.UseOkta() {
-		// With Okta, all credentials must be provided explicitly
+		// With Okta, all credentials must be explicit
 		cfg.Credentials = credentials.NewCredentials(&credentials.ErrorProvider{
 			Err:          errors.New("missing credentials"),
 			ProviderName: "ErrorProvider",
@@ -124,8 +124,13 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	if err != nil {
 		log.F("Failed to create AWS session: %v", err)
 	}
-	if ctx.UseOkta() {
-		// TODO: Use Okta as an on-demand credentials provider
+	ctx.aws = awsgw.NewClient(sess)
+	if b := ctx.State.Get(awsState); len(b) > 0 {
+		if err := ctx.aws.GobDecode(b); err != nil {
+			log.E("Failed to decode AWS client state: %v", err)
+		}
+	}
+	if ctx.aws.MasterCreds == nil && ctx.UseOkta() {
 		auth := ctx.AWSAuth()
 		role := auth.Roles[0]
 		if len(auth.Roles) > 1 {
@@ -133,24 +138,32 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 		}
 		cfg.Credentials = credentials.AnonymousCredentials
 		anonSTS := sts.New(sess, &cfg)
-		cfg.Credentials = auth.GetCreds(anonSTS.AssumeRoleWithSAML, role)
+		ctx.aws.MasterCreds = auth.GetCreds(anonSTS.AssumeRoleWithSAML, role)
 	}
-	c, err := awsgw.NewClient(sess, cfg.Credentials)
-	if err != nil {
-		log.F("Failed to create AWS client: %v", err)
+	if err = ctx.aws.Connect(); err != nil {
+		log.F("AWS connection failed: %v", err)
 	}
-	// TODO: Restore state
-	ctx.aws = c
-	return c
+	return ctx.aws
 }
 
 // Save writes context state to the state file.
 func (ctx *Ctx) Save() {
 	if ctx.okta != nil {
 		if b, err := ctx.okta.GobEncode(); err == nil {
-			ctx.State.Set(oktaState, b)
+			if len(b) > 0 {
+				ctx.State.Set(oktaState, b)
+			}
 		} else {
 			log.E("Failed to encode Okta client state: %v", err)
+		}
+	}
+	if ctx.aws != nil {
+		if b, err := ctx.aws.GobEncode(); err == nil {
+			if len(b) > 0 {
+				ctx.State.Set(awsState, b)
+			}
+		} else {
+			log.E("Failed to encode AWS client state: %v", err)
 		}
 	}
 	if ctx.State != nil && ctx.State.Dirty() {

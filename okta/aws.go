@@ -9,9 +9,6 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
-
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/service/sts"
 )
 
 var (
@@ -64,16 +61,9 @@ func newAWSAuth(sa samlAssertion, roleARN string) (*AWSAuth, error) {
 
 // GetCreds returns credentials that derive from the SAML assertion and the
 // specified role.
-func (a *AWSAuth) GetCreds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) *credentials.Credentials {
+func (a *AWSAuth) GetCreds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) awsgw.CredsProvider {
 	saml := base64.StdEncoding.EncodeToString(a.SAML)
-	return credentials.NewCredentials(&awsgw.SAMLCredsProvider{
-		AssumeRoleWithSAMLInput: sts.AssumeRoleWithSAMLInput{
-			PrincipalArn:  &r.Principal,
-			RoleArn:       &r.Role,
-			SAMLAssertion: &saml,
-		},
-		API: fn,
-	})
+	return awsgw.NewSAMLCreds(fn, r.Principal, r.Role, saml)
 }
 
 // awsRole represents one IdP/role ARN pair in the "Role" attribute.

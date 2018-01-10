@@ -1,6 +1,9 @@
 package awsgw
 
 import (
+	"bytes"
+	"encoding/gob"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -15,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-const AssumeRolePolicy = `{
+const assumeRolePolicy = `{
 	"Version": "2012-10-17",
 	"Statement": [{
 		"Effect": "Allow",
@@ -25,7 +28,7 @@ const AssumeRolePolicy = `{
 	}]
 }`
 
-const AdminPolicy = `{
+const adminPolicy = `{
 	"Version": "2012-10-17",
 	"Statement": [{
 		"Effect": "Allow",
@@ -37,41 +40,72 @@ const AdminPolicy = `{
 // Client provides access to multiple AWS accounts via one gateway account
 // (usually the organization's master account).
 type Client struct {
-	CommonRole string
-	AccountID  string
-	UserARN    string
-	UserID     string
+	MasterCreds CredsProvider
+	CommonRole  string
+	NoNegCache  bool // TODO: Implement
 
-	NoNegCache bool // TODO: Implement
+	sess    client.ConfigProvider
+	minExp  time.Time
+	org     *orgs.Organizations
+	sts     *sts.STS
+	ident   ident
+	orgInfo org
 
 	roleSessionName string
 
-	sess  client.ConfigProvider
-	creds *credentials.Credentials
-	org   *orgs.Organizations
-	sts   *sts.STS
-
-	mu    sync.Mutex // TODO: Not acquired everywhere where it should be
+	mu    sync.Mutex // TODO: Remove. Client shouldn't be used concurrently.
 	cache map[string]*accountCtx
+	saved map[string]accountState
 }
 
-// NewClient creates a new AWS gateway client.
-func NewClient(cp client.ConfigProvider, cr *credentials.Credentials) (*Client, error) {
+// NewClient creates a new AWS gateway client. The client is not usable until
+// Connect() is called, which should be done after restoring any saved state.
+func NewClient(sess client.ConfigProvider) *Client {
+	return &Client{sess: sess, minExp: time.Now().Add(5 * time.Minute)}
+}
+
+// ConfigProvider returns the ConfigProvider that was passed to NewClient.
+func (c *Client) ConfigProvider() client.ConfigProvider {
+	return c.sess
+}
+
+// Connect establishes a connection to AWS and gets client identity information.
+func (c *Client) Connect() error {
 	var cfg aws.Config
-	if cr != nil {
-		cfg.Credentials = cr
+	if c.MasterCreds != nil {
+		cfg.Credentials = credentials.NewCredentials(c.MasterCreds)
 	}
-	c := &Client{
-		sess:  cp,
-		org:   orgs.New(cp, &cfg),
-		sts:   sts.New(cp, &cfg),
-		cache: make(map[string]*accountCtx),
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// TODO: Set timeouts via aws.Context?
+	stsClient := sts.New(c.sess, &cfg)
+	var id *sts.GetCallerIdentityOutput
+	var idErr error
+	go func() {
+		defer wg.Done()
+		id, idErr = stsClient.GetCallerIdentity(nil)
+	}()
+
+	orgClient := orgs.New(c.sess, &cfg)
+	var org *orgs.DescribeOrganizationOutput
+	var orgErr error
+	go func() {
+		defer wg.Done()
+		org, orgErr = orgClient.DescribeOrganization(nil)
+	}()
+
+	if wg.Wait(); idErr != nil {
+		return idErr
 	}
-	err := c.whoAmI()
-	if err != nil {
-		c = nil
+	c.sts, c.org = stsClient, orgClient
+	c.ident.set(id)
+	if orgErr == nil {
+		c.orgInfo.set(org)
 	}
-	return c, err
+	c.roleSessionName = getSessName(&c.ident)
+	c.CommonRole = c.roleSessionName
+	return nil
 }
 
 // Refresh updates information about all accounts in the organization.
@@ -82,8 +116,8 @@ func (c *Client) Refresh() error {
 		defer c.mu.Unlock()
 		for _, src := range out.Accounts {
 			ac := c.getAccount(aws.StringValue(src.Id))
-			ac.info.update(src)
-			valid[ac.info.ID] = struct{}{}
+			ac.set(src)
+			valid[ac.ID] = struct{}{}
 		}
 		return true
 	}
@@ -106,7 +140,7 @@ func (c *Client) Accounts() []*Account {
 	defer c.mu.Unlock()
 	all := make([]*Account, 0, len(c.cache))
 	for _, ac := range c.cache {
-		all = append(all, &ac.info)
+		all = append(all, &ac.Account)
 	}
 	return all
 }
@@ -159,25 +193,32 @@ func (c *Client) CreateAccount(name, email string) (string, error) {
 		aws.StringValue(status.FailureReason))
 }
 
+// MasterAssumeRolePolicy returns AssumeRolePolicyDocument for iam:CreateRole
+// API call.
+func (c *Client) MasterAssumeRolePolicy() string {
+	return fmt.Sprintf(assumeRolePolicy, c.orgInfo.MasterAccountID)
+}
+
 // CreateAdminRole creates an admin account role that trusts the master account.
 // If role name is not specified, it defaults to OrganizationAccountAccessRole.
 func (c *Client) CreateAdminRole(accountID, name string) error {
+	if c.orgInfo.MasterAccountID == "" {
+		return errors.New("awsgw: master account id unknown")
+	}
 	if name == "" {
 		name = "OrganizationAccountAccessRole"
 	}
-	// TODO: Verify that accountID is master.
-	policy := fmt.Sprintf(AssumeRolePolicy, c.AccountID)
 	in := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(policy),
+		AssumeRolePolicyDocument: aws.String(c.MasterAssumeRolePolicy()),
 		RoleName:                 aws.String(name),
 	}
 	im := c.IAM(accountID)
 	if _, err := im.CreateRole(&in); err != nil {
 		return err
 	}
-	// TODO: Use existing roles?
+	// TODO: Use existing policy?
 	in2 := iam.PutRolePolicyInput{
-		PolicyDocument: aws.String(AdminPolicy),
+		PolicyDocument: aws.String(adminPolicy),
 		PolicyName:     aws.String("AdministratorAccess"),
 		RoleName:       aws.String(name),
 	}
@@ -186,28 +227,57 @@ func (c *Client) CreateAdminRole(accountID, name string) error {
 	return err
 }
 
-// whoAmI retrieves information about the current user or role.
-func (c *Client) whoAmI() error {
-	id, err := c.sts.GetCallerIdentity(nil)
-	if err != nil {
+// clientState contains serialized Client state.
+type clientState struct {
+	MasterCreds *StaticCreds
+	Accounts    map[string]accountState
+}
+
+// GobEncode implements gob.GobEncoder interface.
+func (c *Client) GobEncode() ([]byte, error) {
+	if c.sts == nil || (c.MasterCreds == nil && len(c.cache) == 0) {
+		// If the client never connected, the old state (if any) hasn't changed
+		return nil, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var s clientState
+	if c.MasterCreds != nil {
+		src := c.sts.Config.Credentials
+		s.MasterCreds = NewStaticCreds(src, c.MasterCreds.Expires())
+	}
+	if len(c.cache) > 0 {
+		s.Accounts = make(map[string]accountState, len(c.cache))
+		for _, ac := range c.cache {
+			if c := NewStaticCreds(ac.creds, ac.Expires()); c != nil {
+				s.Accounts[ac.ID] = accountState{&ac.Account, c}
+			}
+		}
+	}
+	var buf bytes.Buffer
+	err := gob.NewEncoder(&buf).Encode(&s)
+	return buf.Bytes(), err
+}
+
+// GobDecode implements gob.GobDecoder interface.
+func (c *Client) GobDecode(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	var s clientState
+	if err := gob.NewDecoder(bytes.NewReader(b)).Decode(&s); err != nil {
 		return err
 	}
-	c.AccountID = aws.StringValue(id.Account)
-	c.UserARN = aws.StringValue(id.Arn)
-	c.UserID = aws.StringValue(id.UserId)
-
-	// RoleSessionName for new sessions is derived from the original credentials
-	if i := strings.IndexByte(c.UserID, ':'); i != -1 {
-		c.roleSessionName = c.UserID[i+1:]
-	} else if r, _ := arn.Parse(c.UserARN); strings.HasPrefix(r.Resource, "user/") {
-		c.roleSessionName = r.Resource[5:]
-	} else {
-		c.roleSessionName = c.UserID
+	p := NewChainCreds(c.minExp, s.MasterCreds, c.MasterCreds)
+	if len(p.chain) > 0 {
+		// Only one provider is actually used because there is no efficient way
+		// to ensure that both refer to the same account/user/role. If the
+		// static creds expire after Connect()ing, the ident and org information
+		// may become inaccurate.
+		c.MasterCreds = p.chain[0]
+		// TODO: Should expired master creds invalidate account creds?
 	}
-
-	// TODO: Get org info
-
-	c.CommonRole = c.roleSessionName
+	c.saved = s.Accounts
 	return nil
 }
 
@@ -224,8 +294,57 @@ func (c *Client) getAccountUnlocked(id string) *accountCtx {
 func (c *Client) getAccount(id string) *accountCtx {
 	ac := c.cache[id]
 	if ac == nil {
-		ac = newAccountCtx(c, id)
+		ac = newAccountCtx(c, id, c.saved[id])
+		if c.cache == nil {
+			c.cache = make(map[string]*accountCtx)
+		}
 		c.cache[id] = ac
 	}
 	return ac
+}
+
+// ident contains data from sts:GetCallerIdentity API call.
+type ident struct{ AccountID, UserARN, UserID string }
+
+// set updates identity information.
+func (id *ident) set(out *sts.GetCallerIdentityOutput) {
+	*id = ident{
+		AccountID: aws.StringValue(out.Account),
+		UserARN:   aws.StringValue(out.Arn),
+		UserID:    aws.StringValue(out.UserId),
+	}
+}
+
+// org contains data from organizations:DescribeOrganization API call.
+type org struct {
+	ARN                string
+	FeatureSet         string
+	ID                 string
+	MasterAccountARN   string
+	MasterAccountEmail string
+	MasterAccountID    string
+}
+
+// set updates organization information.
+func (o *org) set(out *orgs.DescribeOrganizationOutput) {
+	*o = org{
+		ARN:                aws.StringValue(out.Organization.Arn),
+		FeatureSet:         aws.StringValue(out.Organization.FeatureSet),
+		ID:                 aws.StringValue(out.Organization.Id),
+		MasterAccountARN:   aws.StringValue(out.Organization.MasterAccountArn),
+		MasterAccountEmail: aws.StringValue(out.Organization.MasterAccountEmail),
+		MasterAccountID:    aws.StringValue(out.Organization.MasterAccountId),
+	}
+}
+
+// getSessName derives RoleSessionName for new sessions from the current
+// identity.
+func getSessName(id *ident) string {
+	if i := strings.IndexByte(id.UserID, ':'); i != -1 {
+		return id.UserID[i+1:]
+	}
+	if r, _ := arn.Parse(id.UserARN); strings.HasPrefix(r.Resource, "user/") {
+		return r.Resource[5:]
+	}
+	return id.UserID
 }

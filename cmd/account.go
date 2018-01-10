@@ -7,18 +7,17 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"strings"
-	"strconv"
 )
 
 // TODO: Check encoding length and compare with JSON
@@ -90,11 +89,10 @@ func (ac *Account) IAM() *iam.IAM {
 
 // Init initializes account control information.
 func (ac *Account) Init() error {
-	// TODO: Figure out a more restricted policy
-	policy := fmt.Sprintf(awsgw.AssumeRolePolicy, ac.c.AccountID)
+	// TODO: Figure out a more restricted policy?
 	// TODO: Can path be used for better organization?
 	in := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(policy),
+		AssumeRolePolicyDocument: aws.String(ac.c.MasterAssumeRolePolicy()),
 		RoleName:                 aws.String(ctlRole),
 	}
 	_, err := ac.IAM().CreateRole(&in)
