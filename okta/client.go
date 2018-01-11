@@ -56,19 +56,9 @@ func NewClient(host string) *Client {
 	}
 }
 
-// Authn performs user authentication and creates a new session.
-func (c *Client) Authn(username, password string) error {
-	type in struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	var out authnState
-	ref := url.URL{Path: "authn"}
-	err := c.do(http.MethodPost, &ref, &in{username, password}, &out)
-	if err == nil {
-		err = c.handleAuthnState(&out)
-	}
-	return err
+// Authenticate performs user authentication and creates a new session.
+func (c *Client) Authenticate(authn Authenticator) error {
+	return authenticate(c, authn)
 }
 
 // Authenticated returns true if authentication is complete.
@@ -83,8 +73,7 @@ func (c *Client) RefreshSession() error {
 	// Current Session" and "Refresh Current Session" calls seem to extend
 	// session expiration time. Both also return an ID that does not match our
 	// sid cookie. Using the new ID for subsequent requests results in E0000007
-	// "Not found" error. Basically, I don't know what Okta is doing, but this
-	// code seems to work.
+	// "Not found" error. Okta support says this is an ExternalSessionID.
 	ref := url.URL{Path: "sessions/me"}
 	err := c.do(http.MethodGet, &ref, nil, &s)
 	if err == nil {
@@ -160,32 +149,6 @@ func (c *Client) GobDecode(b []byte) error {
 		c.setSession(s.Session)
 	}
 	return err
-}
-
-// authnState is the current authentication state.
-type authnState struct {
-	StateToken   string
-	SessionToken string
-	Status       string
-	Links        map[string]*link `json:"_links"`
-}
-
-// link is a HAL entry in "_links".
-type link struct {
-	Name string
-	Href string
-}
-
-// handleAuthnState handles authentication state transitions.
-func (c *Client) handleAuthnState(s *authnState) error {
-	switch s.Status {
-	case "SUCCESS":
-		return c.createSession(s.SessionToken)
-	case "MFA_REQUIRED":
-		fallthrough // TODO: Handle MFA
-	default:
-		return fmt.Errorf("okta: authn status %s", s.Status)
-	}
 }
 
 // createSession converts session token into a cookie.

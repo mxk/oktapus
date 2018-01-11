@@ -13,5 +13,6 @@ func init() {
 type Test struct{ command }
 
 func (Test) Run(ctx *Ctx, args []string) error {
+	ctx.Okta()
 	return nil
 }

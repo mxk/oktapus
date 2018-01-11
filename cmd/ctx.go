@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
@@ -71,7 +72,19 @@ func (ctx *Ctx) Okta() *okta.Client {
 			log.E("Failed to decode Okta client state: %v", err)
 		}
 	}
-	return ctx.oktaAuthn(ctx.okta)
+	if ctx.okta.Authenticated() {
+		err := ctx.okta.RefreshSession()
+		if err == nil {
+			ctx.Save()
+			return ctx.okta
+		}
+		log.W("Failed to refresh Okta session: %v", err)
+	}
+	if err := ctx.okta.Authenticate(termAuthn{ctx}); err != nil {
+		log.F("Okta authentication failed: %v", err)
+	}
+	ctx.Save()
+	return ctx.okta
 }
 
 // AWSAuth returns AWS authentication information from Okta.
@@ -172,31 +185,62 @@ func (ctx *Ctx) Save() {
 	}
 }
 
-// oktaAuthn establishes or resumes an Okta session.
-func (ctx *Ctx) oktaAuthn(c *okta.Client) *okta.Client {
-	if c.Authenticated() {
-		err := c.RefreshSession()
-		if err == nil {
-			ctx.Save()
-			return c
-		}
-		log.W("Failed to refresh Okta session: %v", err)
-	}
+// termAuthn uses the terminal for Okta authentication.
+type termAuthn struct{ *Ctx }
+
+// Username returns the username for Okta.
+func (ctx termAuthn) Username() (string, error) {
 	for ctx.OktaUser == "" {
-		fmt.Println("Okta username: ")
-		fmt.Scanln(&ctx.OktaUser)
+		fmt.Fprintln(os.Stderr, "Okta username: ")
+		if _, err := fmt.Scanln(&ctx.OktaUser); err != nil {
+			return "", err
+		}
+		ctx.OktaUser = strings.TrimSpace(ctx.OktaUser)
 	}
-	fmt.Printf("Okta password for %q: ", ctx.OktaUser)
-	pass, err := readPassword()
-	fmt.Println()
-	if err != nil {
-		log.F("Failed to read password: %v", err)
+	return ctx.OktaUser, nil
+}
+
+// Password returns the user's Okta password.
+func (ctx termAuthn) Password() (string, error) {
+	defer fmt.Println()
+	fmt.Fprintf(os.Stderr, "Okta password for %q: ", ctx.OktaUser)
+	if terminal.IsTerminal(syscall.Stdin) {
+		pw, err := terminal.ReadPassword(syscall.Stdin)
+		return string(pw), err
 	}
-	if err := c.Authn(ctx.OktaUser, pass); err != nil {
-		log.F("Okta authentication failed: %v", err)
+	fmt.Print("<WARNING! PASSWORD WILL ECHO!> ")
+	var pw string
+	_, err := fmt.Scanln(&pw)
+	return pw, err
+}
+
+// SelectFactor picks the additional factor to use for authentication.
+func (ctx termAuthn) SelectFactor(all []*okta.Factor) (*okta.Factor, error) {
+	fmt.Fprintln(os.Stderr, "Multi-factor authentication required.")
+	if len(all) == 1 {
+		return all[0], nil
 	}
-	ctx.Save()
-	return c
+	for {
+		fmt.Fprintln(os.Stderr, "")
+		for i, f := range all {
+			fmt.Fprintf(os.Stderr, "[%d] %s\n", i+1, f.Info().Name)
+		}
+		fmt.Fprint(os.Stderr, "Which factor do you want to use? ")
+		var n int
+		// TODO: Handle number-specific errors
+		if fmt.Scanln(&n); 1 <= n && n <= len(all) {
+			return all[n-1], nil
+		}
+		fmt.Fprintln(os.Stderr, "Invalid choice, please try again.")
+	}
+}
+
+// Challenge asks the user for factor verification.
+func (ctx termAuthn) Challenge(f *okta.Factor) (string, error) {
+	fmt.Fprintf(os.Stderr, "%s: ", f.Info().Prompt)
+	var rsp string
+	_, err := fmt.Scanln(&rsp)
+	return rsp, err
 }
 
 // stateFile returns the path to the state file that is used to preserve program
@@ -212,16 +256,4 @@ func stateFile() string {
 		log.W("Failed to get user information: %v", err)
 	}
 	return ""
-}
-
-// readPassword tries to read a password without echo.
-func readPassword() (string, error) {
-	if !terminal.IsTerminal(syscall.Stdin) {
-		fmt.Print("<WARNING! PASSWORD WILL ECHO!> ")
-		var pw string
-		_, err := fmt.Scanln(&pw)
-		return pw, err
-	}
-	pw, err := terminal.ReadPassword(syscall.Stdin)
-	return string(pw), err
 }
