@@ -235,23 +235,29 @@ type clientState struct {
 
 // GobEncode implements gob.GobEncoder interface.
 func (c *Client) GobEncode() ([]byte, error) {
-	if c.sts == nil || (c.MasterCreds == nil && len(c.cache) == 0) {
+	if c.sts == nil {
 		// If the client never connected, the old state (if any) hasn't changed
 		return nil, nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var s clientState
+	now := time.Now()
+	errExp := now.Add(2 * time.Hour)
+	s := clientState{Accounts: c.saved}
 	if c.MasterCreds != nil {
-		src := c.sts.Config.Credentials
-		s.MasterCreds = NewStaticCreds(src, c.MasterCreds.Expires())
+		s.MasterCreds = c.MasterCreds.Save(errExp)
 	}
-	if len(c.cache) > 0 {
+	if s.Accounts == nil && len(c.cache) > 0 {
 		s.Accounts = make(map[string]accountState, len(c.cache))
-		for _, ac := range c.cache {
-			if c := NewStaticCreds(ac.creds, ac.Expires()); c != nil {
-				s.Accounts[ac.ID] = accountState{&ac.Account, c}
-			}
+	}
+	for _, ac := range c.cache {
+		if c := ac.Save(errExp); c != nil {
+			s.Accounts[ac.ID] = accountState{&ac.Account, c}
+		}
+	}
+	for _, ac := range s.Accounts {
+		if ac.Creds == nil || !ac.Creds.Expires().After(now) {
+			delete(s.Accounts, ac.Account.ID)
 		}
 	}
 	var buf bytes.Buffer

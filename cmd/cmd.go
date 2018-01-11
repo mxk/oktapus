@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/LuminalHQ/oktapus/internal"
-
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -115,20 +114,26 @@ func getCmd(args []string) (Cmd, []string) {
 
 // explainError returns a user-friendly representation of err.
 func explainError(err error) string {
-	switch e := err.(type) {
+	switch err := err.(type) {
 	case awserr.RequestFailure:
-		switch e.StatusCode() {
+		switch err.StatusCode() {
 		case http.StatusForbidden:
 			return "account access denied"
 		case http.StatusNotFound:
 			return "account control not initialized"
 		default:
-			return e.Code() + ": " + e.Message()
+			return err.Code() + ": " + err.Message()
 		}
 	case awserr.Error:
-		return e.Code() + ": " + e.Message()
+		if err.Code() == "NoCredentialProviders" {
+			errs := err.(awserr.BatchedErrors).OrigErrs()
+			if n := len(errs); n > 0 {
+				return explainError(errs[n-1])
+			}
+		}
+		return err.Code() + ": " + err.Message()
 	case error:
-		return e.Error()
+		return err.Error()
 	}
 	return ""
 }
