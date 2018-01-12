@@ -1,6 +1,7 @@
 package okta
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,9 +30,17 @@ type Factor struct {
 	FactorType string
 	Provider   string
 	VendorName string
-	Profile    map[string]string
+	Profile    profile
 	Links      struct{ Verify *link } `json:"_links"`
 	drv        mfaDriver
+}
+
+// profile contains token-specific profile information.
+type profile struct {
+	CredentialID   string
+	QuestionText   string
+	PhoneNumber    string
+	PhoneExtension string
 }
 
 // Choice interface.
@@ -42,28 +51,7 @@ func (f *Factor) Prompt() string { return f.driver().prompt(f) }
 // driver returns the protocol driver for factor f.
 func (f *Factor) driver() mfaDriver {
 	if f.drv == nil {
-		switch f.FactorType {
-		case "question":
-			f.drv = question{"Security Question"}
-		case "call", "sms":
-			name := driver("Phone Call")
-			if f.FactorType == "sms" {
-				name = "SMS"
-			}
-			if num := driver(f.Profile["phoneNumber"]); num != "" {
-				f.drv = phone{name + " (" + num + ")"}
-			} else {
-				f.drv = phone{name}
-			}
-		case "token:software:totp":
-			switch f.Provider {
-			case "GOOGLE":
-				f.drv = totp{"Google Authenticator"}
-			}
-		default:
-			name := fmt.Sprintf("%s (%s)", f.FactorType, f.Provider)
-			f.drv = unsupported{driver(name)}
-		}
+		f.drv = newDriver(f)
 	}
 	return f.drv
 }
@@ -151,6 +139,41 @@ type mfaDriver interface {
 	run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error)
 }
 
+func newDriver(f *Factor) mfaDriver {
+	var name bytes.Buffer
+	switch f.FactorType {
+	case "question":
+		name.WriteString("Security Question (")
+		name.WriteString(f.Profile.QuestionText)
+		name.WriteByte(')')
+		return question{driver(name.Bytes())}
+	case "call", "sms":
+		if f.FactorType == "call" {
+			name.WriteString("Phone Call")
+		} else {
+			name.WriteString("SMS")
+		}
+		if f.Profile.PhoneNumber != "" {
+			name.WriteString(" (")
+			name.WriteString(f.Profile.PhoneNumber)
+			if f.Profile.PhoneExtension != "" {
+				name.WriteString(" x")
+				name.WriteString(f.Profile.PhoneExtension)
+			}
+			name.WriteByte(')')
+		}
+		return phone{driver(name.Bytes())}
+	case "token:software:totp":
+		switch f.Provider {
+		case "GOOGLE":
+			return totp{"Google Authenticator"}
+		case "OKTA":
+			return totp{"Okta Verify"}
+		}
+	}
+	return unsupported{driver(fmt.Sprintf("%s (%s)", f.FactorType, f.Provider))}
+}
+
 // driver is the base mfaDriver implementation.
 type driver string
 
@@ -170,7 +193,7 @@ func (d unsupported) run(f *Factor, c *authnClient, r *authnResult) (*authnResul
 type question struct{ driver }
 
 func (question) prompt(f *Factor) string {
-	return f.Profile["questionText"]
+	return f.Profile.QuestionText
 }
 
 func (question) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
@@ -188,7 +211,7 @@ func (question) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, er
 type phone struct{ driver }
 
 func (phone) prompt(f *Factor) string {
-	return fmt.Sprintf("Verification code sent to %q", f.Profile["phoneNumber"])
+	return fmt.Sprintf("Verification code sent to %q", f.Profile.PhoneNumber)
 }
 
 func (d phone) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
@@ -204,7 +227,7 @@ func (d phone) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, err
 type totp struct{ driver }
 
 func (totp) prompt(f *Factor) string {
-	return fmt.Sprintf("Verification code for %q", f.Profile["credentialId"])
+	return fmt.Sprintf("Verification code for %q", f.Profile.CredentialID)
 }
 
 func (totp) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
