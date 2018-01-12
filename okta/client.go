@@ -280,6 +280,9 @@ func readResponse(rsp *http.Response, out interface{}) error {
 		}
 		return err
 	}
+	if out == nil {
+		out = &struct{}{}
+	}
 	return dec.Decode(out)
 }
 

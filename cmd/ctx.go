@@ -2,12 +2,9 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
-	"strings"
-	"syscall"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
@@ -17,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 var log = internal.Log
@@ -80,7 +76,7 @@ func (ctx *Ctx) Okta() *okta.Client {
 		}
 		log.W("Failed to refresh Okta session: %v", err)
 	}
-	if err := ctx.okta.Authenticate(termAuthn{ctx}); err != nil {
+	if err := ctx.okta.Authenticate(newTermAuthn(ctx.OktaUser)); err != nil {
 		log.F("Okta authentication failed: %v", err)
 	}
 	ctx.Save()
@@ -183,64 +179,6 @@ func (ctx *Ctx) Save() {
 		ctx.State.Update()
 		ctx.State.Save()
 	}
-}
-
-// termAuthn uses the terminal for Okta authentication.
-type termAuthn struct{ *Ctx }
-
-// Username returns the username for Okta.
-func (ctx termAuthn) Username() (string, error) {
-	for ctx.OktaUser == "" {
-		fmt.Fprintln(os.Stderr, "Okta username: ")
-		if _, err := fmt.Scanln(&ctx.OktaUser); err != nil {
-			return "", err
-		}
-		ctx.OktaUser = strings.TrimSpace(ctx.OktaUser)
-	}
-	return ctx.OktaUser, nil
-}
-
-// Password returns the user's Okta password.
-func (ctx termAuthn) Password() (string, error) {
-	defer fmt.Println()
-	fmt.Fprintf(os.Stderr, "Okta password for %q: ", ctx.OktaUser)
-	if terminal.IsTerminal(syscall.Stdin) {
-		pw, err := terminal.ReadPassword(syscall.Stdin)
-		return string(pw), err
-	}
-	fmt.Print("<WARNING! PASSWORD WILL ECHO!> ")
-	var pw string
-	_, err := fmt.Scanln(&pw)
-	return pw, err
-}
-
-// SelectFactor picks the additional factor to use for authentication.
-func (ctx termAuthn) SelectFactor(all []*okta.Factor) (*okta.Factor, error) {
-	fmt.Fprintln(os.Stderr, "Multi-factor authentication required.")
-	if len(all) == 1 {
-		return all[0], nil
-	}
-	for {
-		fmt.Fprintln(os.Stderr, "")
-		for i, f := range all {
-			fmt.Fprintf(os.Stderr, "[%d] %s\n", i+1, f.Info().Name)
-		}
-		fmt.Fprint(os.Stderr, "Which factor do you want to use? ")
-		var n int
-		// TODO: Handle number-specific errors
-		if fmt.Scanln(&n); 1 <= n && n <= len(all) {
-			return all[n-1], nil
-		}
-		fmt.Fprintln(os.Stderr, "Invalid choice, please try again.")
-	}
-}
-
-// Challenge asks the user for factor verification.
-func (ctx termAuthn) Challenge(f *okta.Factor) (string, error) {
-	fmt.Fprintf(os.Stderr, "%s: ", f.Info().Prompt)
-	var rsp string
-	_, err := fmt.Scanln(&rsp)
-	return rsp, err
 }
 
 // stateFile returns the path to the state file that is used to preserve program
