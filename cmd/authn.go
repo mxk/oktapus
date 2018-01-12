@@ -39,15 +39,7 @@ func (t *termAuthn) Username() (string, error) {
 // Password prompts the user for their Okta password.
 func (t *termAuthn) Password() (string, error) {
 	t.printf("Okta password for %q: ", t.user)
-	if f, ok := t.r.(*os.File); ok {
-		if fd := int(f.Fd()); terminal.IsTerminal(fd) {
-			pw, err := terminal.ReadPassword(fd)
-			t.println()
-			return string(pw), err
-		}
-	}
-	t.print("<WARNING! PASSWORD WILL ECHO!> ")
-	return readLine(t.r)
+	return t.readSecure("PASSWORD")
 }
 
 // Select asks the user to choose one of the options from a menu.
@@ -67,7 +59,7 @@ func (t *termAuthn) Select(all []okta.Choice) (okta.Choice, error) {
 		for i, c := range all {
 			t.printf("[%d] %s\n", i+1, c.Value())
 		}
-		t.print(prompt)
+		t.print("\n", prompt)
 		ln, err := readLine(t.r)
 		if err != nil {
 			return nil, err
@@ -81,7 +73,27 @@ func (t *termAuthn) Select(all []okta.Choice) (okta.Choice, error) {
 
 // Input asks the user to respond to an MFA challenge.
 func (t *termAuthn) Input(c okta.Choice) (string, error) {
-	t.print(c.Prompt(), ": ")
+	if p := c.Prompt(); strings.HasSuffix(p, "?") {
+		t.print(p, " ")
+	} else {
+		t.print(p, ": ")
+	}
+	if f, ok := c.(*okta.Factor); ok && f.FactorType == "question" {
+		return t.readSecure("ANSWER")
+	}
+	return readLine(t.r)
+}
+
+// readSecure attempts to read sensitive information without terminal echo.
+func (t *termAuthn) readSecure(what string) (string, error) {
+	if f, ok := t.r.(*os.File); ok {
+		if fd := int(f.Fd()); terminal.IsTerminal(fd) {
+			pw, err := terminal.ReadPassword(fd)
+			t.println()
+			return string(pw), err
+		}
+	}
+	t.printf("<WARNING! %s WILL ECHO!> ", what)
 	return readLine(t.r)
 }
 

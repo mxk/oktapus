@@ -15,11 +15,57 @@ type Authenticator interface {
 	Input(c Choice) (string, error)
 }
 
-// Choice is a user-selectable item, such as a factor or a security question.
+// Choice is a user-selectable item.
 type Choice interface {
 	Key() string
 	Value() string
 	Prompt() string
+}
+
+// Factor is a factor object returned by MFA_ENROLL, MFA_REQUIRED, or
+// MFA_CHALLENGE authentication responses.
+type Factor struct {
+	ID         string
+	FactorType string
+	Provider   string
+	VendorName string
+	Profile    map[string]string
+	Links      struct{ Verify *link } `json:"_links"`
+	drv        mfaDriver
+}
+
+// Choice interface.
+func (f *Factor) Key() string    { return f.ID }
+func (f *Factor) Value() string  { return f.driver().name() }
+func (f *Factor) Prompt() string { return f.driver().prompt(f) }
+
+// driver returns the protocol driver for factor f.
+func (f *Factor) driver() mfaDriver {
+	if f.drv == nil {
+		switch f.FactorType {
+		case "question":
+			f.drv = question{"Security Question"}
+		case "call", "sms":
+			name := driver("Phone Call")
+			if f.FactorType == "sms" {
+				name = "SMS"
+			}
+			if num := driver(f.Profile["phoneNumber"]); num != "" {
+				f.drv = phone{name + " (" + num + ")"}
+			} else {
+				f.drv = phone{name}
+			}
+		case "token:software:totp":
+			switch f.Provider {
+			case "GOOGLE":
+				f.drv = totp{"Google Authenticator"}
+			}
+		default:
+			name := fmt.Sprintf("%s (%s)", f.FactorType, f.Provider)
+			f.drv = unsupported{driver(name)}
+		}
+	}
+	return f.drv
 }
 
 // authnClient executes Okta's authentication flow.
@@ -33,7 +79,6 @@ type authnResult struct {
 	StateToken   string
 	SessionToken string
 	Status       string
-	Links        map[string]*link            `json:"_links"`
 	Embedded     struct{ Factors []*Factor } `json:"_embedded"`
 }
 
@@ -98,50 +143,6 @@ func (c *authnClient) mfa(r *authnResult) (*authnResult, error) {
 	return f.(*Factor).driver().run(f.(*Factor), c, r)
 }
 
-// Factor is a factor object returned by MFA_ENROLL, MFA_REQUIRED, or
-// MFA_CHALLENGE authentication responses.
-type Factor struct {
-	ID         string
-	FactorType string
-	Provider   string
-	VendorName string
-	Profile    map[string]string
-	Links      map[string]*link `json:"_links"`
-	drv        mfaDriver
-}
-
-// Choice interface.
-func (f *Factor) Key() string    { return f.ID }
-func (f *Factor) Value() string  { return f.driver().name() }
-func (f *Factor) Prompt() string { return f.driver().prompt(f) }
-
-// driver returns the protocol driver for factor f.
-func (f *Factor) driver() mfaDriver {
-	if f.drv == nil {
-		switch f.FactorType {
-		case "token:software:totp":
-			switch f.Provider {
-			case "GOOGLE":
-				f.drv = totp{"Google Authenticator"}
-			}
-		case "call", "sms":
-			name := driver("Phone Call")
-			if f.FactorType == "sms" {
-				name = "SMS"
-			}
-			if num := driver(f.Profile["phoneNumber"]); num != "" {
-				f.drv = phone{name + " (" + num + ")"}
-			} else {
-				f.drv = phone{name}
-			}
-		default:
-			name := fmt.Sprintf("%s (%s)", f.FactorType, f.Provider)
-			f.drv = unsupported{driver(name)}
-		}
-	}
-	return f.drv
-}
-
 // mfaDriver is a factor-specific driver interface.
 type mfaDriver interface {
 	supported() bool
@@ -165,50 +166,71 @@ func (d unsupported) run(f *Factor, c *authnClient, r *authnResult) (*authnResul
 	return nil, fmt.Errorf("okta: unsupported factor (%s)", d.name())
 }
 
-type passCodeInput struct {
-	FID        string `json:"fid"`
-	StateToken string `json:"stateToken"`
-	PassCode   string `json:"passCode,omitempty"`
+// question implements security question verification protocol.
+type question struct{ driver }
+
+func (question) prompt(f *Factor) string {
+	return f.Profile["questionText"]
 }
 
-// totp implements time-based one-time password verification protocol.
-type totp struct{ driver }
-
-func (d totp) prompt(f *Factor) string {
-	return fmt.Sprintf("Verification code for %q", f.Profile["credentialId"])
-}
-
-func (d totp) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
-	ref, err := url.Parse(f.Links["verify"].Href)
-	if err != nil {
-		return nil, err
-	}
-	in := passCodeInput{FID: f.ID, StateToken: r.StateToken}
-	for in.PassCode == "" {
-		if in.PassCode, err = c.Input(f); err != nil {
+func (question) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+	var err error
+	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
+	for in.Answer == "" {
+		if in.Answer, err = c.Input(f); err != nil {
 			return nil, err
 		}
 	}
-	var out authnResult
-	return &out, c.do(http.MethodPost, ref, &in, &out)
+	return verify(f, c, &in)
 }
 
 // phone implements phone call and SMS verification protocols.
 type phone struct{ driver }
 
-func (d phone) prompt(f *Factor) string {
+func (phone) prompt(f *Factor) string {
 	return fmt.Sprintf("Verification code sent to %q", f.Profile["phoneNumber"])
 }
 
 func (d phone) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
-	ref, err := url.Parse(f.Links["verify"].Href)
-	if err != nil {
-		return nil, err
-	}
 	// Send empty passCode to request a new OTP
-	in := passCodeInput{FID: f.ID, StateToken: r.StateToken}
-	if err := c.do(http.MethodPost, ref, &in, nil); err != nil {
+	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
+	if _, err := verify(f, c, &in); err != nil {
 		return nil, err
 	}
 	return totp(d).run(f, c, r)
+}
+
+// totp implements time-based one-time password verification protocol.
+type totp struct{ driver }
+
+func (totp) prompt(f *Factor) string {
+	return fmt.Sprintf("Verification code for %q", f.Profile["credentialId"])
+}
+
+func (totp) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+	var err error
+	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
+	for in.PassCode == "" {
+		if in.PassCode, err = c.Input(f); err != nil {
+			return nil, err
+		}
+	}
+	return verify(f, c, &in)
+}
+
+type verifyInput struct {
+	FID        string `json:"fid"`
+	StateToken string `json:"stateToken"`
+	PassCode   string `json:"passCode,omitempty"`
+	Answer     string `json:"answer,omitempty"`
+}
+
+// verify performs factor verification.
+func verify(f *Factor, c *authnClient, in *verifyInput) (*authnResult, error) {
+	ref, err := url.Parse(f.Links.Verify.Href)
+	if err != nil {
+		return nil, err
+	}
+	var out authnResult
+	return &out, c.do(http.MethodPost, ref, in, &out)
 }
