@@ -124,11 +124,15 @@ func (f *Factor) driver() mfaDriver {
 			case "GOOGLE":
 				f.drv = totp{"Google Authenticator"}
 			}
-		case "sms":
-			if phone := driver(f.Profile["phoneNumber"]); phone != "" {
-				f.drv = sms{"SMS (" + phone + ")"}
+		case "call", "sms":
+			name := driver("Phone Call")
+			if f.FactorType == "sms" {
+				name = "SMS"
+			}
+			if num := driver(f.Profile["phoneNumber"]); num != "" {
+				f.drv = phone{name + " (" + num + ")"}
 			} else {
-				f.drv = sms{"SMS"}
+				f.drv = phone{name}
 			}
 		default:
 			name := fmt.Sprintf("%s (%s)", f.FactorType, f.Provider)
@@ -189,14 +193,14 @@ func (d totp) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, erro
 	return &out, c.do(http.MethodPost, ref, &in, &out)
 }
 
-// sms implements SMS verification protocol.
-type sms struct{ driver }
+// phone implements phone call and SMS verification protocols.
+type phone struct{ driver }
 
-func (d sms) prompt(f *Factor) string {
+func (d phone) prompt(f *Factor) string {
 	return fmt.Sprintf("Verification code sent to %q", f.Profile["phoneNumber"])
 }
 
-func (d sms) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+func (d phone) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
 	ref, err := url.Parse(f.Links["verify"].Href)
 	if err != nil {
 		return nil, err
