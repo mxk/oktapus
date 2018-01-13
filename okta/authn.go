@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Authenticator implements the user interface for multi-factor authentication.
@@ -14,6 +15,7 @@ type Authenticator interface {
 	Password() (string, error)
 	Select(c []Choice) (Choice, error)
 	Input(c Choice) (string, error)
+	Notify(format string, a ...interface{})
 }
 
 // Choice is a user-selectable item.
@@ -41,6 +43,7 @@ type profile struct {
 	QuestionText   string
 	PhoneNumber    string
 	PhoneExtension string
+	Name           string
 }
 
 // Choice interface.
@@ -62,12 +65,22 @@ type authnClient struct {
 	Authenticator
 }
 
-// authnResult is the result of the most recent authentication request.
-type authnResult struct {
+// response is a response to an authentication request.
+type response struct {
+	FID        string `json:"fid,omitempty"`
+	StateToken string `json:"stateToken"`
+	PassCode   string `json:"passCode,omitempty"`
+	Answer     string `json:"answer,omitempty"`
+}
+
+// result is the result of an authentication request.
+type result struct {
 	StateToken   string
 	SessionToken string
 	Status       string
+	FactorResult string
 	Embedded     struct{ Factors []*Factor } `json:"_embedded"`
+	Links        struct{ Next, Prev *link }  `json:"_links"`
 }
 
 // link is a HAL entry in "_links".
@@ -84,14 +97,14 @@ func authenticate(c *Client, authn Authenticator) error {
 		case "MFA_REQUIRED":
 			r, err = ac.mfa(r)
 		default:
-			err = fmt.Errorf("okta: unsupported authn status %s", r.Status)
+			err = fmt.Errorf("okta: authentication failed (%s)", r.Status)
 		}
 	}
 	return err
 }
 
 // primary validates user's primary password credential.
-func (c *authnClient) primary() (*authnResult, error) {
+func (c *authnClient) primary() (*result, error) {
 	user, err := c.Username()
 	if err != nil {
 		return nil, err
@@ -104,13 +117,13 @@ func (c *authnClient) primary() (*authnResult, error) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	var out authnResult
+	var out result
 	ref := url.URL{Path: "authn"}
 	return &out, c.do(http.MethodPost, &ref, &in{user, pass}, &out)
 }
 
 // mfa performs multi-factor authentication.
-func (c *authnClient) mfa(r *authnResult) (*authnResult, error) {
+func (c *authnClient) mfa(r *result) (*result, error) {
 	choice := make([]Choice, 0, len(r.Embedded.Factors))
 	var others []string
 	for _, f := range r.Embedded.Factors {
@@ -128,7 +141,22 @@ func (c *authnClient) mfa(r *authnResult) (*authnResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.(*Factor).driver().run(f.(*Factor), c, r)
+	r, err = f.(*Factor).driver().run(f.(*Factor), c, r)
+	if err == nil && r.Status == "MFA_CHALLENGE" {
+		in := response{StateToken: r.StateToken}
+		r, err = c.nav(r.Links.Prev, &in)
+	}
+	return r, err
+}
+
+// nav sends a POST request to a HAL link.
+func (c *authnClient) nav(l *link, in *response) (*result, error) {
+	ref, err := url.Parse(l.Href)
+	if err != nil {
+		return nil, err
+	}
+	var out result
+	return &out, c.do(http.MethodPost, ref, in, &out)
 }
 
 // mfaDriver is a factor-specific driver interface.
@@ -136,7 +164,7 @@ type mfaDriver interface {
 	supported() bool
 	name() string
 	prompt(f *Factor) string
-	run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error)
+	run(f *Factor, c *authnClient, r *result) (*result, error)
 }
 
 func newDriver(f *Factor) mfaDriver {
@@ -168,7 +196,14 @@ func newDriver(f *Factor) mfaDriver {
 		case "GOOGLE":
 			return totp{"Google Authenticator"}
 		case "OKTA":
-			return totp{"Okta Verify"}
+			return totp{"Okta Verify TOTP"}
+		}
+	case "push":
+		if f.Provider == "OKTA" {
+			name.WriteString("Okta Verify Push (")
+			name.WriteString(f.Profile.Name)
+			name.WriteByte(')')
+			return push{driver(name.Bytes())}
 		}
 	}
 	return unsupported{driver(fmt.Sprintf("%s (%s)", f.FactorType, f.Provider))}
@@ -177,15 +212,15 @@ func newDriver(f *Factor) mfaDriver {
 // driver is the base mfaDriver implementation.
 type driver string
 
-func (d driver) supported() bool { return true }
-func (d driver) name() string    { return string(d) }
+func (d driver) supported() bool         { return true }
+func (d driver) name() string            { return string(d) }
+func (d driver) prompt(f *Factor) string { return "" }
 
 // unsupported is a null driver for unsupported factors.
 type unsupported struct{ driver }
 
-func (d unsupported) supported() bool         { return false }
-func (d unsupported) prompt(f *Factor) string { return "" }
-func (d unsupported) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+func (d unsupported) supported() bool { return false }
+func (d unsupported) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	return nil, fmt.Errorf("okta: unsupported factor (%s)", d.name())
 }
 
@@ -196,15 +231,15 @@ func (question) prompt(f *Factor) string {
 	return f.Profile.QuestionText
 }
 
-func (question) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+func (question) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	var err error
-	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
+	in := response{FID: f.ID, StateToken: r.StateToken}
 	for in.Answer == "" {
 		if in.Answer, err = c.Input(f); err != nil {
 			return nil, err
 		}
 	}
-	return verify(f, c, &in)
+	return c.nav(f.Links.Verify, &in)
 }
 
 // phone implements phone call and SMS verification protocols.
@@ -214,10 +249,10 @@ func (phone) prompt(f *Factor) string {
 	return fmt.Sprintf("Verification code sent to %q", f.Profile.PhoneNumber)
 }
 
-func (d phone) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+func (d phone) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	// Send empty passCode to request a new OTP
-	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
-	if _, err := verify(f, c, &in); err != nil {
+	in := response{FID: f.ID, StateToken: r.StateToken}
+	if _, err := c.nav(f.Links.Verify, &in); err != nil {
 		return nil, err
 	}
 	return totp(d).run(f, c, r)
@@ -230,30 +265,28 @@ func (totp) prompt(f *Factor) string {
 	return fmt.Sprintf("Verification code for %q", f.Profile.CredentialID)
 }
 
-func (totp) run(f *Factor, c *authnClient, r *authnResult) (*authnResult, error) {
+func (totp) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	var err error
-	in := verifyInput{FID: f.ID, StateToken: r.StateToken}
+	in := response{FID: f.ID, StateToken: r.StateToken}
 	for in.PassCode == "" {
 		if in.PassCode, err = c.Input(f); err != nil {
 			return nil, err
 		}
 	}
-	return verify(f, c, &in)
+	return c.nav(f.Links.Verify, &in)
 }
 
-type verifyInput struct {
-	FID        string `json:"fid"`
-	StateToken string `json:"stateToken"`
-	PassCode   string `json:"passCode,omitempty"`
-	Answer     string `json:"answer,omitempty"`
-}
+// push implements push notification verification protocol.
+type push struct{ driver }
 
-// verify performs factor verification.
-func verify(f *Factor, c *authnClient, in *verifyInput) (*authnResult, error) {
-	ref, err := url.Parse(f.Links.Verify.Href)
-	if err != nil {
-		return nil, err
+func (push) run(f *Factor, c *authnClient, r *result) (*result, error) {
+	in := response{FID: f.ID, StateToken: r.StateToken}
+	r, err := c.nav(f.Links.Verify, &in)
+	c.Notify("Waiting for approval from your %s... ", f.Profile.Name)
+	for err == nil && r.FactorResult == "WAITING" {
+		time.Sleep(2 * time.Second)
+		r, err = c.nav(r.Links.Next, &in)
 	}
-	var out authnResult
-	return &out, c.do(http.MethodPost, ref, in, &out)
+	c.Notify("%s\n", r.FactorResult)
+	return r, err
 }

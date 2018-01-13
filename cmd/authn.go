@@ -57,7 +57,7 @@ func (t *termAuthn) Select(all []okta.Choice) (okta.Choice, error) {
 	for {
 		t.println()
 		for i, c := range all {
-			t.printf("[%d] %s\n", i+1, c.Value())
+			t.printf("%d) %s\n", i+1, c.Value())
 		}
 		t.print("\n", prompt)
 		ln, err := readLine(t.r)
@@ -82,6 +82,11 @@ func (t *termAuthn) Input(c okta.Choice) (string, error) {
 		return t.readSecure("ANSWER")
 	}
 	return readLine(t.r)
+}
+
+// Notify informs the user of MFA status.
+func (t *termAuthn) Notify(format string, a ...interface{}) {
+	t.printf(format, a...)
 }
 
 // readSecure attempts to read sensitive information without terminal echo.
