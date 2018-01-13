@@ -38,7 +38,8 @@ const adminPolicy = `{
 }`
 
 // Client provides access to multiple AWS accounts via one gateway account
-// (usually the organization's master account).
+// (usually the organization's master account). It is not safe to use the client
+// concurrently from multiple goroutines.
 type Client struct {
 	MasterCreds CredsProvider
 	CommonRole  string
@@ -53,7 +54,6 @@ type Client struct {
 
 	roleSessionName string
 
-	mu    sync.Mutex // TODO: Remove. Client shouldn't be used concurrently.
 	cache map[string]*accountCtx
 	saved map[string]accountState
 }
@@ -112,8 +112,6 @@ func (c *Client) Connect() error {
 func (c *Client) Refresh() error {
 	valid := make(map[string]struct{})
 	pager := func(out *orgs.ListAccountsOutput, lastPage bool) bool {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		for _, src := range out.Accounts {
 			ac := c.getAccount(aws.StringValue(src.Id))
 			ac.set(src)
@@ -121,23 +119,20 @@ func (c *Client) Refresh() error {
 		}
 		return true
 	}
-	err := c.org.ListAccountsPages(nil, pager)
-	// TODO: Don't clear if error? Check error code.
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if err := c.org.ListAccountsPages(nil, pager); err != nil {
+		return err
+	}
 	for id := range c.cache {
 		if _, ok := valid[id]; !ok {
 			delete(c.cache, id)
 		}
 	}
-	return err
+	return nil
 }
 
 // Accounts returns cached information about all accounts in the organization.
 // The accounts are returned in random order.
 func (c *Client) Accounts() []*Account {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	all := make([]*Account, 0, len(c.cache))
 	for _, ac := range c.cache {
 		all = append(all, &ac.Account)
@@ -147,13 +142,12 @@ func (c *Client) Accounts() []*Account {
 
 // Creds returns credentials for the specified account.
 func (c *Client) Creds(accountID string) *credentials.Credentials {
-	return c.getAccountUnlocked(accountID).creds
+	return c.getAccount(accountID).creds
 }
 
 // IAM creates a new IAM client for the specified account.
 func (c *Client) IAM(accountID string) *iam.IAM {
-	ac := c.getAccountUnlocked(accountID)
-	cfg := aws.Config{Credentials: ac.creds}
+	cfg := aws.Config{Credentials: c.getAccount(accountID).creds}
 	return iam.New(c.sess, &cfg)
 }
 
@@ -239,8 +233,6 @@ func (c *Client) GobEncode() ([]byte, error) {
 		// If the client never connected, the old state (if any) hasn't changed
 		return nil, nil
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	now := time.Now()
 	errExp := now.Add(2 * time.Hour)
 	s := clientState{Accounts: c.saved}
@@ -285,14 +277,6 @@ func (c *Client) GobDecode(b []byte) error {
 	}
 	c.saved = s.Accounts
 	return nil
-}
-
-// getAccountUnlocked returns an existing or new account context for the
-// specified id.
-func (c *Client) getAccountUnlocked(id string) *accountCtx {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.getAccount(id)
 }
 
 // getAccount returns an existing or new account context for the specified id.
