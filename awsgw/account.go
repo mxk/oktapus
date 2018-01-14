@@ -41,25 +41,29 @@ type accountCtx struct {
 	creds *credentials.Credentials
 }
 
-// accountState contains serialized accountCtx state.
+// newAccountCtx creates a new context for the specified account id.
+func newAccountCtx(id string, cp CredsProvider) *accountCtx {
+	return &accountCtx{
+		Account:       Account{ID: id},
+		CredsProvider: cp,
+		creds:         credentials.NewCredentials(cp),
+	}
+}
+
+// accountState contains saved accountCtx state.
 type accountState struct {
 	Account *Account
 	Creds   *StaticCreds
 }
 
-// newAccountCtx creates a new context for the specified account id.
-func newAccountCtx(c *Client, id string, s accountState) *accountCtx {
-	role := "arn:aws:iam::" + id + ":role/" + c.CommonRole
-	ac := &accountCtx{
-		Account:       Account{ID: id},
-		CredsProvider: NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName),
+// restore creates an accountCtx from the saved state.
+func (s *accountState) restore(cp CredsProvider) *accountCtx {
+	cp = NewSavedCreds(s.Creds, cp)
+	return &accountCtx{
+		Account:       *s.Account,
+		CredsProvider: cp,
+		creds:         credentials.NewCredentials(cp),
 	}
-	if s.Account != nil {
-		ac.Account = *s.Account
-		ac.CredsProvider = NewChainCreds(c.minExp, s.Creds, ac.CredsProvider)
-	}
-	ac.creds = credentials.NewCredentials(ac)
-	return ac
 }
 
 // accountStatusEnum returns AccountStatus enum string without allocation.

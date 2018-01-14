@@ -14,11 +14,8 @@ func init() {
 
 // encodableError returns a representation of err that can be encoded by gob.
 func encodableError(err error) error {
-	if err == nil {
-		return nil
-	}
 	switch err := err.(type) {
-	case *strErr, *awsErr, *awsReqErr:
+	case nil, *strErr, *awsErr, *awsReqErr:
 		return err
 	case awserr.Error:
 		var orig []error

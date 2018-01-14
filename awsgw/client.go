@@ -46,7 +46,6 @@ type Client struct {
 	NoNegCache  bool // TODO: Implement
 
 	sess    client.ConfigProvider
-	minExp  time.Time
 	org     *orgs.Organizations
 	sts     *sts.STS
 	ident   ident
@@ -55,13 +54,12 @@ type Client struct {
 	roleSessionName string
 
 	cache map[string]*accountCtx
-	saved map[string]accountState
 }
 
 // NewClient creates a new AWS gateway client. The client is not usable until
 // Connect() is called, which should be done after restoring any saved state.
 func NewClient(sess client.ConfigProvider) *Client {
-	return &Client{sess: sess, minExp: time.Now().Add(5 * time.Minute)}
+	return &Client{sess: sess}
 }
 
 // ConfigProvider returns the ConfigProvider that was passed to NewClient.
@@ -110,7 +108,7 @@ func (c *Client) Connect() error {
 
 // Refresh updates information about all accounts in the organization.
 func (c *Client) Refresh() error {
-	valid := make(map[string]struct{})
+	valid := make(map[string]struct{}, len(c.cache))
 	pager := func(out *orgs.ListAccountsOutput, lastPage bool) bool {
 		for _, src := range out.Accounts {
 			ac := c.getAccount(aws.StringValue(src.Id))
@@ -143,12 +141,6 @@ func (c *Client) Accounts() []*Account {
 // Creds returns credentials for the specified account.
 func (c *Client) Creds(accountID string) *credentials.Credentials {
 	return c.getAccount(accountID).creds
-}
-
-// IAM creates a new IAM client for the specified account.
-func (c *Client) IAM(accountID string) *iam.IAM {
-	cfg := aws.Config{Credentials: c.getAccount(accountID).creds}
-	return iam.New(c.sess, &cfg)
 }
 
 // CreateAccount creates a new account in the organization and returns the
@@ -206,7 +198,7 @@ func (c *Client) CreateAdminRole(accountID, name string) error {
 		AssumeRolePolicyDocument: aws.String(c.MasterAssumeRolePolicy()),
 		RoleName:                 aws.String(name),
 	}
-	im := c.IAM(accountID)
+	im := c.iam(accountID)
 	if _, err := im.CreateRole(&in); err != nil {
 		return err
 	}
@@ -221,10 +213,10 @@ func (c *Client) CreateAdminRole(accountID, name string) error {
 	return err
 }
 
-// clientState contains serialized Client state.
+// clientState contains saved Client state.
 type clientState struct {
 	MasterCreds *StaticCreds
-	Accounts    map[string]accountState
+	Accounts    []accountState
 }
 
 // GobEncode implements gob.GobEncoder interface.
@@ -233,24 +225,16 @@ func (c *Client) GobEncode() ([]byte, error) {
 		// If the client never connected, the old state (if any) hasn't changed
 		return nil, nil
 	}
-	now := time.Now()
-	errExp := now.Add(2 * time.Hour)
-	s := clientState{Accounts: c.saved}
+	var s clientState
 	if c.MasterCreds != nil {
-		s.MasterCreds = c.MasterCreds.Save(errExp)
+		s.MasterCreds = c.MasterCreds.Save()
 	}
-	if s.Accounts == nil && len(c.cache) > 0 {
-		s.Accounts = make(map[string]accountState, len(c.cache))
-	}
-	for _, ac := range c.cache {
-		if c := ac.Save(errExp); c != nil {
-			s.Accounts[ac.ID] = accountState{&ac.Account, c}
+	if len(c.cache) > 0 {
+		acs := make([]accountState, 0, len(c.cache))
+		for _, ac := range c.cache {
+			acs = append(acs, accountState{&ac.Account, ac.Save()})
 		}
-	}
-	for _, ac := range s.Accounts {
-		if ac.Creds == nil || !ac.Creds.Expires().After(now) {
-			delete(s.Accounts, ac.Account.ID)
-		}
+		s.Accounts = acs
 	}
 	var buf bytes.Buffer
 	err := gob.NewEncoder(&buf).Encode(&s)
@@ -266,17 +250,26 @@ func (c *Client) GobDecode(b []byte) error {
 	if err := gob.NewDecoder(bytes.NewReader(b)).Decode(&s); err != nil {
 		return err
 	}
-	p := NewChainCreds(c.minExp, s.MasterCreds, c.MasterCreds)
-	if len(p.chain) > 0 {
-		// Only one provider is actually used because there is no efficient way
-		// to ensure that both refer to the same account/user/role. If the
-		// static creds expire after Connect()ing, the ident and org information
-		// may become inaccurate.
-		c.MasterCreds = p.chain[0]
-		// TODO: Should expired master creds invalidate account creds?
+	if s.MasterCreds != nil && s.MasterCreds.valid() {
+		c.MasterCreds = s.MasterCreds
 	}
-	c.saved = s.Accounts
+	// TODO: Should expired master creds invalidate account creds?
+	if len(s.Accounts) > 0 {
+		if c.cache == nil {
+			c.cache = make(map[string]*accountCtx, len(s.Accounts))
+		}
+		for i := range s.Accounts {
+			id := s.Accounts[i].Account.ID
+			c.cache[id] = s.Accounts[i].restore(c.credsProvider(id))
+		}
+	}
 	return nil
+}
+
+// credsProvider returns a credentials provider for the specified account id.
+func (c *Client) credsProvider(id string) CredsProvider {
+	role := "arn:aws:iam::" + id + ":role/" + c.CommonRole
+	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
 // getAccount returns an existing or new account context for the specified id.
@@ -284,13 +277,19 @@ func (c *Client) GobDecode(b []byte) error {
 func (c *Client) getAccount(id string) *accountCtx {
 	ac := c.cache[id]
 	if ac == nil {
-		ac = newAccountCtx(c, id, c.saved[id])
+		ac = newAccountCtx(id, c.credsProvider(id))
 		if c.cache == nil {
 			c.cache = make(map[string]*accountCtx)
 		}
 		c.cache[id] = ac
 	}
 	return ac
+}
+
+// iam returns a new IAM client for the specified account id.
+func (c *Client) iam(id string) *iam.IAM {
+	cfg := aws.Config{Credentials: c.getAccount(id).creds}
+	return iam.New(c.sess, &cfg)
 }
 
 // ident contains data from sts:GetCallerIdentity API call.

@@ -82,7 +82,8 @@ func shuffle(v []*Account) {
 // IAM returns an IAM client for the account.
 func (ac *Account) IAM() *iam.IAM {
 	if ac.iam == nil {
-		ac.iam = ac.c.IAM(ac.ID)
+		cfg := aws.Config{Credentials: ac.c.Creds(ac.ID)}
+		ac.iam = iam.New(ac.c.ConfigProvider(), &cfg)
 	}
 	return ac.iam
 }

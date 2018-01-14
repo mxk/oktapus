@@ -1,14 +1,16 @@
 package awsgw
 
 import (
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
+
+// ErrCredsExpired indicates that static credentials are no longer valid.
+var ErrCredsExpired = errors.New("awsgw: credentials have expired")
 
 // AssumeRoleWithSAMLFunc is the signature of sts:AssumeRoleWithSAML API call.
 type AssumeRoleWithSAMLFunc func(*sts.AssumeRoleWithSAMLInput) (*sts.AssumeRoleWithSAMLOutput, error)
@@ -17,132 +19,115 @@ type AssumeRoleWithSAMLFunc func(*sts.AssumeRoleWithSAMLInput) (*sts.AssumeRoleW
 type AssumeRoleFunc func(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
 
 // CredsProvider extends credentials.Provider interface. It allows credentials
-// to be cached and reused across process invocations.
+// to be saved and reused across process invocations. Concurrency guarantees
+// from credentials.Credentials do not extend to these additional methods.
 type CredsProvider interface {
 	credentials.Provider
 	Expires() time.Time
-	Save(errExp time.Time) *StaticCreds
+	Save() *StaticCreds
 }
 
-// ChainCreds is a re-implementation of credentials.ChainProvider that satisfies
-// CredsProvider interface.
-type ChainCreds struct {
-	chain  []CredsProvider
-	active CredsProvider
-	last   CredsProvider
+// SavedCreds is a CredsProvider that uses static credentials until they expire
+// and then switches to the next CredsProvider.
+type SavedCreds struct {
+	saved StaticCreds
+	next  CredsProvider
 }
 
-// NewChainCreds combines multiple CredsProviders into one. StaticCreds are
-// added only if they expire after minExp time or if they contain an error.
-func NewChainCreds(minExp time.Time, cp ...CredsProvider) *ChainCreds {
-	c := new(ChainCreds)
-	for i, p := range cp {
-		s, static := p.(*StaticCreds)
-		if p != nil && (!static || s.Expires().After(minExp) || s.Err != nil) {
-			if c.chain == nil {
-				c.chain = make([]CredsProvider, 0, len(cp)-i)
-			}
-			c.chain = append(c.chain, p)
+// NewSavedCreds combines StaticCreds, if any, with another CredsProvider.
+func NewSavedCreds(saved *StaticCreds, next CredsProvider) CredsProvider {
+	if saved != nil && saved.valid() {
+		return &SavedCreds{*saved, next}
+	}
+	return next
+}
+
+// Retrieve returns credentials from the first available provider.
+func (c *SavedCreds) Retrieve() (credentials.Value, error) {
+	if c.saved.Err != ErrCredsExpired {
+		if v, err := c.saved.Retrieve(); err != ErrCredsExpired {
+			return v, err
 		}
 	}
-	return c
+	return c.next.Retrieve()
 }
 
-// Retrieve returns new credentials from the first available provider. Unexpired
-// StaticCreds are not skipped.
-func (c *ChainCreds) Retrieve() (credentials.Value, error) {
-	var errs []error
-	c.active, c.last = nil, nil
-	for i, p := range c.chain {
-		if p != nil {
-			v, err := p.Retrieve()
-			if err == nil {
-				c.active = p
-				return v, nil
-			}
-			if _, ok := p.(*StaticCreds); ok {
-				if !p.IsExpired() {
-					c.active = p
-					return v, err
-				}
-				c.chain[i] = nil
-			} else {
-				c.last = p
-			}
-			errs = append(errs, err)
-		}
+// IsExpired determines whether Retrieve() should be called. It does not return
+// actual expiration status and should not be used by anything other than
+// credentials.Credentials.
+func (c *SavedCreds) IsExpired() bool {
+	if c.saved.valid() {
+		return c.saved.Err != nil
 	}
-	err := awserr.NewBatchError("NoCredentialProviders",
-		"no valid providers in chain", errs)
-	return credentials.Value{ProviderName: "ChainCreds"}, err
+	return c.next.IsExpired()
 }
 
-// IsExpired returns expiration status of the current provider.
-func (c *ChainCreds) IsExpired() bool {
-	if c.active != nil {
-		return c.active.IsExpired()
+// Expires returns the actual expiration time of the current provider.
+func (c *SavedCreds) Expires() time.Time {
+	if c.saved.valid() {
+		return c.saved.Exp
 	}
-	return true
+	return c.next.Expires()
 }
 
-// Expires returns expiration time of the current provider.
-func (c *ChainCreds) Expires() time.Time {
-	if c.active != nil {
-		return c.active.Expires()
+// Save returns a static copy of the most recently retrieved credentials or nil
+// if none of the cached credentials are valid.
+func (c *SavedCreds) Save() *StaticCreds {
+	if s := c.saved.Save(); s != nil {
+		return s
 	}
-	return time.Time{}
+	return c.next.Save()
 }
 
-// Save returns a static copy of the most recently retrieved credentials.
-func (c *ChainCreds) Save(errExp time.Time) *StaticCreds {
-	if c.active != nil {
-		return c.active.Save(errExp)
-	}
-	if c.last != nil {
-		return c.last.Save(errExp)
-	}
-	return nil
-}
-
-// StaticCreds is a CredsProvider that can be encoded for external storage. If
-// Err is set, Retrieve() returns that error forever.
+// StaticCreds is a CredsProvider that can be encoded for external storage. It
+// returns either valid credentials or an error until the expiration time. After
+// that, it returns ErrCredsExpired. Use SavedCreds instead of ChainProvider to
+// get correct error behavior in combination with other providers.
 type StaticCreds struct {
 	credentials.Value
-	Exp time.Time
 	Err error
+	Exp time.Time
 }
 
-// Retrieve returns static credentials until they expire.
+// Retrieve returns static credentials or an error until their expiration.
 func (c *StaticCreds) Retrieve() (credentials.Value, error) {
-	if c.Err == nil && c.IsExpired() {
-		c.Value = credentials.Value{}
-		c.Err = fmt.Errorf("awsgw: static creds expired on %v", c.Exp)
-	}
+	c.valid()
 	c.ProviderName = "StaticCreds"
 	return c.Value, c.Err
 }
 
-// IsExpired returns true once the credentials have expired.
+// IsExpired determines whether Retrieve() should be called. It does not return
+// actual expiration status and should not be used by anything other than
+// credentials.Credentials.
 func (c *StaticCreds) IsExpired() bool {
-	return !c.Exp.After(time.Now())
+	return c.Err != nil || !c.valid()
 }
 
-// Expires returns the expiration time.
+// Expires returns the actual expiration time.
 func (c *StaticCreds) Expires() time.Time {
 	return c.Exp
 }
 
-// Save returns c without modifying expiration time regardless of the error
-// status. This allows an existing error to be re-encoded with the original
-// expiration time.
-func (c *StaticCreds) Save(errExp time.Time) *StaticCreds {
-	if c.Err != nil {
-		c.Value = credentials.Value{}
-		c.Err = encodableError(c.Err)
-	} else {
-		c.ProviderName = "" // No point in serializing this
+// Save returns a copy of c if it hasn't expired or nil otherwise.
+func (c *StaticCreds) Save() *StaticCreds {
+	if c.valid() {
+		s := *c
+		s.ProviderName = ""
+		s.Err = encodableError(c.Err)
+		return &s
 	}
-	return c
+	return nil
+}
+
+// valid returns true until c expires.
+func (c *StaticCreds) valid() bool {
+	if c.Err != ErrCredsExpired {
+		if !c.Exp.IsZero() && c.Exp.After(time.Now()) {
+			return true
+		}
+		*c = StaticCreds{Err: ErrCredsExpired}
+	}
+	return false
 }
 
 // SAMLCreds is a CredsProvider that exchanges a SAML assertion for temporary
@@ -165,21 +150,15 @@ func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role, saml string) *SAM
 	}
 }
 
-// Retrieve returns new credentials from STS.
+// Retrieve returns new STS credentials.
 func (c *SAMLCreds) Retrieve() (credentials.Value, error) {
-	return retrieve(c)
-}
-
-func (*SAMLCreds) name() string {
-	return "SAMLCreds"
-}
-
-func (c *SAMLCreds) getCreds() (*sts.Credentials, error) {
-	out, err := c.api(&c.AssumeRoleWithSAMLInput)
-	if out != nil {
-		return out.Credentials, err
-	}
-	return nil, err
+	return c.retrieve("SAMLCreds", func() (*sts.Credentials, error) {
+		out, err := c.api(&c.AssumeRoleWithSAMLInput)
+		if out != nil {
+			return out.Credentials, err
+		}
+		return nil, err
+	})
 }
 
 // AssumeRoleCreds is a CredsProvider that calls sts:AssumeRole to get temporary
@@ -201,86 +180,49 @@ func NewAssumeRoleCreds(api AssumeRoleFunc, role, roleSessionName string) *Assum
 	}
 }
 
-// Retrieve returns new credentials from STS.
+// Retrieve returns new STS credentials.
 func (c *AssumeRoleCreds) Retrieve() (credentials.Value, error) {
-	return retrieve(c)
-}
-
-func (*AssumeRoleCreds) name() string {
-	return "AssumeRoleCreds"
-}
-
-func (c *AssumeRoleCreds) getCreds() (*sts.Credentials, error) {
-	out, err := c.api(&c.AssumeRoleInput)
-	if out != nil {
-		return out.Credentials, err
-	}
-	return nil, err
-}
-
-// stsCredsProvider defines the interface used by retrieve().
-type stsCredsProvider interface {
-	name() string
-	getCreds() (*sts.Credentials, error)
-	getError() error
-	setError(err awserr.Error)
-	setValue(v *credentials.Value)
-	setExpiration(exp time.Time)
-}
-
-// retrieve gets sts.Credentials, converts them into credentials.Value, and
-// updates provider's expiration time. Provider has the option of storing a
-// permanent error to avoid making unnecessary API calls in a provider chain.
-func retrieve(p stsCredsProvider) (credentials.Value, error) {
-	v := credentials.Value{ProviderName: p.name()}
-	err := p.getError()
-	if err == nil {
-		var c *sts.Credentials
-		if c, err = p.getCreds(); err == nil {
-			v.AccessKeyID = *c.AccessKeyId
-			v.SecretAccessKey = *c.SecretAccessKey
-			v.SessionToken = *c.SessionToken
-			p.setExpiration(c.Expiration.Add(-time.Minute))
-		} else if e, ok := err.(awserr.Error); ok {
-			p.setError(e)
-			p.setExpiration(time.Time{})
+	return c.retrieve("AssumeRoleCreds", func() (*sts.Credentials, error) {
+		out, err := c.api(&c.AssumeRoleInput)
+		if out != nil {
+			return out.Credentials, err
 		}
+		return nil, err
+	})
+}
+
+// stsCreds is a common base for STS credential providers. StaticCreds are used
+// for convenience and should not be accessed directly.
+type stsCreds struct{ s StaticCreds }
+
+// CredsProvider interface.
+func (c *stsCreds) IsExpired() bool    { return c.s.IsExpired() }
+func (c *stsCreds) Expires() time.Time { return c.s.Expires() }
+func (c *stsCreds) Save() *StaticCreds { return c.s.Save() }
+
+// retrieve gets sts.Credentials from fn, converts them into credentials.Value,
+// and updates the expiration time.
+func (c *stsCreds) retrieve(name string, fn func() (*sts.Credentials, error)) (credentials.Value, error) {
+	if c.s.valid() {
+		return c.s.Value, c.s.Err // Unexpired error
 	}
-	p.setValue(&v)
-	return v, err
-}
-
-// stsCreds partially implements CredsProvider and stsCredsProvider interfaces.
-type stsCreds struct {
-	val credentials.Value
-	exp time.Time
-	err error
-}
-
-// IsExpired returns true once the credentials have expired.
-func (c *stsCreds) IsExpired() bool {
-	return !c.exp.After(time.Now())
-}
-
-// Expires returns the expiration time.
-func (c *stsCreds) Expires() time.Time {
-	return c.exp
-}
-
-// Save returns a static copy of the most recently retrieved credentials.
-func (c *stsCreds) Save(errExp time.Time) *StaticCreds {
-	var s *StaticCreds
-	if c.err != nil {
-		s = &StaticCreds{Err: c.err, Exp: errExp}
-	} else if c.val.AccessKeyID != "" {
-		s = &StaticCreds{Value: c.val, Exp: c.exp}
+	if creds, err := fn(); err == nil {
+		*c = stsCreds{StaticCreds{
+			Value: credentials.Value{
+				AccessKeyID:     *creds.AccessKeyId,
+				SecretAccessKey: *creds.SecretAccessKey,
+				SessionToken:    *creds.SessionToken,
+				ProviderName:    name,
+			},
+			Exp: creds.Expiration.Add(-time.Minute),
+		}}
 	} else {
-		return nil
+		// TODO: Error expiration time should be reduced for temporary errors
+		*c = stsCreds{StaticCreds{
+			Value: credentials.Value{ProviderName: name},
+			Err:   err,
+			Exp:   time.Now().Add(2 * time.Hour),
+		}}
 	}
-	return s.Save(errExp)
+	return c.s.Value, c.s.Err
 }
-
-func (c *stsCreds) getError() error               { return c.err }
-func (c *stsCreds) setError(err awserr.Error)     { c.err = err }
-func (c *stsCreds) setValue(v *credentials.Value) { c.val = *v }
-func (c *stsCreds) setExpiration(exp time.Time)   { c.exp = exp }

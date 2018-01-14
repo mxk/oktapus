@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"time"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
@@ -139,7 +140,8 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 			log.E("Failed to decode AWS client state: %v", err)
 		}
 	}
-	if ctx.aws.MasterCreds == nil && ctx.UseOkta() {
+	if ctx.UseOkta() && (ctx.aws.MasterCreds == nil ||
+		ctx.aws.MasterCreds.Expires().Before(time.Now().Add(5*time.Minute))) {
 		auth := ctx.AWSAuth()
 		role := auth.Roles[0]
 		if len(auth.Roles) > 1 {
