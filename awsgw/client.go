@@ -54,6 +54,7 @@ type Client struct {
 	roleSessionName string
 
 	cache map[string]*accountCtx
+	saved *clientState
 }
 
 // NewClient creates a new AWS gateway client. The client is not usable until
@@ -69,6 +70,9 @@ func (c *Client) ConfigProvider() client.ConfigProvider {
 
 // Connect establishes a connection to AWS and gets client identity information.
 func (c *Client) Connect() error {
+	if c.sts != nil {
+		return errors.New("awsgw: already connected")
+	}
 	var cfg aws.Config
 	if c.MasterCreds != nil {
 		cfg.Credentials = credentials.NewCredentials(c.MasterCreds)
@@ -103,6 +107,18 @@ func (c *Client) Connect() error {
 	}
 	c.roleSessionName = getSessName(&c.ident)
 	c.CommonRole = c.roleSessionName
+
+	if c.saved != nil && len(c.saved.Accounts) > 0 {
+		acs := c.saved.Accounts
+		if c.cache == nil {
+			c.cache = make(map[string]*accountCtx, len(acs))
+		}
+		for i := range acs {
+			id := acs[i].Account.ID
+			c.cache[id] = acs[i].restore(c.credsProvider(id))
+		}
+	}
+	c.saved = nil
 	return nil
 }
 
@@ -254,15 +270,8 @@ func (c *Client) GobDecode(b []byte) error {
 		c.MasterCreds = s.MasterCreds
 	}
 	// TODO: Should expired master creds invalidate account creds?
-	if len(s.Accounts) > 0 {
-		if c.cache == nil {
-			c.cache = make(map[string]*accountCtx, len(s.Accounts))
-		}
-		for i := range s.Accounts {
-			id := s.Accounts[i].Account.ID
-			c.cache[id] = s.Accounts[i].restore(c.credsProvider(id))
-		}
-	}
+	// Accounts cannot be restored until the client is connected
+	c.saved = &s
 	return nil
 }
 
