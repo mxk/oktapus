@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -122,7 +123,7 @@ func (c *StaticCreds) Save() *StaticCreds {
 // valid returns true until c expires.
 func (c *StaticCreds) valid() bool {
 	if c.Err != ErrCredsExpired {
-		if !c.Exp.IsZero() && c.Exp.After(time.Now()) {
+		if !c.Exp.IsZero() && c.Exp.After(internal.Time()) {
 			return true
 		}
 		*c = StaticCreds{Err: ErrCredsExpired}
@@ -221,7 +222,7 @@ func (c *stsCreds) retrieve(name string, fn func() (*sts.Credentials, error)) (c
 		*c = stsCreds{StaticCreds{
 			Value: credentials.Value{ProviderName: name},
 			Err:   err,
-			Exp:   time.Now().Add(2 * time.Hour),
+			Exp:   internal.Time().Add(2 * time.Hour),
 		}}
 	}
 	return c.s.Value, c.s.Err

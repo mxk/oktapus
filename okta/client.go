@@ -63,22 +63,23 @@ func (c *Client) Authenticate(authn Authenticator) error {
 
 // Authenticated returns true if authentication is complete.
 func (c *Client) Authenticated() bool {
-	return c.sidCookie != "" && time.Now().Before(c.session.ExpiresAt)
+	return c.sidCookie != "" && internal.Time().Before(c.session.ExpiresAt)
 }
 
 // RefreshSession extends the expiration time of the current session.
 func (c *Client) RefreshSession() error {
-	var s Session
+	var out Session
 	// Okta API documentation is not very good, to put it mildly. Both "Get
 	// Current Session" and "Refresh Current Session" calls seem to extend
 	// session expiration time. Both also return an ID that does not match our
 	// sid cookie. Using the new ID for subsequent requests results in E0000007
 	// "Not found" error. Okta support says this is an ExternalSessionID.
 	ref := url.URL{Path: "sessions/me"}
-	err := c.do(http.MethodGet, &ref, nil, &s)
+	err := c.do(http.MethodGet, &ref, nil, &out)
 	if err == nil {
-		s.ID = c.session.ID
-		err = c.setSession(&s)
+		out.ID = c.session.ID
+		out.ExpiresAt = out.ExpiresAt.Add(-time.Minute)
+		err = c.setSession(&out)
 	}
 	return err
 }
@@ -160,6 +161,7 @@ func (c *Client) createSession(sessionToken string) error {
 	ref := url.URL{Path: "sessions"}
 	err := c.do(http.MethodPost, &ref, &in{sessionToken}, &out)
 	if err == nil {
+		out.ExpiresAt = out.ExpiresAt.Add(-time.Minute)
 		err = c.setSession(&out)
 	}
 	return err
@@ -169,7 +171,6 @@ func (c *Client) createSession(sessionToken string) error {
 func (c *Client) setSession(s *Session) error {
 	if s != nil {
 		if s.Status != "ACTIVE" {
-			// TODO: Handle MFA
 			return fmt.Errorf("okta: inactive session (%s)", s.Status)
 		}
 		c.session = *s
