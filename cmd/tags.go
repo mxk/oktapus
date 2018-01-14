@@ -72,8 +72,8 @@ func newAccountSpec(spec, user string) *accountSpec {
 }
 
 // Filter removes accounts from all that do not match the spec.
-func (s *accountSpec) Filter(all *[]*Account) error {
-	var result []*Account
+func (s *accountSpec) Filter(all *Accounts) error {
+	var result Accounts
 	var err error
 	if s.ids || len(s.spec) > 64 {
 		result, err = s.filterNamesOrIDs(*all)
@@ -89,7 +89,7 @@ func (s *accountSpec) Filter(all *[]*Account) error {
 
 // filterNamesOrIDs filters accounts by either names or IDs. All non-negated
 // entries in s.idx must match an account. Error status is not considered.
-func (s *accountSpec) filterNamesOrIDs(all []*Account) ([]*Account, error) {
+func (s *accountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
 	result := all[:0]
 	if len(s.idx) == 0 {
 		return result, nil
@@ -125,21 +125,20 @@ func (s *accountSpec) filterNamesOrIDs(all []*Account) ([]*Account, error) {
 
 // filterTags filters accounts by tags, switching over to names if an account
 // with a matching name is found.
-func (s accountSpec) filterTags(all []*Account) ([]*Account, error) {
+func (s accountSpec) filterTags(all Accounts) (Accounts, error) {
 	result := all[:0]
 	for i, ac := range all {
 		if _, ok := s.idx[ac.Name]; ok {
 			return s.filterNamesOrIDs(all[i:])
 		}
-		ctl := ac.Ctl()
-		if ac.Error() != nil {
+		if ac.Ctl == nil {
 			if s.err {
 				result = append(result, ac)
 			}
 			continue
 		}
 		if s.owner != nil {
-			if want, ok := s.owner[ctl.Owner]; ok {
+			if want, ok := s.owner[ac.Owner]; ok {
 				if !want {
 					continue
 				}
@@ -148,7 +147,7 @@ func (s accountSpec) filterTags(all []*Account) ([]*Account, error) {
 			}
 		}
 		var tagMask uint64
-		for _, tag := range ctl.Tags {
+		for _, tag := range ac.Tags {
 			if i, ok := s.idx[tag]; ok {
 				tagMask |= uint64(1) << i
 			}
@@ -191,19 +190,6 @@ func parseTag(tag string) (name, value string, neg bool) {
 	}
 	name = tag
 	return
-}
-
-// makeTag is the inverse of parseTag.
-func makeTag(name, value string, neg bool) string {
-	if value == "" {
-		if neg {
-			return "!" + name
-		}
-		return name
-	} else if neg {
-		return name + "!=" + value
-	}
-	return name + "=" + value
 }
 
 // isTag returns true if s contains a valid tag name.

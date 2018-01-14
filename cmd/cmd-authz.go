@@ -4,24 +4,29 @@ func init() {
 	register(&Authz{command: command{
 		name:    []string{"authz"},
 		summary: "Authorize user access",
-		usage:   "[options] user account-spec",
+		usage:   "[options] account-spec user [user ...]",
 		minArgs: 2,
-		maxArgs: 2,
 	}})
 }
 
 type Authz struct{ command }
 
 func (cmd *Authz) Run(ctx *Ctx, args []string) error {
-	c := ctx.AWS()
-	user := args[0]
-	match, err := getAccounts(c, args[1])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	out := make([]*AccountResultOutput, 0, len(match))
+	// TODO: Use match.Apply
+	c := ctx.AWS()
 	for _, ac := range match {
-		out = append(out, newAccountResult(ac, c.CreateAdminRole(ac.ID, user)))
+		if ac.Err != nil {
+			continue
+		}
+		for _, user := range args[1:] {
+			if ac.Err = c.CreateAdminRole(ac.ID, user); ac.Err != nil {
+				break
+			}
+		}
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listResults(match))
 }

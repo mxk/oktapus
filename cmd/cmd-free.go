@@ -25,18 +25,17 @@ func (cmd *Free) FlagCfg(fs *flag.FlagSet) {
 
 func (cmd *Free) Run(ctx *Ctx, args []string) error {
 	cmd.PadArgs(&args)
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	out := make([]*AccountResultOutput, 0, len(match))
+	mod := match[:0]
+	commonRole := ctx.AWS().CommonRole
 	for _, ac := range match {
-		ctl := ac.Ctl()
-		if ac.Error() == nil && (cmd.force || ctl.Owner == c.CommonRole) {
-			ctl.Owner = ""
-			out = append(out, newAccountResult(ac, ac.Save()))
+		if ac.Err == nil && (cmd.force || ac.Owner == commonRole) {
+			ac.Owner = ""
+			mod = append(mod, ac)
 		}
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listResults(mod.Save(false)))
 }

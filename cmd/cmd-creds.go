@@ -28,28 +28,32 @@ type CredsOutput struct {
 }
 
 func (cmd *Creds) Run(ctx *Ctx, args []string) error {
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	out := make([]*CredsOutput, 0, len(match))
-	for _, ac := range match {
-		out = append(out, newCredsOutput(ac, c.Creds(ac.ID)))
-	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listCreds(match))
 }
 
-func newCredsOutput(ac *Account, cr *credentials.Credentials) *CredsOutput {
-	v, err := cr.Get()
-	return &CredsOutput{
-		AccountID:       ac.ID,
-		Name:            ac.Name,
-		AccessKeyID:     v.AccessKeyID,
-		SecretAccessKey: v.SecretAccessKey,
-		SessionToken:    v.SessionToken,
-		Error:           explainError(err),
+func listCreds(acs Accounts) []*CredsOutput {
+	out := make([]*CredsOutput, 0, len(acs))
+	var v credentials.Value
+	for _, ac := range acs {
+		if ac.Err == nil {
+			v, ac.Err = ac.Creds().Get()
+		} else {
+			v = credentials.Value{}
+		}
+		out = append(out, &CredsOutput{
+			AccountID:       ac.ID,
+			Name:            ac.Name,
+			AccessKeyID:     v.AccessKeyID,
+			SecretAccessKey: v.SecretAccessKey,
+			SessionToken:    v.SessionToken,
+			Error:           explainError(ac.Err),
+		})
 	}
+	return out
 }
 
 func (o *CredsOutput) PrintRow(p *internal.Printer) {

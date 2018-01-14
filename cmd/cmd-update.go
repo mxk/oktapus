@@ -27,26 +27,26 @@ func (cmd *Update) FlagCfg(fs *flag.FlagSet) {
 
 func (cmd *Update) Run(ctx *Ctx, args []string) error {
 	cmd.PadArgs(&args)
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
 	setDesc := cmd.HaveOpt("desc")
-	tags := newAccountSpec(args[1], c.CommonRole)
+	tags := newAccountSpec(args[1], ctx.AWS().CommonRole)
 	if !setDesc && len(tags.idx) == 0 {
 		usageErr(cmd, "either description or tags must be specified")
 	}
-	out := make([]*ListOutput, 0, len(match))
+	mod := match[:0]
 	for _, ac := range match {
-		ctl := ac.Ctl()
-		if setDesc {
-			ctl.Desc = cmd.desc
+		if ac.Err == nil {
+			if setDesc {
+				ac.Desc = cmd.desc
+			}
+			ac.Tags = cmd.updateTags(ac.Tags, tags)
+			mod = append(mod, ac)
 		}
-		ctl.Tags = cmd.updateTags(ctl.Tags, tags)
-		out = append(out, newListOutput(ac, ac.Save()))
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listAccounts(mod.Save(false)))
 }
 
 func (cmd *Update) updateTags(tags []string, s *accountSpec) []string {

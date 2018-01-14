@@ -225,10 +225,3 @@ func (c *command) PrintOutput(v interface{}) error {
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
-
-// byName implements sort.Interface to sort accounts by name.
-type byName []*Account
-
-func (a byName) Len() int           { return len(a) }
-func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byName) Less(i, j int) bool { return a[i].Name < a[j].Name }

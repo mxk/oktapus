@@ -35,18 +35,17 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	} else if n <= 0 {
 		usageErr(cmd, "number of accounts must be > 0")
 	}
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[1])
+	match, err := ctx.Accounts(args[1])
 	if err != nil {
 		return err
 	}
 
 	// Select available accounts at random
-	shuffle(match)
-	alloc := make([]*Account, 0, n)
+	match.Shuffle()
+	alloc := make(Accounts, 0, n)
 	for _, ac := range match {
-		if ctl := ac.Ctl(); ac.Error() == nil && ctl.Owner == "" {
-			if _, err := c.Creds(ac.ID).Get(); err == nil {
+		if ac.Err == nil && ac.Owner == "" {
+			if _, err := ac.Creds().Get(); err == nil {
 				if alloc = append(alloc, ac); len(alloc) == n {
 					break
 				}
@@ -60,18 +59,12 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	sort.Sort(byName(alloc))
 
 	// Allocate selected accounts
-	owner := c.CommonRole
+	owner := ctx.AWS().CommonRole
 	if cmd.owner != "" {
 		owner = cmd.owner
 	}
-	out := make([]*CredsOutput, 0, len(alloc))
 	for _, ac := range alloc {
-		cr := newCredsOutput(ac, c.Creds(ac.ID))
-		if cr.Error == "" {
-			ac.Ctl().Owner = owner
-			cr.Error = explainError(ac.Save())
-		}
-		out = append(out, cr)
+		ac.Owner = owner
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listCreds(alloc.Save(false)))
 }

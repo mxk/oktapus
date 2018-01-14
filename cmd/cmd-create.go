@@ -25,7 +25,6 @@ type Create struct {
 
 func (cmd *Create) Run(ctx *Ctx, args []string) error {
 	c := ctx.AWS()
-	out := make([]*AccountResultOutput, 0, len(args)-1)
 	type info struct{ name, email string }
 	in := make([]info, 0, len(args))
 	for _, arg := range args {
@@ -35,18 +34,21 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 		}
 		in = append(in, info{ne[0], ne[1]})
 	}
+	var created Accounts
 	for _, v := range in {
 		id, err := c.CreateAccount(v.name, v.email)
-		ac := Account{Account: &awsgw.Account{
-			ID:   id,
-			Name: v.name,
-		}}
+		created = append(created, &Account{
+			Account: &awsgw.Account{
+				ID:   id,
+				Name: v.name,
+			},
+			Err: err,
+		})
 		if err == nil {
 			// TODO: Figure out why this fails
 			//time.Sleep(3 * time.Second)
 			//err = c.CreateAdminRole(id, "")
 		}
-		out = append(out, newAccountResult(&ac, err))
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listResults(created))
 }

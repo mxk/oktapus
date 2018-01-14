@@ -33,32 +33,32 @@ type ListOutput struct {
 
 func (cmd *List) Run(ctx *Ctx, args []string) error {
 	cmd.PadArgs(&args)
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	out := make([]*ListOutput, 0, len(match))
-	for _, ac := range match {
-		out = append(out, newListOutput(ac, nil))
-	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listAccounts(match))
 }
 
-func newListOutput(ac *Account, err error) *ListOutput {
-	ctl := ac.Ctl()
-	if err == nil {
-		err = ac.Error()
+func listAccounts(acs Accounts) []*ListOutput {
+	out := make([]*ListOutput, 0, len(acs))
+	var null Ctl
+	for _, ac := range acs {
+		ctl := ac.Ctl
+		if ctl == nil {
+			ctl = &null
+		}
+		sort.Strings(ctl.Tags)
+		out = append(out, &ListOutput{
+			AccountID:   ac.ID,
+			Name:        ac.Name,
+			Owner:       ctl.Owner,
+			Description: ctl.Desc,
+			Tags:        strings.Join(ctl.Tags, ","),
+			Error:       explainError(ac.Err),
+		})
 	}
-	sort.Strings(ctl.Tags)
-	return &ListOutput{
-		AccountID:   ac.ID,
-		Name:        ac.Name,
-		Owner:       ctl.Owner,
-		Description: ctl.Desc,
-		Tags:        strings.Join(ctl.Tags, ","),
-		Error:       explainError(err),
-	}
+	return out
 }
 
 func (o *ListOutput) PrintRow(p *internal.Printer) {

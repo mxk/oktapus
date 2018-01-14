@@ -4,33 +4,22 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"math"
-	"math/big"
 	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
-
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
-
-// TODO: Check encoding length and compare with JSON
-
-func init() {
-	// Seed random number generator
-	// TODO: Should be math.MaxInt64 + 1
-	seed, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		panic(err)
-	}
-	rand.Seed(seed.Int64())
-}
 
 // Do not ask about this.
 const ctlRole = "TheOktapusIsComingForYou"
@@ -39,120 +28,172 @@ const ctlRole = "TheOktapusIsComingForYou"
 // current account control information was not saved.
 var errCtlUpdate = errors.New("account update interrupted")
 
+// errNoCtl indicates missing control information.
+var errNoCtl = errors.New("control information not available")
+
 // Account is an account in an AWS organization.
 type Account struct {
 	*awsgw.Account
-	// TODO: Alias?
+	*Ctl
 
-	iam *iam.IAM
-	c   *awsgw.Client
+	IAM *iam.IAM
+	Err error
 
-	ctl    Ctl
-	cached bool
-	err    error
+	// TODO: Store active/unmodified Ctl information
 }
 
-// getAccounts returns all accounts in the organization that match the spec.
-func getAccounts(c *awsgw.Client, spec string) ([]*Account, error) {
-	all := c.Accounts()
-	if len(all) == 0 {
-		if err := c.Refresh(); err != nil {
-			return nil, err
+// Creds returns temporary account credentials.
+func (ac *Account) Creds() *credentials.Credentials {
+	if ac.IAM != nil {
+		return ac.IAM.Config.Credentials
+	}
+	return nil
+}
+
+// Accounts is a group of accounts that can be operated on in parallel.
+type Accounts []*Account
+
+// Sort sorts accounts by name.
+func (s Accounts) Sort() Accounts {
+	sort.Sort(byName(s))
+	return s
+}
+
+// Shuffle randomizes account order.
+func (s Accounts) Shuffle() Accounts {
+	if len(s) > math.MaxInt32 {
+		panic("you have way too many accounts")
+	}
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	seed := int64(binary.LittleEndian.Uint64(b[:]))
+	rng := rand.New(rand.NewSource(seed))
+	for i := int32(len(s) - 1); i > 0; i-- {
+		j := rng.Int31n(i + 1)
+		s[i], s[j] = s[j], s[i]
+	}
+	return s
+}
+
+// RequireIAM ensures that all accounts have an IAM client.
+func (s Accounts) RequireIAM(c *awsgw.Client) Accounts {
+	sess := c.ConfigProvider()
+	var cfg aws.Config
+	for _, ac := range s {
+		if ac.IAM == nil {
+			cfg.Credentials = c.Creds(ac.ID)
+			ac.IAM = iam.New(sess, &cfg)
 		}
-		all = c.Accounts()
 	}
-	match := make([]*Account, len(all))
-	for i, ac := range all {
-		match[i] = &Account{Account: ac, c: c}
-	}
-	err := newAccountSpec(spec, c.CommonRole).Filter(&match)
-	sort.Sort(byName(match))
-	return match, err
+	return s
 }
 
-// shuffle randomizes account order.
-func shuffle(v []*Account) {
-	// TODO: rand.Shuffle is coming
-	for i := len(v) - 1; i > 0; i-- {
-		j := rand.Int31n(int32(i + 1))
-		v[i], v[j] = v[j], v[i]
+// RequireCtl ensures that all accounts have control information. Existing
+// information is not refreshed.
+func (s Accounts) RequireCtl() Accounts {
+	var refresh Accounts
+	for i, ac := range s {
+		if ac.Ctl == nil {
+			if len(refresh) == 0 {
+				refresh = make(Accounts, 0, len(s)-i)
+			}
+			refresh = append(refresh, ac)
+		}
 	}
+	if len(refresh) > 0 {
+		refresh.RefreshCtl()
+	}
+	return s
 }
 
-// IAM returns an IAM client for the account.
-func (ac *Account) IAM() *iam.IAM {
-	if ac.iam == nil {
-		cfg := aws.Config{Credentials: ac.c.Creds(ac.ID)}
-		ac.iam = iam.New(ac.c.ConfigProvider(), &cfg)
-	}
-	return ac.iam
+// RefreshCtl retrieves current control information for all accounts.
+func (s Accounts) RefreshCtl() Accounts {
+	return s.Apply(func(ac *Account) {
+		ctl := ac.Ctl
+		ac.Ctl = nil
+		in := iam.GetRoleInput{RoleName: aws.String(ctlRole)}
+		var out *iam.GetRoleOutput
+		if out, ac.Err = ac.IAM.GetRole(&in); ac.Err == nil {
+			if ctl == nil {
+				ctl = new(Ctl)
+			}
+			if ac.Err = ctl.decode(out.Role.Description); ac.Err == nil {
+				ac.Ctl = ctl
+			}
+		}
+	})
 }
 
-// Init initializes account control information.
-func (ac *Account) Init() error {
-	// TODO: Figure out a more restricted policy?
-	// TODO: Can path be used for better organization?
-	in := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(ac.c.MasterAssumeRolePolicy()),
-		RoleName:                 aws.String(ctlRole),
-	}
-	_, err := ac.IAM().CreateRole(&in)
-	// TODO: If AlreadyExists error, update ac.ctl
-	if err == nil {
-		ac.ctl = Ctl{}
-		ac.cached = true
-		ac.err = nil
-	}
-	return err
+// Save updates control information for all accounts.
+func (s Accounts) Save(init bool) Accounts {
+	return s.Apply(func(ac *Account) {
+		if ac.Ctl == nil {
+			if ac.Err == nil {
+				ac.Err = errNoCtl
+			}
+			return
+		}
+		// TODO: Get current control information and compare
+		// TODO: Init
+		var upd string
+		if upd, ac.Err = ac.Ctl.encode(); ac.Err != nil {
+			return
+		}
+		in := iam.UpdateRoleDescriptionInput{
+			Description: aws.String(upd),
+			RoleName:    aws.String(ctlRole),
+		}
+		var out *iam.UpdateRoleDescriptionOutput
+		if out, ac.Err = ac.IAM.UpdateRoleDescription(&in); ac.Err != nil {
+			return
+		}
+		if aws.StringValue(out.Role.Description) != upd {
+			ac.Err = errCtlUpdate
+		}
+	})
 }
 
-// Refresh updates account control information.
-func (ac *Account) Refresh() error {
-	in := iam.GetRoleInput{RoleName: aws.String(ctlRole)}
-	var out *iam.GetRoleOutput
-	out, ac.err = ac.IAM().GetRole(&in)
-	if ac.cached = true; ac.err == nil {
-		ac.err = ac.ctl.decode(out.Role.Description)
+// Apply executes fn on each account in parallel.
+func (s Accounts) Apply(fn func(ac *Account)) Accounts {
+	// The number of goroutines is fixed because the work is IO-bound. It simply
+	// sets the number of API requests that can be in-flight at any given time.
+	n := 10
+	if len(s) < n {
+		if n = len(s); n == 0 {
+			return s
+		}
 	}
-	return ac.err
+	var wg sync.WaitGroup
+	ch := make(chan *Account, n)
+	for i := n; i > 0; i-- {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ac := range ch {
+				fn(ac)
+			}
+		}()
+	}
+	for _, ac := range s {
+		ch <- ac
+	}
+	close(ch)
+	wg.Wait()
+	return s
 }
 
-// Error returns the most recent refresh error, if any.
-func (ac *Account) Error() error {
-	return ac.err
-}
+// byName implements sort.Interface to sort accounts by name.
+type byName Accounts
 
-// Ctl returns cached account control information, refreshing it on first
-// access. It always returns a valid pointer. Use Error() to get error
-// information.
-func (ac *Account) Ctl() *Ctl {
-	if !ac.cached {
-		ac.Refresh()
+func (s byName) Len() int      { return len(s) }
+func (s byName) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byName) Less(i, j int) bool {
+	if s[i].Name == s[j].Name {
+		return s[i].ID < s[j].ID
 	}
-	return &ac.ctl
-}
-
-// TODO: Test concurrent Save calls and figure out if they are atomic. If not
-// determine the necessary delay before a Refresh() to get current status.
-
-// Save updates account control information. This overwrites current control
-// information, even if it no longer matches the cached copy.
-func (ac *Account) Save() error {
-	desc, err := ac.ctl.encode()
-	if err != nil {
-		return err
-	}
-	in := iam.UpdateRoleDescriptionInput{
-		Description: aws.String(desc),
-		RoleName:    aws.String(ctlRole),
-	}
-	out, err := ac.IAM().UpdateRoleDescription(&in)
-	ac.cached = err == nil
-	if ac.cached && aws.StringValue(out.Role.Description) != desc {
-		err = errCtlUpdate
-		ac.err = ac.ctl.decode(out.Role.Description)
-	}
-	return err
+	return s[i].Name < s[j].Name
 }
 
 // TODO: Add MAC?

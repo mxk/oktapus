@@ -19,26 +19,28 @@ type AccountResultOutput struct {
 }
 
 func (cmd *Init) Run(ctx *Ctx, args []string) error {
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	out := make([]*AccountResultOutput, 0, len(match))
 	for _, ac := range match {
-		out = append(out, newAccountResult(ac, ac.Init()))
+		ac.Ctl = new(Ctl)
 	}
-	return cmd.PrintOutput(out)
+	return cmd.PrintOutput(listResults(match.Save(true)))
 }
 
-func newAccountResult(ac *Account, err error) *AccountResultOutput {
-	result := "OK"
-	if err != nil {
-		result = "ERROR: " + explainError(err)
+func listResults(acs Accounts) []*AccountResultOutput {
+	out := make([]*AccountResultOutput, 0, len(acs))
+	for _, ac := range acs {
+		result := "OK"
+		if ac.Err != nil {
+			result = "ERROR: " + explainError(ac.Err)
+		}
+		out = append(out, &AccountResultOutput{
+			AccountID: ac.ID,
+			Name:      ac.Name,
+			Result:    result,
+		})
 	}
-	return &AccountResultOutput{
-		AccountID: ac.ID,
-		Name:      ac.Name,
-		Result:    result,
-	}
+	return out
 }

@@ -34,7 +34,7 @@ func init() {
 
 type Console struct {
 	command
-	switchRole bool // TODO: Implement
+	switchRole bool
 }
 
 func (cmd *Console) FlagCfg(fs *flag.FlagSet) {
@@ -43,8 +43,7 @@ func (cmd *Console) FlagCfg(fs *flag.FlagSet) {
 }
 
 func (cmd *Console) Run(ctx *Ctx, args []string) error {
-	c := ctx.AWS()
-	match, err := getAccounts(c, args[0])
+	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
@@ -57,9 +56,9 @@ func (cmd *Console) Run(ctx *Ctx, args []string) error {
 	}
 	ac := match[0]
 	if cmd.switchRole {
-		return cmd.SwitchRole(ac.ID, ac.Name, c.CommonRole)
+		return cmd.SwitchRole(ac.ID, ac.Name, ctx.AWS().CommonRole)
 	}
-	v, err := c.Creds(ac.ID).Get()
+	v, err := ac.Creds().Get()
 	if err == nil {
 		err = cmd.Open(v)
 	}

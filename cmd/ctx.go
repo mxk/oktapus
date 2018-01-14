@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
@@ -155,6 +156,26 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 		log.F("AWS connection failed: %v", err)
 	}
 	return ctx.aws
+}
+
+// Accounts returns all accounts in the organization that match the spec.
+func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
+	c := ctx.AWS()
+	info := c.Accounts()
+	if len(info) == 0 {
+		if err := c.Refresh(); err != nil {
+			return nil, err
+		}
+		info = c.Accounts()
+	}
+	acs := make(Accounts, len(info))
+	for i, ac := range info {
+		acs[i] = &Account{Account: ac}
+	}
+	acs.RequireIAM(c).RequireCtl()
+	err := newAccountSpec(spec, c.CommonRole).Filter(&acs)
+	sort.Sort(byName(acs))
+	return acs, err
 }
 
 // Save writes context state to the state file.
