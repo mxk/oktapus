@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"bytes"
-	crand "crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -24,12 +22,25 @@ import (
 // Do not ask about this.
 const ctlRole = "TheOktapusIsComingForYou"
 
-// errCtlUpdate indicates that the Save() operation was interrupted and the
-// current account control information was not saved.
-var errCtlUpdate = errors.New("account update interrupted")
+// ctlPath is a common path for automatically created IAM users and roles.
+const ctlPath = "/oktapus/"
 
-// errNoCtl indicates missing control information.
-var errNoCtl = errors.New("control information not available")
+// ctlPolicy denies everyone the ability to assume the account control
+// information role.
+const ctlPolicy = `{
+	"Version": "2012-10-17",
+	"Statement": [{
+		"Effect": "Deny",
+		"Principal": {"AWS": "*"},
+		"Action": "sts:AssumeRole"
+	}]
+}`
+
+// errCtlUpdate indicates new account control information was not saved.
+var errCtlUpdate = errors.New("account control information update interrupted")
+
+// errNoCtl indicates missing account control information.
+var errNoCtl = errors.New("account control information not available")
 
 // Account is an account in an AWS organization.
 type Account struct {
@@ -39,7 +50,7 @@ type Account struct {
 	IAM *iam.IAM
 	Err error
 
-	// TODO: Store active/unmodified Ctl information
+	ref Ctl
 }
 
 // Creds returns temporary account credentials.
@@ -64,14 +75,8 @@ func (s Accounts) Shuffle() Accounts {
 	if len(s) > math.MaxInt32 {
 		panic("you have way too many accounts")
 	}
-	var b [8]byte
-	if _, err := crand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	seed := int64(binary.LittleEndian.Uint64(b[:]))
-	rng := rand.New(rand.NewSource(seed))
 	for i := int32(len(s) - 1); i > 0; i-- {
-		j := rng.Int31n(i + 1)
+		j := rand.Int31n(i + 1)
 		s[i], s[j] = s[j], s[i]
 	}
 	return s
@@ -95,7 +100,7 @@ func (s Accounts) RequireIAM(c *awsgw.Client) Accounts {
 func (s Accounts) RequireCtl() Accounts {
 	var refresh Accounts
 	for i, ac := range s {
-		if ac.Ctl == nil {
+		if ac.Ctl == nil && ac.Err == nil {
 			if len(refresh) == 0 {
 				refresh = make(Accounts, 0, len(s)-i)
 			}
@@ -111,23 +116,21 @@ func (s Accounts) RequireCtl() Accounts {
 // RefreshCtl retrieves current control information for all accounts.
 func (s Accounts) RefreshCtl() Accounts {
 	return s.Apply(func(ac *Account) {
-		ctl := ac.Ctl
-		ac.Ctl = nil
-		in := iam.GetRoleInput{RoleName: aws.String(ctlRole)}
-		var out *iam.GetRoleOutput
-		if out, ac.Err = ac.IAM.GetRole(&in); ac.Err == nil {
-			if ctl == nil {
-				ctl = new(Ctl)
+		if ac.Err = ac.ref.get(ac.IAM); ac.Err != nil {
+			ac.Ctl = nil
+		} else {
+			if ac.Ctl == nil {
+				ac.Ctl = new(Ctl)
 			}
-			if ac.Err = ctl.decode(out.Role.Description); ac.Err == nil {
-				ac.Ctl = ctl
-			}
+			*ac.Ctl = ac.ref
 		}
 	})
 }
 
-// Save updates control information for all accounts.
-func (s Accounts) Save(init bool) Accounts {
+// Save updates control information for all accounts. When changing the owner,
+// the caller must refresh account control information after a delay to confirm
+// owner status.
+func (s Accounts) Save() Accounts {
 	return s.Apply(func(ac *Account) {
 		if ac.Ctl == nil {
 			if ac.Err == nil {
@@ -135,22 +138,27 @@ func (s Accounts) Save(init bool) Accounts {
 			}
 			return
 		}
-		// TODO: Get current control information and compare
-		// TODO: Init
-		var upd string
-		if upd, ac.Err = ac.Ctl.encode(); ac.Err != nil {
+
+		// Get current state and merge changes
+		var cur Ctl
+		if ac.Err = cur.get(ac.IAM); ac.Err != nil {
+			return
+		} else if ac.merge(&cur, &ac.ref); cur.eq(ac.Ctl) {
+			ac.ref = cur
+			return // Nothing to do
+		}
+
+		// To change the owner, current and reference states must match
+		if cur.Owner != ac.Owner && cur.Owner != ac.ref.Owner {
+			ac.Err, ac.ref = errCtlUpdate, cur
 			return
 		}
-		in := iam.UpdateRoleDescriptionInput{
-			Description: aws.String(upd),
-			RoleName:    aws.String(ctlRole),
-		}
-		var out *iam.UpdateRoleDescriptionOutput
-		if out, ac.Err = ac.IAM.UpdateRoleDescription(&in); ac.Err != nil {
-			return
-		}
-		if aws.StringValue(out.Role.Description) != upd {
-			ac.Err = errCtlUpdate
+
+		// Update state
+		if ac.Err = ac.Ctl.set(ac.IAM); ac.Err != nil {
+			ac.ref = cur
+		} else {
+			ac.ref = *ac.Ctl
 		}
 	})
 }
@@ -196,56 +204,127 @@ func (s byName) Less(i, j int) bool {
 	return s[i].Name < s[j].Name
 }
 
-// TODO: Add MAC?
-
 // Ctl contains account control information.
 type Ctl struct {
 	Desc  string
 	Owner string
-	Tags  []string
+	Tags  Tags
 }
 
-// decode deserializes ctl from a base64-encoded string.
-func (ctl *Ctl) decode(src *string) error {
-	*ctl = Ctl{}
-	if src == nil || *src == "" {
-		return nil
+// eq returns true if ctl == other.
+func (ctl *Ctl) eq(other *Ctl) bool {
+	return ctl == other || (ctl != nil && other != nil &&
+		ctl.Desc == other.Desc && ctl.Owner == other.Owner &&
+		ctl.Tags.eq(other.Tags))
+}
+
+// merge performs a 3-way merge of account control information changes.
+func (ctl *Ctl) merge(cur, ref *Ctl) {
+	if ctl.Owner == ref.Owner {
+		ctl.Owner = cur.Owner
 	}
-	s, ver := *src, 0
-	if i := strings.IndexByte(s, '#'); i > 0 {
-		if v, err := strconv.Atoi(s[0:i]); err == nil {
-			s, ver = s[i+1:], v
+	if ctl.Desc == ref.Desc {
+		ctl.Desc = cur.Desc
+	}
+	set, clr := ctl.Tags.diff(ref.Tags)
+	ctl.Tags = append(ctl.Tags[:0], cur.Tags...)
+	ctl.Tags.apply(set, clr)
+}
+
+// init creates account control information in an uncontrolled account.
+func (ctl *Ctl) init(c *iam.IAM) error {
+	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
+		in := iam.CreateRoleInput{
+			AssumeRolePolicyDocument: aws.String(ctlPolicy),
+			Description:              aws.String(b64),
+			Path:                     aws.String(ctlPath),
+			RoleName:                 aws.String(ctlRole),
 		}
+		out, err := c.CreateRole(&in)
+		if out != nil {
+			return out.Role, err
+		}
+		return nil, err
+	})
+}
+
+// get retrieves current account control information.
+func (ctl *Ctl) get(c *iam.IAM) error {
+	in := iam.GetRoleInput{RoleName: aws.String(ctlRole)}
+	out, err := c.GetRole(&in)
+	if err == nil {
+		return ctl.decode(out.Role.Description)
 	}
-	b, err := base64.StdEncoding.DecodeString(s)
+	*ctl = Ctl{}
+	return err
+}
+
+// set stores account control information.
+func (ctl *Ctl) set(c *iam.IAM) error {
+	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
+		in := iam.UpdateRoleDescriptionInput{
+			Description: aws.String(b64),
+			RoleName:    aws.String(ctlRole),
+		}
+		out, err := c.UpdateRoleDescription(&in)
+		if out != nil {
+			return out.Role, err
+		}
+		return nil, err
+	})
+}
+
+// exec executes init or set operations.
+func (ctl *Ctl) exec(c *iam.IAM, fn func(b64 string) (*iam.Role, error)) error {
+	b64, err := ctl.encode()
 	if err != nil {
 		return err
 	}
-	switch ver {
-	case 1:
-		err = json.Unmarshal(b, &ctl)
-	default:
-		err = gob.NewDecoder(bytes.NewReader(b)).Decode(&ctl)
-	}
-	if err != nil {
-		*ctl = Ctl{}
+	r, err := fn(b64)
+	if err == nil && aws.StringValue(r.Description) != b64 {
+		err = errCtlUpdate
 	}
 	return err
 }
 
-const encVer = "1#"
+const ctlVer = "1#"
 
-// encode serializes ctl into a base64-encoded string.
+// encode encodes account control information into a base64 string.
 func (ctl *Ctl) encode() (string, error) {
 	sort.Strings(ctl.Tags)
-	// JSON encoding is slightly slower but more compact than gob, and provides
-	// better interoperability with non-Go clients.
 	b, err := json.Marshal(ctl)
-	if err != nil {
-		return "", err
+	if err == nil {
+		enc := base64.StdEncoding
+		b64 := make([]byte, len(ctlVer)+enc.EncodedLen(len(b)))
+		enc.Encode(b64[copy(b64, ctlVer):], b)
+		return string(b64), nil
 	}
-	enc := base64.StdEncoding
-	buf := make([]byte, len(encVer)+enc.EncodedLen(len(b)))
-	enc.Encode(buf[copy(buf, encVer):], b)
-	return string(buf), nil
+	return "", err
+}
+
+// decode decodes account control information from a base64 string.
+func (ctl *Ctl) decode(s *string) error {
+	if *ctl = (Ctl{}); s == nil || *s == "" {
+		return nil
+	}
+	b64, ver := *s, 0
+	if i := strings.IndexByte(b64, '#'); i > 0 {
+		if v, err := strconv.Atoi(b64[0:i]); err == nil {
+			b64, ver = b64[i+1:], v
+		}
+	}
+	b, err := base64.StdEncoding.DecodeString(b64)
+	if err == nil {
+		switch ver {
+		case 1:
+			err = json.Unmarshal(b, ctl)
+		default: // TODO: Remove
+			err = gob.NewDecoder(bytes.NewReader(b)).Decode(ctl)
+		}
+		if err != nil {
+			*ctl = Ctl{}
+		}
+		sort.Strings(ctl.Tags)
+	}
+	return err
 }

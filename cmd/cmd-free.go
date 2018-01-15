@@ -37,5 +37,5 @@ func (cmd *Free) Run(ctx *Ctx, args []string) error {
 			mod = append(mod, ac)
 		}
 	}
-	return cmd.PrintOutput(listResults(mod.Save(false)))
+	return cmd.PrintOutput(listResults(mod.Save()))
 }

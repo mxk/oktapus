@@ -23,8 +23,7 @@ const assumeRolePolicy = `{
 	"Statement": [{
 		"Effect": "Allow",
 		"Principal": {"AWS": "arn:aws:iam::%s:root"},
-		"Action": "sts:AssumeRole",
-		"Condition": {}
+		"Action": "sts:AssumeRole"
 	}]
 }`
 

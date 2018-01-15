@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -23,6 +24,64 @@ func init() {
 	for c := range []byte("-._") {
 		tagChars[c] = true
 	}
+}
+
+// Tags is a collection of keywords associated with an account. All methods
+// assume that the list of tags is sorted and each tag is unique.
+type Tags []string
+
+// eq compares tag sets t and u.
+func (t Tags) eq(u Tags) bool {
+	if len(t) != len(u) {
+		return false
+	}
+	for i := range t {
+		if t[i] != u[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// diff returns tags that are set and/or cleared in t relative to u. Calling
+// u.apply(set, clr) would make u == t.
+func (t Tags) diff(u Tags) (set, clr Tags) {
+	for len(t) > 0 && len(u) > 0 {
+		if s, c := t[0], u[0]; s == c {
+			t, u = t[1:], u[1:]
+		} else if s < c {
+			set, t = append(set, s), t[1:]
+		} else {
+			clr, u = append(clr, c), u[1:]
+		}
+	}
+	set = append(set, t...)
+	clr = append(clr, u...)
+	return
+}
+
+// apply updates t by adding tags in set and removing those in clr. Setting tags
+// takes priority over clearing them if there is any overlap.
+func (t *Tags) apply(set, clr Tags) {
+	if len(set) == 0 && len(clr) == 0 {
+		return
+	}
+	m := make(map[string]struct{}, len(*t)+len(set))
+	for _, x := range *t {
+		m[x] = struct{}{}
+	}
+	for _, x := range clr {
+		delete(m, x)
+	}
+	for _, x := range set {
+		m[x] = struct{}{}
+	}
+	u := (*t)[:0]
+	for x := range m {
+		u = append(u, x)
+	}
+	sort.Strings(u)
+	*t = u
 }
 
 // accountSpec specifies how to filter accounts.

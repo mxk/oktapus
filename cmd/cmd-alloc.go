@@ -66,5 +66,5 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	for _, ac := range alloc {
 		ac.Owner = owner
 	}
-	return cmd.PrintOutput(listCreds(alloc.Save(false)))
+	return cmd.PrintOutput(listCreds(alloc.Save()))
 }

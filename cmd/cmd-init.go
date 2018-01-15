@@ -1,5 +1,7 @@
 package cmd
 
+import "errors"
+
 func init() {
 	register(&Init{command: command{
 		name:    []string{"init"},
@@ -23,10 +25,17 @@ func (cmd *Init) Run(ctx *Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, ac := range match {
-		ac.Ctl = new(Ctl)
-	}
-	return cmd.PrintOutput(listResults(match.Save(true)))
+	errInit := errors.New("already initialized")
+	match.Apply(func(ac *Account) {
+		if ac.Ctl == nil {
+			ac.Ctl = new(Ctl)
+			ac.Err = ac.Ctl.init(ac.IAM)
+			// TODO: Use errInit if role exists
+		} else if ac.Err == nil {
+			ac.Err = errInit
+		}
+	})
+	return cmd.PrintOutput(listResults(match))
 }
 
 func listResults(acs Accounts) []*AccountResultOutput {

@@ -46,7 +46,7 @@ func (cmd *Update) Run(ctx *Ctx, args []string) error {
 			mod = append(mod, ac)
 		}
 	}
-	return cmd.PrintOutput(listAccounts(mod.Save(false)))
+	return cmd.PrintOutput(listAccounts(mod.Save()))
 }
 
 func (cmd *Update) updateTags(tags []string, s *accountSpec) []string {

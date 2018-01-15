@@ -2,9 +2,12 @@ package internal
 
 import (
 	"bytes"
+	crand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"sync/atomic"
 	"time"
 )
@@ -12,7 +15,8 @@ import (
 var now atomic.Value
 
 func init() {
-	now.Store(time.Now())
+	t := time.Now()
+	now.Store(t)
 	go func() {
 		t := time.Now()
 		d := t.Truncate(time.Second).Add(time.Second).Sub(t)
@@ -24,6 +28,11 @@ func init() {
 			now.Store(t)
 		}
 	}()
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	rand.Seed(int64(binary.LittleEndian.Uint64(b[:])) ^ t.UnixNano())
 }
 
 // Time returns the current time. It is much faster than time.Now(), but has a
