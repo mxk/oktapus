@@ -71,6 +71,37 @@ func (s Accounts) Shuffle() Accounts {
 	return s
 }
 
+// Filter removes those accounts for which fn evaluates to false. This is done
+// in-place without making a copy of the original slice.
+func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
+	var n, first, last int
+	for i, ac := range s {
+		if fn(ac) {
+			n++
+			if last = i; n == 1 {
+				first = i
+			}
+		} else {
+			s[i] = nil
+		}
+	}
+	f := s[:0]
+	if n > 0 {
+		if s = s[first : last+1]; n < len(s) {
+			for _, ac := range s {
+				if ac != nil {
+					f = append(f, ac)
+				}
+			}
+		} else if first > 0 {
+			f = append(f, s...)
+		} else {
+			f = s
+		}
+	}
+	return f
+}
+
 // RequireIAM ensures that all accounts have an IAM client.
 func (s Accounts) RequireIAM(c *awsgw.Client) Accounts {
 	sess := c.ConfigProvider()

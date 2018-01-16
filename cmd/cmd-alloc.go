@@ -3,8 +3,8 @@ package cmd
 import (
 	"flag"
 	"fmt"
-	"sort"
 	"strconv"
+	"time"
 )
 
 func init() {
@@ -35,36 +35,52 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	} else if n <= 0 {
 		usageErr(cmd, "number of accounts must be > 0")
 	}
-	match, err := ctx.Accounts(args[1])
+
+	// Find free accounts and randomize their order
+	acs, err := ctx.Accounts(args[1])
 	if err != nil {
 		return err
 	}
+	acs = acs.Filter(func(ac *Account) bool {
+		return ac.Err == nil && ac.Owner == ""
+	}).Shuffle()
 
-	// Select available accounts at random
-	match.Shuffle()
-	alloc := make(Accounts, 0, n)
-	for _, ac := range match {
-		if ac.Err == nil && ac.Owner == "" {
-			if _, err := ac.Creds().Get(); err == nil {
-				if alloc = append(alloc, ac); len(alloc) == n {
-					break
-				}
-			}
-		}
-	}
-	if len(alloc) < n {
-		return fmt.Errorf("insufficient accounts (have=%d, want=%d)",
-			len(alloc), n)
-	}
-	sort.Sort(byName(alloc))
-
-	// Allocate selected accounts
+	// Allocate in batches
 	owner := ctx.AWS().CommonRole
 	if cmd.owner != "" {
 		owner = cmd.owner
 	}
-	for _, ac := range alloc {
-		ac.Owner = owner
+	alloc := make(Accounts, 0, n)
+	for n > 0 {
+		if len(acs) < n {
+			// Not enough accounts, free any that were already allocated
+			for _, ac := range alloc {
+				ac.Owner = ""
+			}
+			alloc.Save()
+			return fmt.Errorf("allocation failed (need %d more accounts)",
+				n-len(acs))
+		}
+
+		// Set owner
+		batch := acs[:n]
+		acs = acs[n:]
+		for _, ac := range batch {
+			ac.Owner = owner
+		}
+		batch.Save().Filter(func(ac *Account) bool {
+			return ac.Err == nil
+		})
+
+		// TODO: Adjust delay
+		time.Sleep(1 * time.Second)
+
+		// Verify owner
+		batch.RefreshCtl().Filter(func(ac *Account) bool {
+			return ac.Err == nil && ac.Owner == owner
+		})
+		n -= len(batch)
+		alloc = append(alloc, batch...)
 	}
-	return cmd.PrintOutput(listCreds(alloc.Save()))
+	return cmd.PrintOutput(listCreds(alloc.Sort()))
 }
