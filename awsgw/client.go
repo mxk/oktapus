@@ -299,7 +299,8 @@ func getSessName(id *Ident) string {
 		return id.UserID[i+1:]
 	}
 	if r, _ := arn.Parse(id.UserARN); strings.HasPrefix(r.Resource, "user/") {
-		return r.Resource[5:]
+		i := strings.LastIndexByte(r.Resource, '/')
+		return r.Resource[i+1:]
 	}
 	return id.UserID
 }
