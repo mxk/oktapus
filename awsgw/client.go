@@ -18,24 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-const assumeRolePolicy = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "Allow",
-		"Principal": {"AWS": "arn:aws:iam::%s:root"},
-		"Action": "sts:AssumeRole"
-	}]
-}`
-
-const adminPolicy = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "Allow",
-		"Action": "*",
-		"Resource": "*"
-	}]
-}`
-
 // Client provides access to multiple AWS accounts via one gateway account
 // (usually the organization's master account). It is not safe to use the client
 // concurrently from multiple goroutines.
@@ -47,8 +29,8 @@ type Client struct {
 	sess    client.ConfigProvider
 	org     *orgs.Organizations
 	sts     *sts.STS
-	ident   ident
-	orgInfo org
+	ident   Ident
+	orgInfo Org
 
 	roleSessionName string
 
@@ -119,6 +101,16 @@ func (c *Client) Connect() error {
 	}
 	c.saved = nil
 	return nil
+}
+
+// Ident returns the identity of the master credentials.
+func (c *Client) Ident() Ident {
+	return c.ident
+}
+
+// Org returns information about the organization.
+func (c *Client) Org() Org {
+	return c.orgInfo
 }
 
 // Refresh updates information about all accounts in the organization.
@@ -194,40 +186,6 @@ func (c *Client) CreateAccount(name, email string) (string, error) {
 		aws.StringValue(status.FailureReason))
 }
 
-// MasterAssumeRolePolicy returns AssumeRolePolicyDocument for iam:CreateRole
-// API call.
-func (c *Client) MasterAssumeRolePolicy() string {
-	return fmt.Sprintf(assumeRolePolicy, c.orgInfo.MasterAccountID)
-}
-
-// CreateAdminRole creates an admin account role that trusts the master account.
-// If role name is not specified, it defaults to OrganizationAccountAccessRole.
-func (c *Client) CreateAdminRole(accountID, name string) error {
-	if c.orgInfo.MasterAccountID == "" {
-		return errors.New("awsgw: master account id unknown")
-	}
-	if name == "" {
-		name = "OrganizationAccountAccessRole"
-	}
-	in := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(c.MasterAssumeRolePolicy()),
-		RoleName:                 aws.String(name),
-	}
-	im := c.iam(accountID)
-	if _, err := im.CreateRole(&in); err != nil {
-		return err
-	}
-	// TODO: Use existing policy?
-	in2 := iam.PutRolePolicyInput{
-		PolicyDocument: aws.String(adminPolicy),
-		PolicyName:     aws.String("AdministratorAccess"),
-		RoleName:       aws.String(name),
-	}
-	// TODO: Delete role if error?
-	_, err := im.PutRolePolicy(&in2)
-	return err
-}
-
 // clientState contains saved Client state.
 type clientState struct {
 	MasterCreds *StaticCreds
@@ -300,20 +258,20 @@ func (c *Client) iam(id string) *iam.IAM {
 	return iam.New(c.sess, &cfg)
 }
 
-// ident contains data from sts:GetCallerIdentity API call.
-type ident struct{ AccountID, UserARN, UserID string }
+// Ident contains data from sts:GetCallerIdentity API call.
+type Ident struct{ AccountID, UserARN, UserID string }
 
 // set updates identity information.
-func (id *ident) set(out *sts.GetCallerIdentityOutput) {
-	*id = ident{
+func (id *Ident) set(out *sts.GetCallerIdentityOutput) {
+	*id = Ident{
 		AccountID: aws.StringValue(out.Account),
 		UserARN:   aws.StringValue(out.Arn),
 		UserID:    aws.StringValue(out.UserId),
 	}
 }
 
-// org contains data from organizations:DescribeOrganization API call.
-type org struct {
+// Org contains data from organizations:DescribeOrganization API call.
+type Org struct {
 	ARN                string
 	FeatureSet         string
 	ID                 string
@@ -323,8 +281,8 @@ type org struct {
 }
 
 // set updates organization information.
-func (o *org) set(out *orgs.DescribeOrganizationOutput) {
-	*o = org{
+func (o *Org) set(out *orgs.DescribeOrganizationOutput) {
+	*o = Org{
 		ARN:                aws.StringValue(out.Organization.Arn),
 		FeatureSet:         aws.StringValue(out.Organization.FeatureSet),
 		ID:                 aws.StringValue(out.Organization.Id),
@@ -336,7 +294,7 @@ func (o *org) set(out *orgs.DescribeOrganizationOutput) {
 
 // getSessName derives RoleSessionName for new sessions from the current
 // identity.
-func getSessName(id *ident) string {
+func getSessName(id *Ident) string {
 	if i := strings.IndexByte(id.UserID, ':'); i != -1 {
 		return id.UserID[i+1:]
 	}

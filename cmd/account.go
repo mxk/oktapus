@@ -25,17 +25,6 @@ const ctlRole = "TheOktapusIsComingForYou"
 // ctlPath is a common path for automatically created IAM users and roles.
 const ctlPath = "/oktapus/"
 
-// ctlPolicy denies everyone the ability to assume the account control
-// information role.
-const ctlPolicy = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "Deny",
-		"Principal": {"AWS": "*"},
-		"Action": "sts:AssumeRole"
-	}]
-}`
-
 // errCtlUpdate indicates new account control information was not saved.
 var errCtlUpdate = errors.New("account control information update interrupted")
 
@@ -235,14 +224,14 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 func (ctl *Ctl) init(c *iam.IAM) error {
 	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
 		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: aws.String(ctlPolicy),
+			AssumeRolePolicyDocument: aws.String(newAssumeRolePolicy("")),
 			Description:              aws.String(b64),
 			Path:                     aws.String(ctlPath),
 			RoleName:                 aws.String(ctlRole),
 		}
 		out, err := c.CreateRole(&in)
 		if out != nil {
-			if out.Role.Description == nil {
+			if err == nil && out.Role.Description == nil {
 				// Probably an AWS bug, but CreateRole does not return the
 				// description.
 				out.Role.Description = in.Description

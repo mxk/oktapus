@@ -152,6 +152,8 @@ type command struct {
 
 	Flags  *flag.FlagSet
 	OutFmt string // -out flag
+
+	setFlags map[string]struct{}
 }
 
 func (c *command) Name() string      { return c.name[0] }
@@ -195,17 +197,17 @@ func (c *command) PadArgs(args *[]string) {
 	}
 }
 
-// HaveOpt returns true if the specified flag name was set on the command line.
-func (c *command) HaveOpt(name string) bool {
-	set := false
-	if c.Flags != nil {
+// HaveFlag returns true if the specified flag was set on the command line.
+func (c *command) HaveFlag(name string) bool {
+	if c.setFlags == nil && c.Flags != nil {
+		m := make(map[string]struct{}, c.Flags.NFlag())
 		c.Flags.Visit(func(f *flag.Flag) {
-			if f.Name == name {
-				set = true
-			}
+			m[f.Name] = struct{}{}
 		})
+		c.setFlags = m
 	}
-	return set
+	_, ok := c.setFlags[name]
+	return ok
 }
 
 // PrintOutput writes command output to stdout. When text format is used, cfg
