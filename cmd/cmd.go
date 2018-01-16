@@ -7,11 +7,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"syscall"
 
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -225,3 +227,110 @@ func (c *command) PrintOutput(v interface{}) error {
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
+
+// resultsOutput is the result of an account operation that does not provide any
+// other output.
+type resultsOutput struct {
+	AccountID string
+	Name      string
+	Result    string
+}
+
+func listResults(acs Accounts) []*resultsOutput {
+	out := make([]*resultsOutput, 0, len(acs))
+	for _, ac := range acs {
+		result := "OK"
+		if ac.Err != nil {
+			result = "ERROR: " + explainError(ac.Err)
+		}
+		out = append(out, &resultsOutput{
+			AccountID: ac.ID,
+			Name:      ac.Name,
+			Result:    result,
+		})
+	}
+	return out
+}
+
+// credsOutput provides account credentials to the user.
+type credsOutput struct {
+	AccountID       string
+	Name            string
+	Expires         string // TODO: Implement
+	AccessKeyID     string
+	SecretAccessKey string
+	SessionToken    string `printer:",width=1,last"`
+	Error           string
+}
+
+func listCreds(acs Accounts) []*credsOutput {
+	out := make([]*credsOutput, 0, len(acs))
+	var v credentials.Value
+	for _, ac := range acs {
+		if ac.Err == nil {
+			v, ac.Err = ac.Creds().Get()
+		} else {
+			v = credentials.Value{}
+		}
+		out = append(out, &credsOutput{
+			AccountID:       ac.ID,
+			Name:            ac.Name,
+			AccessKeyID:     v.AccessKeyID,
+			SecretAccessKey: v.SecretAccessKey,
+			SessionToken:    v.SessionToken,
+			Error:           explainError(ac.Err),
+		})
+	}
+	return out
+}
+
+func (o *credsOutput) PrintRow(p *internal.Printer) {
+	if o.Error == "" {
+		internal.PrintRow(p, o)
+	} else {
+		p.PrintCol(0, o.AccountID, true)
+		p.PrintCol(1, o.Name, true)
+		p.PrintErr(o.Error)
+	}
+}
+
+// listOutput provides account information to the user.
+type listOutput struct {
+	AccountID   string
+	Name        string
+	Owner       string
+	Description string
+	Tags        string `printer:",last"`
+	Error       string
+}
+
+func listAccounts(acs Accounts) []*listOutput {
+	out := make([]*listOutput, 0, len(acs))
+	var null Ctl
+	for _, ac := range acs {
+		ctl := ac.Ctl
+		if ctl == nil {
+			ctl = &null
+		}
+		sort.Strings(ctl.Tags)
+		out = append(out, &listOutput{
+			AccountID:   ac.ID,
+			Name:        ac.Name,
+			Owner:       ctl.Owner,
+			Description: ctl.Desc,
+			Tags:        strings.Join(ctl.Tags, ","),
+			Error:       explainError(ac.Err),
+		})
+	}
+	return out
+}
+
+func (o *listOutput) PrintRow(p *internal.Printer) {
+	if o.Error == "" {
+		internal.PrintRow(p, o)
+	} else {
+		p.PrintCol(0, o.AccountID, true)
+		p.PrintCol(1, o.Name, true)
+		p.PrintErr(o.Error)
+	}
+}
