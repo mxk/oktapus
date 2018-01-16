@@ -242,6 +242,11 @@ func (ctl *Ctl) init(c *iam.IAM) error {
 		}
 		out, err := c.CreateRole(&in)
 		if out != nil {
+			if out.Role.Description == nil {
+				// Probably an AWS bug, but CreateRole does not return the
+				// description.
+				out.Role.Description = in.Description
+			}
 			return out.Role, err
 		}
 		return nil, err
