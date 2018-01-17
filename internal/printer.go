@@ -142,7 +142,7 @@ func (p *Printer) PrintCol(i int, s string, more bool) {
 
 // PrintErr prints error string e as the last column in the current row.
 func (p *Printer) PrintErr(e string) {
-	p.WriteString("  <error: ")
+	p.WriteString("  <ERROR: ")
 	p.WriteString(e)
 	p.WriteByte('>')
 }

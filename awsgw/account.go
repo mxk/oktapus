@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
@@ -37,17 +36,7 @@ func (ac *Account) set(src *orgs.Account) {
 // accountCtx maintains runtime context for each account.
 type accountCtx struct {
 	Account
-	CredsProvider
-	creds *credentials.Credentials
-}
-
-// newAccountCtx creates a new context for the specified account id.
-func newAccountCtx(id string, cp CredsProvider) *accountCtx {
-	return &accountCtx{
-		Account:       Account{ID: id},
-		CredsProvider: cp,
-		creds:         credentials.NewCredentials(cp),
-	}
+	cp CredsProvider
 }
 
 // accountState contains saved accountCtx state.
@@ -58,12 +47,7 @@ type accountState struct {
 
 // restore creates an accountCtx from the saved state.
 func (s *accountState) restore(cp CredsProvider) *accountCtx {
-	cp = NewSavedCreds(s.Creds, cp)
-	return &accountCtx{
-		Account:       *s.Account,
-		CredsProvider: cp,
-		creds:         credentials.NewCredentials(cp),
-	}
+	return &accountCtx{*s.Account, NewSavedCreds(s.Creds, cp)}
 }
 
 // accountStatusEnum returns AccountStatus enum string without allocation.

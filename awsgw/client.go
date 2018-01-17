@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/service/iam"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
@@ -145,9 +144,9 @@ func (c *Client) Accounts() []*Account {
 	return all
 }
 
-// Creds returns credentials for the specified account.
-func (c *Client) Creds(accountID string) *credentials.Credentials {
-	return c.getAccount(accountID).creds
+// CredsProvider returns a credentials provider for the specified account.
+func (c *Client) CredsProvider(accountID string) CredsProvider {
+	return c.getAccount(accountID).cp
 }
 
 // CreateAccount creates a new account in the organization and returns the
@@ -205,7 +204,7 @@ func (c *Client) GobEncode() ([]byte, error) {
 	if len(c.cache) > 0 {
 		acs := make([]accountState, 0, len(c.cache))
 		for _, ac := range c.cache {
-			acs = append(acs, accountState{&ac.Account, ac.Save()})
+			acs = append(acs, accountState{&ac.Account, ac.cp.Save()})
 		}
 		s.Accounts = acs
 	}
@@ -243,19 +242,13 @@ func (c *Client) credsProvider(id string) CredsProvider {
 func (c *Client) getAccount(id string) *accountCtx {
 	ac := c.cache[id]
 	if ac == nil {
-		ac = newAccountCtx(id, c.credsProvider(id))
+		ac = &accountCtx{Account{ID: id}, c.credsProvider(id)}
 		if c.cache == nil {
 			c.cache = make(map[string]*accountCtx)
 		}
 		c.cache[id] = ac
 	}
 	return ac
-}
-
-// iam returns a new IAM client for the specified account id.
-func (c *Client) iam(id string) *iam.IAM {
-	cfg := aws.Config{Credentials: c.getAccount(id).creds}
-	return iam.New(c.sess, &cfg)
 }
 
 // Ident contains data from sts:GetCallerIdentity API call.

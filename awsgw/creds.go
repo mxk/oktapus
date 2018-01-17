@@ -26,6 +26,7 @@ type CredsProvider interface {
 	credentials.Provider
 	Expires() time.Time
 	Save() *StaticCreds
+	Reset()
 }
 
 // SavedCreds is a CredsProvider that uses static credentials until they expire
@@ -80,6 +81,12 @@ func (c *SavedCreds) Save() *StaticCreds {
 	return c.next.Save()
 }
 
+// Reset forces any cached credentials to expire.
+func (c *SavedCreds) Reset() {
+	c.saved.Reset()
+	c.next.Reset()
+}
+
 // StaticCreds is a CredsProvider that can be encoded for external storage. It
 // returns either valid credentials or an error until the expiration time. After
 // that, it returns ErrCredsExpired. Use SavedCreds instead of ChainProvider to
@@ -118,6 +125,11 @@ func (c *StaticCreds) Save() *StaticCreds {
 		return &s
 	}
 	return nil
+}
+
+// Reset forces any cached credentials to expire.
+func (c *StaticCreds) Reset() {
+	c.Exp = time.Time{}
 }
 
 // valid returns true until c expires.
@@ -200,6 +212,7 @@ type stsCreds struct{ s StaticCreds }
 func (c *stsCreds) IsExpired() bool    { return c.s.IsExpired() }
 func (c *stsCreds) Expires() time.Time { return c.s.Expires() }
 func (c *stsCreds) Save() *StaticCreds { return c.s.Save() }
+func (c *stsCreds) Reset()             { c.s.Reset() }
 
 // retrieve gets sts.Credentials from fn, converts them into credentials.Value,
 // and updates the expiration time.
@@ -215,14 +228,14 @@ func (c *stsCreds) retrieve(name string, fn func() (*sts.Credentials, error)) (c
 				SessionToken:    *creds.SessionToken,
 				ProviderName:    name,
 			},
-			Exp: creds.Expiration.Add(-time.Minute),
+			Exp: creds.Expiration.Add(-45 * time.Second).Truncate(time.Minute),
 		}}
 	} else {
 		// TODO: Error expiration time should be reduced for temporary errors
 		*c = stsCreds{StaticCreds{
 			Value: credentials.Value{ProviderName: name},
 			Err:   err,
-			Exp:   internal.Time().Add(2 * time.Hour),
+			Exp:   internal.Time().Add(2 * time.Hour).Truncate(time.Minute),
 		}}
 	}
 	return c.s.Value, c.s.Err

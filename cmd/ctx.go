@@ -172,6 +172,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	for i, ac := range info {
 		acs[i] = &Account{Account: ac}
 	}
+	// TODO: Filter first if using account IDs or names
 	acs.RequireIAM(c).RequireCtl()
 	err := newAccountSpec(spec, c.CommonRole).Filter(&acs)
 	sort.Sort(byName(acs))

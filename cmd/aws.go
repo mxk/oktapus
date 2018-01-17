@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
 
@@ -230,4 +231,10 @@ func goForEach(in interface{}, fn func(v interface{}) error) error {
 		}
 	}
 	return err
+}
+
+// awsErrCode returns true if err is an awserr.Error with the given code.
+func awsErrCode(err error, code string) bool {
+	e, ok := err.(awserr.Error)
+	return ok && e.Code() == code
 }

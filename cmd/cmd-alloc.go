@@ -82,5 +82,5 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 		n -= len(batch)
 		alloc = append(alloc, batch...)
 	}
-	return cmd.PrintOutput(listCreds(alloc.Sort()))
+	return cmd.PrintOutput(listCreds(alloc.Sort(), false))
 }

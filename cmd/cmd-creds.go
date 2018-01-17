@@ -19,6 +19,7 @@ func init() {
 
 type Creds struct {
 	command
+	renew  bool
 	user   string
 	policy string
 	tmp    bool
@@ -26,8 +27,10 @@ type Creds struct {
 
 func (cmd *Creds) FlagCfg(fs *flag.FlagSet) {
 	cmd.command.FlagCfg(fs)
+	fs.BoolVar(&cmd.renew, "renew", false,
+		"Renew temporary credentials")
 	fs.StringVar(&cmd.user, "user", "",
-		"Get long-term credentials for a new user with the given `name`")
+		"Get long-term credentials for the `name`d IAM user")
 	fs.StringVar(&cmd.policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"Set user policy `ARN`")
@@ -40,47 +43,71 @@ func (cmd *Creds) Run(ctx *Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	out := listCreds(acs)
-	if cmd.user != "" {
-		user := newPathName(cmd.user)
-		if cmd.tmp {
-			user.path = tmpIAMPath + user.path[1:]
+	out := listCreds(acs, cmd.renew)
+	if cmd.user == "" {
+		return cmd.PrintOutput(out)
+	}
+	user := newPathName(cmd.user)
+	if cmd.tmp {
+		user.path = tmpIAMPath + user.path[1:]
+	}
+	creds := make(map[string]*credsOutput, len(out))
+	for _, c := range out {
+		creds[c.AccountID] = c
+	}
+	km := newKeyMaker(user.path, user.name, cmd.policy)
+	acs.Apply(func(ac *Account) {
+		if ac.Err != nil {
+			return
 		}
-		creds := make(map[string]*credsOutput, len(out))
-		for _, c := range out {
-			creds[c.AccountID] = c
+		c := creds[ac.ID]
+		*c = credsOutput{
+			AccountID: c.AccountID,
+			Name:      c.Name,
 		}
-		inUser := iam.CreateUserInput{
-			Path:     aws.String(user.path),
-			UserName: aws.String(user.name),
-		}
-		inPol := iam.AttachUserPolicyInput{
-			PolicyArn: aws.String(cmd.policy),
-			UserName:  aws.String(user.name),
-		}
-		inKey := iam.CreateAccessKeyInput{
-			UserName: aws.String(user.name),
-		}
-		acs.Apply(func(ac *Account) {
-			c := creds[ac.ID]
-			defer func() {
-				c.Error = explainError(ac.Err)
-			}()
-			var out *iam.CreateAccessKeyOutput
-			if ac.Err != nil {
-				return
-			} else if _, ac.Err = ac.IAM.CreateUser(&inUser); ac.Err != nil {
-				return
-			} else if _, ac.Err = ac.IAM.AttachUserPolicy(&inPol); ac.Err != nil {
-				return
-			} else if out, ac.Err = ac.IAM.CreateAccessKey(&inKey); ac.Err != nil {
-				return
-			}
-			c.Expires = ""
+		if out, err := km.newKey(ac.IAM); err == nil {
 			c.AccessKeyID = aws.StringValue(out.AccessKey.AccessKeyId)
 			c.SecretAccessKey = aws.StringValue(out.AccessKey.SecretAccessKey)
-			c.SessionToken = ""
-		})
-	}
+		} else {
+			c.Error = explainError(err)
+		}
+	})
 	return cmd.PrintOutput(out)
+}
+
+// keyMaker creates new IAM user access keys.
+type keyMaker struct {
+	user iam.CreateUserInput
+	pol  iam.AttachUserPolicyInput
+	key  iam.CreateAccessKeyInput
+}
+
+func newKeyMaker(path, user, policy string) *keyMaker {
+	if path == "" {
+		path = "/"
+	}
+	return &keyMaker{
+		iam.CreateUserInput{
+			Path:     aws.String(path),
+			UserName: aws.String(user),
+		},
+		iam.AttachUserPolicyInput{
+			PolicyArn: aws.String(policy),
+			UserName:  aws.String(user),
+		},
+		iam.CreateAccessKeyInput{
+			UserName: aws.String(user),
+		},
+	}
+}
+
+func (m *keyMaker) newKey(c *iam.IAM) (*iam.CreateAccessKeyOutput, error) {
+	if _, err := c.CreateUser(&m.user); err != nil &&
+		!awsErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+		return nil, err
+	}
+	if _, err := c.AttachUserPolicy(&m.pol); err != nil {
+		return nil, err
+	}
+	return c.CreateAccessKey(&m.key)
 }

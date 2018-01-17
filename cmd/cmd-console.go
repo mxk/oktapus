@@ -60,9 +60,9 @@ func (cmd *Console) Run(ctx *Ctx, args []string) error {
 	if cmd.switchRole {
 		return cmd.SwitchRole(ac.ID, ac.Name, ctx.AWS().CommonRole)
 	}
-	v, err := ac.Creds().Get()
+	c, err := ac.Creds(false)
 	if err == nil {
-		err = cmd.Open(v)
+		err = cmd.Open(c.Value)
 	}
 	return err
 }

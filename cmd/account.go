@@ -39,15 +39,19 @@ type Account struct {
 	IAM *iam.IAM
 	Err error
 
+	cp  awsgw.CredsProvider
 	ref Ctl
 }
 
 // Creds returns temporary account credentials.
-func (ac *Account) Creds() *credentials.Credentials {
-	if ac.IAM != nil {
-		return ac.IAM.Config.Credentials
+func (ac *Account) Creds(renew bool) (*awsgw.StaticCreds, error) {
+	if renew {
+		ac.cp.Reset()
 	}
-	return nil
+	if _, err := ac.IAM.Config.Credentials.Get(); err != nil {
+		return nil, err
+	}
+	return ac.cp.Save(), nil
 }
 
 // Accounts is a group of accounts that can be operated on in parallel.
@@ -108,7 +112,8 @@ func (s Accounts) RequireIAM(c *awsgw.Client) Accounts {
 	var cfg aws.Config
 	for _, ac := range s {
 		if ac.IAM == nil {
-			cfg.Credentials = c.Creds(ac.ID)
+			ac.cp = c.CredsProvider(ac.ID)
+			cfg.Credentials = credentials.NewCredentials(ac.cp)
 			ac.IAM = iam.New(sess, &cfg)
 		}
 	}

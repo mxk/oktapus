@@ -11,11 +11,12 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -265,30 +266,32 @@ func listResults(acs Accounts) []*resultsOutput {
 type credsOutput struct {
 	AccountID       string
 	Name            string
-	Expires         string // TODO: Implement
+	Expires         expTime
 	AccessKeyID     string
 	SecretAccessKey string
 	SessionToken    string `printer:",width=1,last"`
 	Error           string
 }
 
-func listCreds(acs Accounts) []*credsOutput {
+func listCreds(acs Accounts, renew bool) []*credsOutput {
 	out := make([]*credsOutput, 0, len(acs))
-	var v credentials.Value
 	for _, ac := range acs {
+		var cr *awsgw.StaticCreds
 		if ac.Err == nil {
-			v, ac.Err = ac.Creds().Get()
-		} else {
-			v = credentials.Value{}
+			cr, ac.Err = ac.Creds(renew)
 		}
-		out = append(out, &credsOutput{
-			AccountID:       ac.ID,
-			Name:            ac.Name,
-			AccessKeyID:     v.AccessKeyID,
-			SecretAccessKey: v.SecretAccessKey,
-			SessionToken:    v.SessionToken,
-			Error:           explainError(ac.Err),
-		})
+		co := &credsOutput{
+			AccountID: ac.ID,
+			Name:      ac.Name,
+			Error:     explainError(ac.Err),
+		}
+		if ac.Err == nil {
+			co.Expires = expTime(cr.Exp)
+			co.AccessKeyID = cr.AccessKeyID
+			co.SecretAccessKey = cr.SecretAccessKey
+			co.SessionToken = cr.SessionToken
+		}
+		out = append(out, co)
 	}
 	return out
 }
@@ -315,21 +318,22 @@ type listOutput struct {
 
 func listAccounts(acs Accounts) []*listOutput {
 	out := make([]*listOutput, 0, len(acs))
-	var null Ctl
 	for _, ac := range acs {
-		ctl := ac.Ctl
-		if ctl == nil {
-			ctl = &null
+		if ac.Err == nil && ac.Ctl == nil {
+			ac.Err = errNoCtl
 		}
-		sort.Strings(ctl.Tags)
-		out = append(out, &listOutput{
-			AccountID:   ac.ID,
-			Name:        ac.Name,
-			Owner:       ctl.Owner,
-			Description: ctl.Desc,
-			Tags:        strings.Join(ctl.Tags, ","),
-			Error:       explainError(ac.Err),
-		})
+		lo := &listOutput{
+			AccountID: ac.ID,
+			Name:      ac.Name,
+			Error:     explainError(ac.Err),
+		}
+		if ac.Ctl != nil {
+			sort.Strings(ac.Tags)
+			lo.Owner = ac.Owner
+			lo.Description = ac.Desc
+			lo.Tags = strings.Join(ac.Tags, ",")
+		}
+		out = append(out, lo)
 	}
 	return out
 }
@@ -342,4 +346,22 @@ func (o *listOutput) PrintRow(p *internal.Printer) {
 		p.PrintCol(1, o.Name, true)
 		p.PrintErr(o.Error)
 	}
+}
+
+// expTime handles credential expiration time encoding for JSON and printer
+// outputs.
+type expTime time.Time
+
+func (t expTime) MarshalJSON() ([]byte, error) {
+	if time.Time(t).IsZero() {
+		return []byte(`""`), nil
+	}
+	return time.Time(t).MarshalJSON()
+}
+
+func (t expTime) String() string {
+	if time.Time(t).IsZero() {
+		return ""
+	}
+	return time.Time(t).Sub(internal.Time()).Truncate(time.Second).String()
 }
