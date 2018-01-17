@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/LuminalHQ/oktapus/internal"
 
@@ -17,9 +18,10 @@ import (
 )
 
 const (
-	fedURL  = "https://signin.aws.amazon.com/federation"
-	roleURL = "https://signin.aws.amazon.com/switchrole"
-	consURL = "https://console.aws.amazon.com/"
+	fedURL    = "https://signin.aws.amazon.com/federation"
+	roleURL   = "https://signin.aws.amazon.com/switchrole"
+	logoutURL = "https://signin.aws.amazon.com/oauth?Action=logout"
+	consURL   = "https://console.aws.amazon.com/"
 )
 
 func init() {
@@ -133,5 +135,8 @@ func (*Console) Open(cr credentials.Value) error {
 	q.Set("SigninToken", out.SigninToken)
 	req.URL.RawQuery = q.Encode()
 
+	// TODO: There has to be a better way to do this
+	browser.OpenURL(logoutURL)
+	time.Sleep(1 * time.Second)
 	return browser.OpenURL(req.URL.String())
 }
