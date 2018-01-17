@@ -37,8 +37,10 @@ func (cmd *Free) Run(ctx *Ctx, args []string) error {
 	// Clear owner and delete temporary users/roles
 	acs.Apply(func(ac *Account) {
 		ac.Owner = ""
+		ch := make(chan error, 1)
+		go func() { ch <- delTmpRoles(ac.IAM) }()
 		ac.Err = delTmpUsers(ac.IAM)
-		if err := delTmpRoles(ac.IAM); ac.Err == nil {
+		if err := <-ch; ac.Err == nil {
 			ac.Err = err
 		}
 	})
