@@ -59,3 +59,16 @@ func JSON(v interface{}) string {
 	}
 	return buf.String()
 }
+
+// StringsEq returns true if string slices a and b contain identical contents.
+func StringsEq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

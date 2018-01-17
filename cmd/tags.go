@@ -30,19 +30,6 @@ func init() {
 // assume that the list of tags is sorted and each tag is unique.
 type Tags []string
 
-// eq compares tag sets t and u.
-func (t Tags) eq(u Tags) bool {
-	if len(t) != len(u) {
-		return false
-	}
-	for i := range t {
-		if t[i] != u[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // diff returns tags that are set and/or cleared in t relative to u. Calling
 // u.apply(set, clr) would make u == t.
 func (t Tags) diff(u Tags) (set, clr Tags) {

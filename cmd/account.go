@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -226,16 +226,16 @@ func (s byName) Less(i, j int) bool {
 
 // Ctl contains account control information.
 type Ctl struct {
-	Desc  string
-	Owner string
-	Tags  Tags
+	Owner string `json:"owner,omitempty"`
+	Desc  string `json:"desc,omitempty"`
+	Tags  Tags   `json:"tags,omitempty"`
 }
 
 // eq returns true if ctl == other.
 func (ctl *Ctl) eq(other *Ctl) bool {
 	return ctl == other || (ctl != nil && other != nil &&
 		ctl.Desc == other.Desc && ctl.Owner == other.Owner &&
-		ctl.Tags.eq(other.Tags))
+		internal.StringsEq(ctl.Tags, other.Tags))
 }
 
 // merge performs a 3-way merge of account control information changes.
@@ -343,8 +343,8 @@ func (ctl *Ctl) decode(s *string) error {
 		switch ver {
 		case 1:
 			err = json.Unmarshal(b, ctl)
-		default: // TODO: Remove
-			err = gob.NewDecoder(bytes.NewReader(b)).Decode(ctl)
+		default:
+			err = fmt.Errorf("unknown account control version (%d)", ver)
 		}
 		if err != nil {
 			*ctl = Ctl{}
