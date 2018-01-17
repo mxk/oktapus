@@ -266,15 +266,11 @@ func (ctl *Ctl) init(c *iam.IAM) error {
 			RoleName:                 aws.String(ctlRole),
 		}
 		out, err := c.CreateRole(&in)
-		if out != nil {
-			if err == nil && out.Role.Description == nil {
-				// Probably an AWS bug, but CreateRole does not return the
-				// description.
-				out.Role.Description = in.Description
-			}
-			return out.Role, err
+		if err == nil && out.Role.Description == nil {
+			// Probably a bug, but CreateRole does not return the description
+			out.Role.Description = in.Description
 		}
-		return nil, err
+		return out.Role, err
 	})
 }
 
@@ -297,10 +293,7 @@ func (ctl *Ctl) set(c *iam.IAM) error {
 			RoleName:    aws.String(ctlRole),
 		}
 		out, err := c.UpdateRoleDescription(&in)
-		if out != nil {
-			return out.Role, err
-		}
-		return nil, err
+		return out.Role, err
 	})
 }
 

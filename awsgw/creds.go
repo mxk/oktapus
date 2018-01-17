@@ -167,10 +167,7 @@ func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role, saml string) *SAM
 func (c *SAMLCreds) Retrieve() (credentials.Value, error) {
 	return c.retrieve("SAMLCreds", func() (*sts.Credentials, error) {
 		out, err := c.api(&c.AssumeRoleWithSAMLInput)
-		if out != nil {
-			return out.Credentials, err
-		}
-		return nil, err
+		return out.Credentials, err
 	})
 }
 
@@ -197,10 +194,7 @@ func NewAssumeRoleCreds(api AssumeRoleFunc, role, roleSessionName string) *Assum
 func (c *AssumeRoleCreds) Retrieve() (credentials.Value, error) {
 	return c.retrieve("AssumeRoleCreds", func() (*sts.Credentials, error) {
 		out, err := c.api(&c.AssumeRoleInput)
-		if out != nil {
-			return out.Credentials, err
-		}
-		return nil, err
+		return out.Credentials, err
 	})
 }
 
