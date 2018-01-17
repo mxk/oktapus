@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -43,7 +42,7 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	roles := parseRoleSpec(args[1:])
+	roles := newPathNames(args[1:])
 	if cmd.tmp {
 		for i := range roles {
 			roles[i].path = tmpIAMPath + roles[i].path[1:]
@@ -83,22 +82,4 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 		}
 	})
 	return cmd.PrintOutput(listResults(acs))
-}
-
-type roleSpec struct{ path, name string }
-
-func parseRoleSpec(roles []string) []roleSpec {
-	var spec []roleSpec
-	for _, role := range roles {
-		if i := strings.LastIndexByte(role, '/'); i == -1 {
-			spec = append(spec, roleSpec{"/", role})
-		} else {
-			path, name := role[:i+1], role[i+1:]
-			if path[0] != '/' {
-				path = "/" + path
-			}
-			spec = append(spec, roleSpec{path, name})
-		}
-	}
-	return spec
 }

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -28,6 +29,31 @@ const adminPolicy = `{
 
 // tmpIAMPath is a path for temporary users and roles.
 const tmpIAMPath = ctlPath + "tmp/"
+
+// pathName is a split representation of an IAM user/role/group path and name.
+type pathName struct{ path, name string }
+
+// newPathName splits a string in the format "[[/]path/]name" into its
+// components. The path always begins and ends with a slash.
+func newPathName(s string) pathName {
+	if i := strings.LastIndexByte(s, '/'); i != -1 {
+		path, name := s[:i+1], s[i+1:]
+		if path[0] != '/' {
+			path = "/" + path
+		}
+		return pathName{path, name}
+	}
+	return pathName{"/", s}
+}
+
+// newPathNames splits all strings in v via newPathName.
+func newPathNames(v []string) []pathName {
+	var pn []pathName
+	for _, s := range v {
+		pn = append(pn, newPathName(s))
+	}
+	return pn
+}
 
 // newAssumeRolePolicy returns an AssumeRole policy document that is used when
 // creating new roles.
@@ -63,31 +89,60 @@ func delTmpUsers(c *iam.IAM) error {
 // delUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
 func delUser(c *iam.IAM, user string) error {
-	var pols []string
+	if err := detachUserPolicies(c, user); err != nil {
+		return err
+	} else if err = delAccessKeys(c, user); err != nil {
+		return err
+	}
+	in := iam.DeleteUserInput{UserName: aws.String(user)}
+	_, err := c.DeleteUser(&in)
+	return err
+}
+
+// delAccessKeys deletes all user access keys.
+func delAccessKeys(c *iam.IAM, user string) error {
+	var ids []string
+	in := iam.ListAccessKeysInput{UserName: aws.String(user)}
+	pager := func(out *iam.ListAccessKeysOutput, lastPage bool) bool {
+		for _, key := range out.AccessKeyMetadata {
+			ids = append(ids, aws.StringValue(key.AccessKeyId))
+		}
+		return true
+	}
+	if err := c.ListAccessKeysPages(&in, pager); err != nil {
+		return err
+	}
+	return goForEach(ids, func(id interface{}) error {
+		in := iam.DeleteAccessKeyInput{
+			AccessKeyId: aws.String(id.(string)),
+			UserName:    aws.String(user),
+		}
+		_, err := c.DeleteAccessKey(&in)
+		return err
+	})
+}
+
+// detachUserPolicies detaches all user policies.
+func detachUserPolicies(c *iam.IAM, user string) error {
+	var arns []string
 	in := iam.ListAttachedUserPoliciesInput{UserName: aws.String(user)}
 	pager := func(out *iam.ListAttachedUserPoliciesOutput, lastPage bool) bool {
 		for _, pol := range out.AttachedPolicies {
-			pols = append(pols, aws.StringValue(pol.PolicyArn))
+			arns = append(arns, aws.StringValue(pol.PolicyArn))
 		}
 		return true
 	}
 	if err := c.ListAttachedUserPoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	err := goForEach(pols, func(pol interface{}) error {
+	return goForEach(arns, func(arn interface{}) error {
 		in := iam.DetachUserPolicyInput{
-			PolicyArn: aws.String(pol.(string)),
+			PolicyArn: aws.String(arn.(string)),
 			UserName:  aws.String(user),
 		}
 		_, err := c.DetachUserPolicy(&in)
 		return err
 	})
-	if err != nil {
-		return err
-	}
-	in2 := iam.DeleteUserInput{UserName: aws.String(user)}
-	_, err = c.DeleteUser(&in2)
-	return err
 }
 
 // delTmpRoles deletes all roles under the temporary IAM path.
@@ -111,31 +166,35 @@ func delTmpRoles(c *iam.IAM) error {
 // delRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
 func delRole(c *iam.IAM, role string) error {
-	var pols []string
+	if err := detachRolePolicies(c, role); err != nil {
+		return err
+	}
+	in := iam.DeleteRoleInput{RoleName: aws.String(role)}
+	_, err := c.DeleteRole(&in)
+	return err
+}
+
+// detachRolePolicies detaches all role policies.
+func detachRolePolicies(c *iam.IAM, role string) error {
+	var arns []string
 	in := iam.ListAttachedRolePoliciesInput{RoleName: aws.String(role)}
 	pager := func(out *iam.ListAttachedRolePoliciesOutput, lastPage bool) bool {
 		for _, pol := range out.AttachedPolicies {
-			pols = append(pols, aws.StringValue(pol.PolicyArn))
+			arns = append(arns, aws.StringValue(pol.PolicyArn))
 		}
 		return true
 	}
 	if err := c.ListAttachedRolePoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	err := goForEach(pols, func(pol interface{}) error {
+	return goForEach(arns, func(arn interface{}) error {
 		in := iam.DetachRolePolicyInput{
-			PolicyArn: aws.String(pol.(string)),
+			PolicyArn: aws.String(arn.(string)),
 			RoleName:  aws.String(role),
 		}
 		_, err := c.DetachRolePolicy(&in)
 		return err
 	})
-	if err != nil {
-		return err
-	}
-	in2 := iam.DeleteRoleInput{RoleName: aws.String(role)}
-	_, err = c.DeleteRole(&in2)
-	return err
 }
 
 // goForEach takes a slice of input values and calls fn on each one in a
