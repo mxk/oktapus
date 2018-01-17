@@ -7,9 +7,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -153,7 +155,7 @@ type command struct {
 	Flags  *flag.FlagSet
 	OutFmt string // -out flag
 
-	setFlags map[string]struct{}
+	setFlags map[unsafe.Pointer]struct{}
 }
 
 func (c *command) Name() string      { return c.name[0] }
@@ -197,16 +199,21 @@ func (c *command) PadArgs(args *[]string) {
 	}
 }
 
-// HaveFlag returns true if the specified flag was set on the command line.
-func (c *command) HaveFlag(name string) bool {
-	if c.setFlags == nil && c.Flags != nil {
-		m := make(map[string]struct{}, c.Flags.NFlag())
+// HaveFlag returns true if the specified flag was set on the command line. Ptr
+// must be a pointer obtained from or given to one of flag.FlagSet methods.
+func (c *command) HaveFlag(ptr interface{}) bool {
+	if c.setFlags == nil {
+		if c.Flags == nil || c.Flags.NFlag() == 0 {
+			return false
+		}
+		m := make(map[unsafe.Pointer]struct{}, c.Flags.NFlag())
 		c.Flags.Visit(func(f *flag.Flag) {
-			m[f.Name] = struct{}{}
+			p := unsafe.Pointer(reflect.ValueOf(f.Value).Pointer())
+			m[p] = struct{}{}
 		})
 		c.setFlags = m
 	}
-	_, ok := c.setFlags[name]
+	_, ok := c.setFlags[unsafe.Pointer(reflect.ValueOf(ptr).Pointer())]
 	return ok
 }
 

@@ -48,12 +48,12 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 			roles[i].path = tmpIAMPath + roles[i].path[1:]
 		}
 	}
-	if !cmd.HaveFlag("principal") {
+	if !cmd.HaveFlag(&cmd.principal) {
 		cmd.principal = ctx.AWS().Ident().AccountID
 	}
 	assumeRolePolicy := aws.String(newAssumeRolePolicy(cmd.principal))
 	var desc *string
-	if cmd.HaveFlag("desc") {
+	if cmd.HaveFlag(&cmd.desc) {
 		desc = aws.String(cmd.desc)
 	}
 	acs.Apply(func(ac *Account) {

@@ -31,7 +31,7 @@ func (cmd *Update) Run(ctx *Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	setDesc := cmd.HaveFlag("desc")
+	setDesc := cmd.HaveFlag(&cmd.desc)
 	tags := newAccountSpec(args[1], ctx.AWS().CommonRole)
 	if !setDesc && len(tags.idx) == 0 {
 		usageErr(cmd, "either description or tags must be specified")
