@@ -22,7 +22,7 @@ type Authz struct {
 	desc      string
 	policy    string
 	principal string
-	tmp       bool // TODO
+	tmp       bool
 }
 
 func (cmd *Authz) FlagCfg(fs *flag.FlagSet) {
@@ -39,11 +39,16 @@ func (cmd *Authz) FlagCfg(fs *flag.FlagSet) {
 }
 
 func (cmd *Authz) Run(ctx *Ctx, args []string) error {
-	match, err := ctx.Accounts(args[0])
+	acs, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
 	roles := parseRoleSpec(args[1:])
+	if cmd.tmp {
+		for i := range roles {
+			roles[i].path = tmpIAMPath + roles[i].path[1:]
+		}
+	}
 	if !cmd.HaveFlag("principal") {
 		cmd.principal = ctx.AWS().Ident().AccountID
 	}
@@ -52,7 +57,7 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 	if cmd.HaveFlag("desc") {
 		desc = aws.String(cmd.desc)
 	}
-	match.Apply(func(ac *Account) {
+	acs.Apply(func(ac *Account) {
 		if ac.Err != nil {
 			return
 		}
@@ -77,7 +82,7 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 			}
 		}
 	})
-	return cmd.PrintOutput(listResults(match))
+	return cmd.PrintOutput(listResults(acs))
 }
 
 type roleSpec struct{ path, name string }

@@ -25,17 +25,28 @@ func (cmd *Free) FlagCfg(fs *flag.FlagSet) {
 
 func (cmd *Free) Run(ctx *Ctx, args []string) error {
 	cmd.PadArgs(&args)
-	match, err := ctx.Accounts(args[0])
+	acs, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	mod := match[:0]
 	commonRole := ctx.AWS().CommonRole
-	for _, ac := range match {
-		if ac.Err == nil && (cmd.force || ac.Owner == commonRole) {
-			ac.Owner = ""
-			mod = append(mod, ac)
+	acs = acs.Filter(func(ac *Account) bool {
+		return ac.Err == nil && (cmd.force || ac.Owner == commonRole)
+	})
+
+	// Clear owner and delete temporary users/roles
+	acs.Apply(func(ac *Account) {
+		ac.Owner = ""
+		ac.Err = delTmpUsers(ac.IAM)
+		if err := delTmpRoles(ac.IAM); ac.Err == nil {
+			ac.Err = err
 		}
-	}
-	return cmd.PrintOutput(listResults(mod.Save()))
+	})
+
+	// Save owner changes only if all temporary users/roles were deleted
+	tmp := append(make(Accounts, 0, len(acs)), acs...)
+	tmp.Filter(func(ac *Account) bool {
+		return ac.Err == nil
+	}).Save()
+	return cmd.PrintOutput(listResults(acs))
 }

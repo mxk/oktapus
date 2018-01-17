@@ -58,7 +58,7 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 				ac.Owner = ""
 			}
 			alloc.Save()
-			return fmt.Errorf("allocation failed (need %d more accounts)",
+			return fmt.Errorf("allocation failed (need %d more account(s))",
 				n-len(acs))
 		}
 
