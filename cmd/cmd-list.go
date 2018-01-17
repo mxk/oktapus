@@ -1,5 +1,7 @@
 package cmd
 
+import "flag"
+
 // TODO: Document 'all' and 'mine' implicit tags. Create common account-spec
 // help.
 
@@ -7,15 +9,28 @@ func init() {
 	register(&List{command: command{
 		name:    []string{"list", "ls"},
 		summary: "List accounts",
-		usage:   "[options] account-spec",
+		usage:   "[options] [account-spec]",
 		maxArgs: 1,
 		help:    "List accounts in the organization.", // TODO: Improve
 	}})
 }
 
-type List struct{ command }
+type List struct {
+	command
+	refresh bool
+}
+
+func (cmd *List) FlagCfg(fs *flag.FlagSet) {
+	cmd.command.FlagCfg(fs)
+	fs.BoolVar(&cmd.refresh, "refresh", false, "Refresh account information")
+}
 
 func (cmd *List) Run(ctx *Ctx, args []string) error {
+	if cmd.refresh {
+		if err := ctx.AWS().Refresh(); err != nil {
+			return err
+		}
+	}
 	cmd.PadArgs(&args)
 	match, err := ctx.Accounts(args[0])
 	if err != nil {
