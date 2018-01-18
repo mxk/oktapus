@@ -137,7 +137,7 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 			// for the initial role.
 
 			// Initialize account control information
-			ac.Ctl = new(Ctl)
+			ac.Ctl = &Ctl{Tags: Tags{"new"}}
 			ac.Err = ac.Ctl.init(ac.IAM)
 		}(acs[len(acs)-1])
 	}
