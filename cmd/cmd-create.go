@@ -29,16 +29,13 @@ func init() {
 
 type Create struct {
 	command
-	alloc bool
-	exec  bool
+	exec bool
 }
 
 type newAccountsOutput struct{ Name, Email string }
 
 func (cmd *Create) FlagCfg(fs *flag.FlagSet) {
 	cmd.command.FlagCfg(fs)
-	fs.BoolVar(&cmd.alloc, "alloc", false,
-		"Immediately allocate newly created accounts")
 	fs.BoolVar(&cmd.exec, "exec", false,
 		"Execute account creation (list names/emails otherwise)")
 }
@@ -140,9 +137,7 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 			// for the initial role.
 
 			// Initialize account control information
-			if ac.Ctl = new(Ctl); cmd.alloc {
-				ac.Owner = c.CommonRole
-			}
+			ac.Ctl = new(Ctl)
 			ac.Err = ac.Ctl.init(ac.IAM)
 		}(acs[len(acs)-1])
 	}
