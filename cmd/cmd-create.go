@@ -58,10 +58,10 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 
 	// Only the organization's master account can create new accounts
 	c := ctx.AWS()
-	masterAccountID := c.OrgInfo().MasterAccountID
-	if id := c.Ident(); id.AccountID == "" || id.AccountID != masterAccountID {
+	masterID := c.OrgInfo().MasterAccountID
+	if id := c.Ident(); id.AccountID == "" || id.AccountID != masterID {
 		return fmt.Errorf("current account (%s) is not org master (%s)",
-			id.AccountID, masterAccountID)
+			id.AccountID, masterID)
 	}
 
 	// Configure name/email counters
@@ -109,16 +109,6 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 	out := createAccounts(c.OrgClient(), in, n)
 
 	// Configure accounts
-	orgRoleAssumeRolePolicy := newAssumeRolePolicy(masterAccountID)
-	orgRole := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(orgRoleAssumeRolePolicy),
-		RoleName:                 aws.String("OrganizationAccountAccessRole"),
-	}
-	orgRolePolicy := iam.PutRolePolicyInput{
-		PolicyDocument: aws.String(adminPolicy),
-		PolicyName:     aws.String("AdministratorAccess"),
-		RoleName:       orgRole.RoleName,
-	}
 	var wg sync.WaitGroup
 	acs := make(Accounts, 0, n)
 	for r := range out {
@@ -142,20 +132,18 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 			}
 
 			// Create OrganizationAccountAccessRole
-			if _, ac.Err = ac.IAM.CreateRole(&orgRole); ac.Err == nil {
-				_, ac.Err = ac.IAM.PutRolePolicy(&orgRolePolicy)
+			if ac.Err = createOrgAccessRole(ac.IAM, masterID); ac.Err != nil {
+				return
 			}
 
 			// TODO: Replace inline AdministratorAccess policy with attached one
 			// for the initial role.
 
 			// Initialize account control information
-			if ac.Err == nil {
-				if ac.Ctl = new(Ctl); cmd.alloc {
-					ac.Owner = c.CommonRole
-				}
-				ac.Err = ac.Ctl.init(ac.IAM)
+			if ac.Ctl = new(Ctl); cmd.alloc {
+				ac.Owner = c.CommonRole
 			}
+			ac.Err = ac.Ctl.init(ac.IAM)
 		}(acs[len(acs)-1])
 	}
 	wg.Wait()
@@ -181,7 +169,7 @@ func newCounter(s string) (*counter, error) {
 	} else if j <= i {
 		return nil, fmt.Errorf("invalid counter template %q", s)
 	}
-	n, err := strconv.Atoi(s[i+1: j])
+	n, err := strconv.Atoi(s[i+1 : j])
 	if err != nil && i+1 != j {
 		return nil, fmt.Errorf("invalid counter template %q (%v)", s, err)
 	}
@@ -234,6 +222,38 @@ func waitForCreds(ac *Account) error {
 		_, err := ac.Creds(true)
 		e, ok := err.(awserr.RequestFailure)
 		if err == nil || !ok || e.StatusCode() != http.StatusForbidden ||
+			!internal.Time().Before(timeout) {
+			return err
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
+// order is reversed because the user creating a new account may not be able to
+// assume the default OrganizationAccountAccessRole.
+func createOrgAccessRole(c *iam.IAM, masterAccountID string) error {
+	assumeRolePolicy := newAssumeRolePolicy(masterAccountID)
+	role := iam.CreateRoleInput{
+		AssumeRolePolicyDocument: aws.String(assumeRolePolicy),
+		RoleName:                 aws.String("OrganizationAccountAccessRole"),
+	}
+	policy := iam.PutRolePolicyInput{
+		PolicyDocument: aws.String(adminPolicy),
+		PolicyName:     aws.String("AdministratorAccess"),
+		RoleName:       role.RoleName,
+	}
+	// New credentials for a new account sometimes result in
+	// InvalidClientTokenId error for the first few seconds.
+	timeout := internal.Time().Add(10 * time.Second)
+	for {
+		_, err := c.CreateRole(&role)
+		if err == nil {
+			_, err = c.PutRolePolicy(&policy)
+			return err
+		}
+		e, ok := err.(awserr.Error)
+		if !ok || e.Code() != "InvalidClientTokenId" ||
 			!internal.Time().Before(timeout) {
 			return err
 		}
