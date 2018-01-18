@@ -11,7 +11,7 @@ func init() {
 	register(&Alloc{command: command{
 		name:    []string{"alloc"},
 		summary: "Allocate accounts",
-		usage:   "[options] num [account-spec]",
+		usage:   "[options] [num] [account-spec]",
 		minArgs: 1,
 		maxArgs: 2,
 	}})
@@ -28,22 +28,30 @@ func (cmd *Alloc) FlagCfg(fs *flag.FlagSet) {
 }
 
 func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
-	cmd.PadArgs(&args)
 	n, err := strconv.Atoi(args[0])
-	if err != nil {
+	if err == nil {
+		if n < 1 || 100 < n {
+			usageErr(cmd, "number of accounts must be between 1 and 100")
+		}
+		cmd.PadArgs(&args)
+		args = args[1:]
+	} else if len(args) != 1 {
 		usageErr(cmd, "first argument must be a number")
-	} else if n <= 0 {
-		usageErr(cmd, "number of accounts must be > 0")
+	} else {
+		n = -1
 	}
 
 	// Find free accounts and randomize their order
-	acs, err := ctx.Accounts(args[1])
+	acs, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
 	acs = acs.Filter(func(ac *Account) bool {
 		return ac.Err == nil && ac.Owner == ""
 	}).Shuffle()
+	if n == -1 {
+		n = len(acs)
+	}
 
 	// Allocate in batches
 	owner := ctx.AWS().CommonRole

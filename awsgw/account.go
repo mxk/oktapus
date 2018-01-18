@@ -7,8 +7,6 @@ import (
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
-// TODO: Figure out which account fields are mutable
-
 // Account is an account in an AWS organization.
 type Account struct {
 	ID         string

@@ -193,7 +193,7 @@ func (s Accounts) Save() Accounts {
 func (s Accounts) Apply(fn func(ac *Account)) Accounts {
 	// The number of goroutines is fixed because the work is IO-bound. It simply
 	// sets the number of API requests that can be in-flight at any given time.
-	n := 10
+	n := 50
 	if len(s) < n {
 		if n = len(s); n == 0 {
 			return s
