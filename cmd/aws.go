@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
-const assumeRolePolicy = `{
+const assumeRolePolicyTpl = `{
 	"Version": "2012-10-17",
 	"Statement": [{
 		"Effect": "%s",
@@ -56,17 +59,87 @@ func newPathNames(v []string) []pathName {
 	return pn
 }
 
+// createAccountResult contains the values returned by createAccount. If err is
+// not nil, Account will contain the original name from CreateAccountInput.
+type createAccountResult struct {
+	*orgs.Account
+	err error
+}
+
+// createAccounts creates multiple accounts concurrently.
+func createAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n int) <-chan createAccountResult {
+	workers := 5 // Only 5 accounts may be created at the same time
+	if workers > n {
+		workers = n
+	}
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	out := make(chan createAccountResult)
+	for ; workers > 0; workers-- {
+		go func() {
+			defer wg.Done()
+			for v := range in {
+				ac, err := createAccount(c, v)
+				if err != nil {
+					// TODO: Retry if err is too many account creation ops
+					if ac == nil {
+						ac = &orgs.Account{Name: v.AccountName, Email: v.Email}
+					} else if ac.Name == nil {
+						ac.Name = v.AccountName
+					}
+				}
+				out <- createAccountResult{ac, err}
+			}
+		}()
+	}
+	go func() {
+		defer close(out)
+		wg.Wait()
+	}()
+	return out
+}
+
+// createAccount creates a new account in the organization.
+func createAccount(c *orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Account, error) {
+	out, err := c.CreateAccount(in)
+	if err != nil {
+		return nil, err
+	}
+	s := out.CreateAccountStatus
+	reqID := orgs.DescribeCreateAccountStatusInput{
+		CreateAccountRequestId: s.Id,
+	}
+	for {
+		switch aws.StringValue(s.State) {
+		case orgs.CreateAccountStateInProgress:
+			time.Sleep(time.Second)
+			out, err := c.DescribeCreateAccountStatus(&reqID)
+			if err != nil {
+				return nil, err
+			}
+			s = out.CreateAccountStatus
+		case orgs.CreateAccountStateSucceeded:
+			in := orgs.DescribeAccountInput{AccountId: s.AccountId}
+			out, err := c.DescribeAccount(&in)
+			return out.Account, err
+		default:
+			return nil, awserr.New(aws.StringValue(s.FailureReason),
+				"account creation failed", nil)
+		}
+	}
+}
+
 // newAssumeRolePolicy returns an AssumeRole policy document that is used when
 // creating new roles.
 func newAssumeRolePolicy(principal string) string {
 	if principal == "" {
-		return fmt.Sprintf(assumeRolePolicy, "Deny", "*")
+		return fmt.Sprintf(assumeRolePolicyTpl, "Deny", "*")
 	}
 	if isAWSAccountID(principal) {
-		return fmt.Sprintf(assumeRolePolicy, "Allow",
+		return fmt.Sprintf(assumeRolePolicyTpl, "Allow",
 			"arn:aws:iam::"+principal+":root")
 	}
-	return fmt.Sprintf(assumeRolePolicy, "Allow", principal)
+	return fmt.Sprintf(assumeRolePolicyTpl, "Allow", principal)
 }
 
 // delTmpUsers deletes all users under the temporary IAM path.

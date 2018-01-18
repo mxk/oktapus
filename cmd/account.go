@@ -54,11 +54,12 @@ func (ac *Account) Creds(renew bool) (*awsgw.StaticCreds, error) {
 	return ac.cp.Save(), nil
 }
 
-// Accounts is a group of accounts that can be operated on in parallel.
+// Accounts is a group of accounts that can be operated on concurrently.
 type Accounts []*Account
 
 // Sort sorts accounts by name.
 func (s Accounts) Sort() Accounts {
+	// TODO: Natural number sorting
 	sort.Sort(byName(s))
 	return s
 }
@@ -188,7 +189,7 @@ func (s Accounts) Save() Accounts {
 	})
 }
 
-// Apply executes fn on each account in parallel.
+// Apply executes fn on each account concurrently.
 func (s Accounts) Apply(fn func(ac *Account)) Accounts {
 	// The number of goroutines is fixed because the work is IO-bound. It simply
 	// sets the number of API requests that can be in-flight at any given time.

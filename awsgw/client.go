@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
@@ -107,9 +105,14 @@ func (c *Client) Ident() Ident {
 	return c.ident
 }
 
-// Org returns information about the organization.
-func (c *Client) Org() Org {
+// OrgInfo returns information about the organization.
+func (c *Client) OrgInfo() Org {
 	return c.orgInfo
+}
+
+// OrgClient returns the organizations API client.
+func (c *Client) OrgClient() *orgs.Organizations {
+	return c.org
 }
 
 // Refresh updates information about all accounts in the organization.
@@ -117,9 +120,7 @@ func (c *Client) Refresh() error {
 	valid := make(map[string]struct{}, len(c.cache))
 	pager := func(out *orgs.ListAccountsOutput, lastPage bool) bool {
 		for _, src := range out.Accounts {
-			ac := c.getAccount(aws.StringValue(src.Id))
-			ac.set(src)
-			valid[ac.ID] = struct{}{}
+			valid[c.Update(src).ID] = struct{}{}
 		}
 		return true
 	}
@@ -144,45 +145,16 @@ func (c *Client) Accounts() []*Account {
 	return all
 }
 
+// Update updates account information from a more recent description.
+func (c *Client) Update(src *orgs.Account) *Account {
+	ac := c.getAccount(aws.StringValue(src.Id))
+	ac.set(src)
+	return &ac.Account
+}
+
 // CredsProvider returns a credentials provider for the specified account.
 func (c *Client) CredsProvider(accountID string) CredsProvider {
 	return c.getAccount(accountID).cp
-}
-
-// CreateAccount creates a new account in the organization and returns the
-// account ID.
-func (c *Client) CreateAccount(name, email string) (string, error) {
-	// TODO: Enforce 5 concurrent account creation requests
-	in := orgs.CreateAccountInput{
-		AccountName: aws.String(name),
-		Email:       aws.String(email),
-		RoleName:    aws.String(c.CommonRole),
-	}
-	out, err := c.org.CreateAccount(&in)
-	if err != nil {
-		return "", err
-	}
-	status := out.CreateAccountStatus
-	state := aws.StringValue(status.State)
-	in2 := orgs.DescribeCreateAccountStatusInput{
-		CreateAccountRequestId: status.Id,
-	}
-	// TODO: Timeout, cancellation
-	for state == orgs.CreateAccountStateInProgress {
-		time.Sleep(2 * time.Second)
-		out, err := c.org.DescribeCreateAccountStatus(&in2)
-		if err != nil {
-			return "", err
-		}
-		status = out.CreateAccountStatus
-		state = aws.StringValue(status.State)
-	}
-	if state == orgs.CreateAccountStateSucceeded {
-		return aws.StringValue(status.AccountId), nil
-	}
-	// TODO: Use awserr.Error?
-	return "", fmt.Errorf("account creation failed (%s)",
-		aws.StringValue(status.FailureReason))
 }
 
 // clientState contains saved Client state.
