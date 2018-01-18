@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"strconv"
@@ -20,6 +21,21 @@ func init() {
 type Alloc struct {
 	command
 	owner string
+}
+
+func (cmd *Alloc) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Account allocation assigns an owner to an account, preventing anyone
+		else from allocating that account until it is freed. The owner is
+		effectively a per-account mutex.
+
+		You can specify the number of accounts to allocate along with account
+		filtering specifications. One or the other may be omitted, but not both.
+		If the number is not specified, all matching accounts are allocated.
+		Otherwise, that number of requested accounts are allocated randomly from
+		the pool of all matching accounts.
+	`)
+	accountSpecHelp(w)
 }
 
 func (cmd *Alloc) FlagCfg(fs *flag.FlagSet) {

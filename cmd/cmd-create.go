@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"net/http"
@@ -30,6 +31,36 @@ func init() {
 type Create struct {
 	command
 	exec bool
+}
+
+func (cmd *Create) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Create new accounts.
+
+		WARNING: Accounts can never be deleted. They can be closed and removed
+		from your organization, but doing so requires gaining access to the root
+		user via the email password reset procedure. The rest of the process is
+		also entirely manual, requiring many mouse clicks. Don't create new
+		accounts unless you really need them for the long-term.
+
+		Each account must have a unique name and email address. The command
+		accepts templates for both, and uses automatic numbering to generate
+		unique names and emails. Many email providers treat addresses in the
+		form user+extratext@example.com as an alias for user@example.com, so
+		this is a convenient way of generating unique, but valid email
+		addresses. This address may be needed later to reset the root password.
+
+		The templates use a dynamic field in the format '{N}' where N is a
+		number. If N is 0 or absent, the starting value is automatically
+		selected based on existing account names. Otherwise, the numbering
+		begins with N. You can use leading zeros to set field width. For
+		example, the template 'test-{00}' will generate account names 'test-01',
+		'test-02', and so on.
+
+		Unless the -exec option is specified, the command simply returns the
+		account names and emails that would be used if the accounts were
+		actually created.
+	`)
 }
 
 type newAccountsOutput struct{ Name, Email string }

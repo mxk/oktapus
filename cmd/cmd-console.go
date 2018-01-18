@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -37,6 +38,24 @@ func init() {
 type Console struct {
 	command
 	switchRole bool
+}
+
+func (cmd *Console) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Open AWS management console.
+
+		This command accepts the same account-spec as all other commands, but it
+		must match exactly one account.
+
+		Currently, AWS does not automatically log you out of an existing session
+		when a new one is opened. As a result, opening a new session results in
+		a message telling you to log out of the other one first. To bypass this,
+		the command first opens a logout URL, followed by the console login URL.
+
+		Alternatively, you can use -sr option to change accounts via the AWS
+		"Switch Role" function. This requires you to be logged into a session
+		that is allowed to assume the requested role.
+	`)
 }
 
 func (cmd *Console) FlagCfg(fs *flag.FlagSet) {

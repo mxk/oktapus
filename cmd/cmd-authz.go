@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"flag"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
+
+// TODO: List role ARNs in output. How to use -tmp for oktapus users?
 
 func init() {
 	register(&Authz{command: command{
@@ -22,6 +25,24 @@ type Authz struct {
 	policy    string
 	principal string
 	tmp       bool
+}
+
+func (cmd *Authz) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Authorize account access by creating a new IAM role.
+
+		By default, this command grants other users admin access to accounts
+		where you yourself have administrative privileges. For example:
+
+			oktapus authz owner=me user1@example.com
+
+		This command allows user1 to access all accounts that are currently
+		owned by you (assuming that both of you use the same gateway account).
+
+		You can use -principal to specify another account ID that should be
+		allowed to assume the new role.
+	`)
+	accountSpecHelp(w)
 }
 
 func (cmd *Authz) FlagCfg(fs *flag.FlagSet) {

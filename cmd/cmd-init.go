@@ -1,6 +1,9 @@
 package cmd
 
-import "errors"
+import (
+	"bufio"
+	"errors"
+)
 
 func init() {
 	register(&Init{command: command{
@@ -13,6 +16,18 @@ func init() {
 }
 
 type Init struct{ command }
+
+func (cmd *Init) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Initialize account control information.
+
+		The account owner, description, and tags are stored within the account
+		itself, encoded in the description of a well-known IAM role. Accounts
+		that do not have this role are not managed by oktapus. This command
+		creates the role and initializes the account control structure.
+	`)
+	accountSpecHelp(w)
+}
 
 func (cmd *Init) Run(ctx *Ctx, args []string) error {
 	match, err := ctx.Accounts(args[0])

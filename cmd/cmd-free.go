@@ -1,6 +1,9 @@
 package cmd
 
-import "flag"
+import (
+	"bufio"
+	"flag"
+)
 
 func init() {
 	register(&Free{command: command{
@@ -15,6 +18,17 @@ func init() {
 type Free struct {
 	command
 	force bool
+}
+
+func (cmd *Free) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Release owned accounts.
+
+		Freeing an account allows someone else to allocate it. If the account
+		contains any temporary IAM users or roles, those are deleted (see authz
+		and creds commands for more info).
+	`)
+	accountSpecHelp(w)
 }
 
 func (cmd *Free) FlagCfg(fs *flag.FlagSet) {

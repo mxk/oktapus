@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"flag"
 	"sort"
 )
@@ -18,6 +19,18 @@ func init() {
 type Update struct {
 	command
 	desc string
+}
+
+func (cmd *Update) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Update account tags and/or description.
+
+		To set or clear tags, specify them as a comma-separated list after the
+		account-spec. Use the '!' prefix to clear existing tags. You may need to
+		escape the '!' character with a backslash, or quote the entire argument,
+		to inhibit shell expansion.
+	`)
+	accountSpecHelp(w)
 }
 
 func (cmd *Update) FlagCfg(fs *flag.FlagSet) {

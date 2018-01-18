@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"flag"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -23,6 +24,21 @@ type Creds struct {
 	user   string
 	policy string
 	tmp    bool
+}
+
+func (cmd *Creds) Help(w *bufio.Writer) {
+	writeHelp(w, `
+		Get account credentials.
+
+		By default, this command returns temporary credentials for all accounts
+		that match the spec. These credentials are cached and are renewed only
+		after expiration. You can force renewal with the -renew option.
+
+		If you need long-term credentials, the command allows you to create an
+		IAM user with an access key. If you use the -tmp option, the user will
+		be automatically deleted when the account is freed.
+	`)
+	accountSpecHelp(w)
 }
 
 func (cmd *Creds) FlagCfg(fs *flag.FlagSet) {
