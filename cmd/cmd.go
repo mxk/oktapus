@@ -151,7 +151,6 @@ type command struct {
 	minArgs int
 	maxArgs int
 	hidden  bool
-	help    string
 
 	Flags  *flag.FlagSet
 	OutFmt string // -out flag
@@ -166,15 +165,13 @@ func (c *command) Usage() string     { return c.usage }
 func (c *command) NArgs() (int, int) { return c.minArgs, c.maxArgs }
 func (c *command) Hidden() bool      { return c.hidden }
 
-// Help writes detailed command help information to w.
+// Help writes command help information to w.
 func (c *command) Help(w *bufio.Writer) {
-	if c.help != "" {
-		w.WriteString(strings.TrimSpace(c.help))
-	} else {
-		w.WriteString(c.summary)
-		w.WriteByte('.')
+	w.WriteString(c.summary)
+	w.WriteString(".\n")
+	if strings.Contains(c.usage, "account-spec") {
+		accountSpecHelp(w)
 	}
-	w.WriteByte('\n')
 }
 
 // FlagCfg configures command flags.

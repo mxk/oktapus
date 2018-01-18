@@ -40,6 +40,7 @@ func help(err error) {
 	fmt.Fprintf(w, "Usage: %s command [options] args\n", bin)
 	fmt.Fprintf(w, "       %s command help\n", bin)
 	fmt.Fprintf(w, "       %s help [command]\n\n", bin)
+	w.WriteString("AWS account management and creation tool.\n\n")
 	w.WriteString("Commands:\n")
 	names, maxLen := make([]string, 0, len(cmds)), 0
 	for name, cmd := range cmds {
@@ -53,6 +54,7 @@ func help(err error) {
 	for _, name := range names {
 		fmt.Fprintf(w, "    %-*s  %s\n", maxLen, name, cmds[name].Summary())
 	}
+	accountSpecHelp(w)
 	w.WriteByte('\n')
 }
 
@@ -96,4 +98,15 @@ func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
 		w.Flush()
 		os.Exit(code)
 	}
+}
+
+// accountSpecHelp writes short account-spec help to w.
+func accountSpecHelp(w *bufio.Writer) {
+	cmds["account-spec"].(*AccountSpec).short(w)
+}
+
+// writeHelp writes multi-line string s to w, removing any indentation.
+func writeHelp(w *bufio.Writer, s string) {
+	w.WriteString(strings.TrimSpace(internal.Dedent(s)))
+	w.WriteByte('\n')
 }

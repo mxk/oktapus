@@ -2,16 +2,12 @@ package cmd
 
 import "flag"
 
-// TODO: Document 'all' and 'mine' implicit tags. Create common account-spec
-// help.
-
 func init() {
 	register(&List{command: command{
 		name:    []string{"list", "ls"},
 		summary: "List accounts",
 		usage:   "[options] [account-spec]",
 		maxArgs: 1,
-		help:    "List accounts in the organization.", // TODO: Improve
 	}})
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -71,4 +72,37 @@ func StringsEq(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// Dedent removes leading tab characters from each line in s. The first line is
+// ignored, the next non-blank line determines the amount of indentation to
+// remove.
+func Dedent(s string) string {
+	i, n := strings.IndexByte(s, '\n'), 1
+	if i != -1 {
+	loop:
+		for i+n < len(s) {
+			switch s[i+n] {
+			case '\t':
+				n++
+			case '\n':
+				i, n = i+n, 1
+			default:
+				break loop
+			}
+		}
+	}
+	if n--; n == 0 {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	for i != -1 {
+		b, s, i = append(b, s[:i+1]...), s[i+1:], 0
+		for i < n && i < len(s) && s[i] == '\t' {
+			i++
+		}
+		s = s[i:]
+		i = strings.IndexByte(s, '\n')
+	}
+	return string(append(b, s...))
 }
