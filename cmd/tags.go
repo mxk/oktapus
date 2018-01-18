@@ -21,7 +21,7 @@ func init() {
 		tagChars[c] = true
 		tagChars[c|32] = true
 	}
-	for c := range []byte("-._") {
+	for _, c := range []byte("-._") {
 		tagChars[c] = true
 	}
 }
