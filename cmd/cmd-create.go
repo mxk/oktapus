@@ -243,7 +243,7 @@ func setCounters(acs []*awsgw.Account, name, email *counter) {
 
 // waitForCreds blocks until account credentials become valid.
 func waitForCreds(ac *Account) error {
-	timeout := internal.Time().Add(30 * time.Second)
+	timeout := internal.Time().Add(time.Minute)
 	for {
 		_, err := ac.Creds(true)
 		e, ok := err.(awserr.RequestFailure)
@@ -271,7 +271,7 @@ func createOrgAccessRole(c *iam.IAM, masterAccountID string) error {
 	}
 	// New credentials for a new account sometimes result in
 	// InvalidClientTokenId error for the first few seconds.
-	timeout := internal.Time().Add(10 * time.Second)
+	timeout := internal.Time().Add(30 * time.Second)
 	for {
 		_, err := c.CreateRole(&role)
 		if err == nil {
