@@ -33,8 +33,9 @@ func init() {
 const reportBatch = 10
 
 var (
-	verifyDelay = 0 * time.Second
-	freeDelay   = 10 * time.Second
+	verifyDelay  = 0 * time.Second
+	confirmDelay = 30 * time.Second
+	freeDelay    = 10 * time.Second
 )
 
 type MutexTest struct{ command }
@@ -150,8 +151,9 @@ func (cmd *MutexTest) Run(_ *Ctx, args []string) error {
 		if len(owners) == 1 {
 			r := owners[0]
 			t.AssumedOwner = r.name
-			fmt.Printf("Owner is %s, will verify in 1 minute... ", r.name)
-			time.Sleep(time.Minute)
+			fmt.Printf("Owner is %s, will verify in %v... ",
+				r.name, confirmDelay)
+			time.Sleep(confirmDelay)
 			if err := r.get(c); err != nil {
 				panic(err)
 			}
