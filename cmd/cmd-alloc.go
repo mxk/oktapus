@@ -96,8 +96,8 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 			return ac.Err == nil
 		})
 
-		// TODO: Adjust delay
-		time.Sleep(1 * time.Second)
+		// Delay determined by running 1,100 mutex-test trials with 50 threads
+		time.Sleep(10 * time.Second)
 
 		// Verify owner
 		batch.RefreshCtl().Filter(func(ac *Account) bool {
