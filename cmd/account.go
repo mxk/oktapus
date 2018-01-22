@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 )
 
-// Do not ask about this.
-const ctlRole = "TheOktapusIsComingForYou"
+// ctlRole is the role that stores account control information.
+const ctlRole = "OktapusControl"
 
 // ctlPath is a common path for automatically created IAM users and roles.
 const ctlPath = "/oktapus/"
