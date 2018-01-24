@@ -10,7 +10,7 @@ import (
 
 var Log = log{os.Stderr}
 
-var mu sync.Mutex
+var logMu sync.Mutex
 var bufs = sync.Pool{New: func() interface{} {
 	return new(bytes.Buffer)
 }}
@@ -36,8 +36,8 @@ func (l log) out(lvl byte, format string, v ...interface{}) {
 	if n := len(format); n > 0 && format[n-1] != '\n' {
 		b.WriteByte('\n')
 	}
-	mu.Lock()
-	defer mu.Unlock()
+	logMu.Lock()
+	defer logMu.Unlock()
 	l.w.Write(b.Bytes())
 	bufs.Put(b)
 }

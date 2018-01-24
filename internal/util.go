@@ -9,24 +9,36 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var now atomic.Value
+var (
+	timeMu sync.Mutex
+	now    atomic.Value
+	stop   bool
+)
 
 func init() {
+	store := func(t time.Time) {
+		timeMu.Lock()
+		defer timeMu.Unlock()
+		if !stop {
+			now.Store(t)
+		}
+	}
 	t := time.Now()
-	now.Store(t)
+	store(t)
 	go func() {
 		t := time.Now()
 		d := t.Truncate(time.Second).Add(time.Second).Sub(t)
 		if d < 250*time.Millisecond {
 			d += time.Second
 		}
-		now.Store(<-time.After(d))
+		store(<-time.After(d))
 		for t := range time.Tick(time.Second) {
-			now.Store(t)
+			store(t)
 		}
 	}()
 	var b [8]byte
@@ -40,6 +52,18 @@ func init() {
 // resolution of 1 second.
 func Time() time.Time {
 	return now.Load().(time.Time)
+}
+
+// SetTime causes all subsequent Time() calls to return t. If t is the zero
+// time, the clock is restarted. This is only used for testing.
+func SetTime(t time.Time) {
+	zero := t.IsZero()
+	timeMu.Lock()
+	defer timeMu.Unlock()
+	if stop = !zero; zero {
+		t = time.Now()
+	}
+	now.Store(t)
 }
 
 // CloseBody attempts to drain http.Response body before closing it to allow
