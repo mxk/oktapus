@@ -107,23 +107,25 @@ type DataTypeRouter struct {
 func NewDataTypeRouter(out ...interface{}) *DataTypeRouter {
 	r := &DataTypeRouter{make(map[reflect.Type]ServerResult, len(out))}
 	for _, v := range out {
-		r.Add(v, nil)
+		if _, ok := r.m[reflect.TypeOf(v)]; ok {
+			panic(fmt.Sprintf("mock: %T already contains %T", r, out))
+		}
+		r.Set(v, nil)
 	}
 	return r
 }
 
-// Add allows the router to handle an API request with the given output type. If
-// err is not nil, then the request's Error field will also be set.
-func (r *DataTypeRouter) Add(out interface{}, err error) {
+// Set allows the router to handle API requests with the given output type. If
+// err is not nil, it will be used to set the request's Error field.
+func (r *DataTypeRouter) Set(out interface{}, err error) {
 	t := reflect.TypeOf(out)
 	if t.Kind() != reflect.Ptr {
 		panic(fmt.Sprintf("mock: %T is not a pointer", out))
 	} else if s := t.Elem(); s.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("mock: %T is not a struct", s))
-	} else if !strings.Contains(s.PkgPath(), "/aws-sdk-go/") {
-		panic(fmt.Sprintf("mock: %T is not an AWS *Output struct", s))
-	} else if _, ok := r.m[t]; ok {
-		panic(fmt.Sprintf("mock: %T already contains %T", r, out))
+	} else if !strings.Contains(s.PkgPath(), "/aws-sdk-go/") ||
+		!strings.HasSuffix(s.Name(), "Output") {
+		panic(fmt.Sprintf("mock: %T is not an AWS output struct", s))
 	}
 	r.m[t] = ServerResult{out, err}
 }
