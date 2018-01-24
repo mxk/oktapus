@@ -11,6 +11,7 @@ import (
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/okta"
+	"github.com/aws/aws-sdk-go/aws/corehandlers"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -131,7 +132,7 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 			ProviderName: "ErrorProvider",
 		})
 	}
-	sess, err := session.NewSession(&cfg)
+	sess, err := newSession(&cfg)
 	if err != nil {
 		log.F("Failed to create AWS session: %v", err)
 	}
@@ -218,4 +219,14 @@ func stateFile() string {
 		log.W("Failed to get user information: %v", err)
 	}
 	return ""
+}
+
+// newSession returns a new AWS session with the given config.
+func newSession(cfg *aws.Config) (*session.Session, error) {
+	sess, err := session.NewSession(cfg)
+	if err == nil {
+		// Remove useless handler that writes messages to stdout
+		sess.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)
+	}
+	return sess, err
 }

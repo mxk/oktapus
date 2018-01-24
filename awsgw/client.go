@@ -266,6 +266,8 @@ func getSessName(id *Ident) string {
 	if r, _ := arn.Parse(id.UserARN); strings.HasPrefix(r.Resource, "user/") {
 		i := strings.LastIndexByte(r.Resource, '/')
 		return r.Resource[i+1:]
+	} else if r.Resource == "root" {
+		return "OrganizationAccountAccessRole"
 	}
 	return id.UserID
 }
