@@ -27,12 +27,12 @@ type Client struct {
 
 // Session contains Okta session information.
 type Session struct {
-	ID        string
-	Login     string
-	UserID    string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	Status    string
+	ID        string    `json:"id"`
+	Login     string    `json:"login"`
+	UserID    string    `json:"userId"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Status    string    `json:"status"`
 }
 
 // AppLink is an app that the user can access.

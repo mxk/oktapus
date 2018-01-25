@@ -65,7 +65,7 @@ type authnClient struct {
 	Authenticator
 }
 
-// response is a response to an authentication request.
+// response is the client's response to an authentication request.
 type response struct {
 	FID        string `json:"fid,omitempty"`
 	StateToken string `json:"stateToken"`
@@ -75,10 +75,10 @@ type response struct {
 
 // result is the result of an authentication request.
 type result struct {
-	StateToken   string
-	SessionToken string
-	Status       string
-	FactorResult string
+	StateToken   string                      `json:"stateToken"`
+	SessionToken string                      `json:"sessionToken"`
+	Status       string                      `json:"status"`
+	FactorResult string                      `json:"factorResult"`
 	Embedded     struct{ Factors []*Factor } `json:"_embedded"`
 	Links        struct{ Next, Prev *link }  `json:"_links"`
 }

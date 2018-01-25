@@ -121,7 +121,7 @@ func TestClientRefresh(t *testing.T) {
 	assert.Equal(t, want, sortByID(c.Accounts()))
 }
 
-func TestClientState(t *testing.T) {
+func TestClientEncodeDecode(t *testing.T) {
 	sess := mockSession()
 	creds := &StaticCreds{
 		Value: credentials.Value{
