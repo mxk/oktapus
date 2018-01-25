@@ -12,7 +12,7 @@ import (
 func TestSAMLParser(t *testing.T) {
 	sa, err := samlAssertionFromHTML(samlResponse(assertion))
 	require.NoError(t, err)
-	require.Equal(t, assertion, string(sa))
+	require.Equal(t, assertion, sa)
 	attrs, err := sa.attrs()
 	require.NoError(t, err)
 	want := []*samlAttr{{
@@ -31,11 +31,11 @@ func TestSAMLParser(t *testing.T) {
 func TestSAMLParserError(t *testing.T) {
 	_, err := samlAssertionFromHTML(bytes.NewReader(nil))
 	require.Equal(t, ErrNoSAMLResponse, err)
-	_, err = samlAssertionFromHTML(samlResponse(""))
+	_, err = samlAssertionFromHTML(samlResponse(nil))
 	require.Equal(t, ErrNoSAMLResponse, err)
 }
 
-const assertion = `<?xml version="1.0" encoding="UTF-8"?>
+var assertion = samlAssertion(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 <Assertion>
 <AttributeStatement>
@@ -50,15 +50,15 @@ const assertion = `<?xml version="1.0" encoding="UTF-8"?>
 	</Attribute>
 </AttributeStatement>
 </Assertion>
-</Response>`
+</Response>`)
 
-func samlResponse(assertion string) *bytes.Buffer {
+func samlResponse(assertion samlAssertion) *bytes.Buffer {
 	var buf bytes.Buffer
 	buf.WriteString("<!DOCTYPE html><html><head></head><body><form>" +
 		`<input name="SAMLResponse" type="hidden" value="`)
 	enc := base64.StdEncoding
 	b := make([]byte, enc.EncodedLen(len(assertion)))
-	base64.StdEncoding.Encode(b, []byte(assertion))
+	base64.StdEncoding.Encode(b, assertion)
 	buf.Write(b)
 	buf.WriteString(`"/></form></body></html>`)
 	return &buf

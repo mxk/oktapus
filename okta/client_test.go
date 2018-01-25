@@ -105,6 +105,42 @@ func TestClientError(t *testing.T) {
 	assert.NotEmpty(t, err.Error())
 }
 
+func TestClientOpenAWS(t *testing.T) {
+	c, s := newClientServer(true)
+	path := "/home/amazon_aws/0oadf3msocpPj5Hck0h7/137"
+	links := []*AppLink{{
+		ID:               "00ub0oNGTSWTBKOLGLNR",
+		Label:            "Google Apps Mail",
+		LinkURL:          "https://localhost" + path,
+		AppName:          "aws",
+		AppInstanceID:    "0oa3omz2i9XRNSRIHBZO",
+		AppAssignmentID:  "0ua3omz7weMMMQJERBKY",
+		CredentialsSetup: false,
+		Hidden:           false,
+		SortOrder:        0,
+	}}
+	s.Response["/api/v1/users/00ubgaSARVOQDIOXMORI/appLinks"] = links
+	have, err := c.AppLinks()
+	require.NoError(t, err)
+	require.Equal(t, links, have)
+
+	s.Response[path] = func(w http.ResponseWriter, r *http.Request) {
+		w.Write(samlResponse(assertion).Bytes())
+	}
+	auth, err := c.OpenAWS(links[0].LinkURL, "")
+	require.NoError(t, err)
+	want := &AWSAuth{
+		SAML: assertion,
+		Roles: []awsRole{{
+			Principal: "arn:aws:iam::000000000000:saml-provider/Okta",
+			Role:      "arn:aws:iam::000000000000:role/OktapusGateway",
+		}},
+		RoleSessionName: "user@example.com",
+		SessionDuration: 43200 * time.Second,
+	}
+	assert.Equal(t, want, auth)
+}
+
 type auth struct {
 	user  string
 	pass  string
