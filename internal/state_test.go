@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -60,35 +59,27 @@ func TestStateUpdate(t *testing.T) {
 	assert.False(t, a.Modified())
 	assert.Equal(t, []byte("v2"), a.Get("k2"))
 
-	a.Set("k1", []byte("a"))
+	a.Set("k1", []byte("aa"))
 	b.Set("k1", []byte("b"))
 	b.Save()
 	a.Update()
 
-	assert.Equal(t, []byte("a"), a.Get("k1"))
+	assert.Equal(t, []byte("aa"), a.Get("k1"))
 	assert.Equal(t, []byte("v2"), a.Get("k2"))
 	assert.Equal(t, []byte("b"), b.Get("k1"))
 	assert.Equal(t, []byte("v2"), b.Get("k2"))
 
 	assert.False(t, a.Modified())
 	assert.False(t, b.Modified())
-	fi1, err1 := os.Stat(tmp)
 	a.Save()
-	fi2, err2 := os.Stat(tmp)
 	assert.True(t, b.Modified())
-
-	assert.NoError(t, err1)
-	assert.NoError(t, err2)
-
-	fmt.Printf("size=%v mod=%v\n", fi1.Size(), fi1.ModTime())
-	fmt.Printf("size=%v mod=%v\n", fi2.Size(), fi2.ModTime())
 
 	b.Set("k2", nil)
 	b.Update()
 
-	assert.Equal(t, []byte("a"), a.Get("k1"))
+	assert.Equal(t, []byte("aa"), a.Get("k1"))
 	assert.Equal(t, []byte("v2"), a.Get("k2"))
-	assert.Equal(t, []byte("a"), b.Get("k1"))
+	assert.Equal(t, []byte("aa"), b.Get("k1"))
 	assert.Nil(t, b.Get("k2"))
 
 	b.Save()
