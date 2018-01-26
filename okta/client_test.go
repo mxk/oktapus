@@ -168,11 +168,20 @@ func newAuth(s *mock.Server) *auth {
 	return &auth{user: "user", pass: "pass", input: "123"}
 }
 
-func (a *auth) Username() (string, error)         { return a.user, a.err }
-func (a *auth) Password() (string, error)         { return a.pass, a.err }
-func (a *auth) Select(c []Choice) (Choice, error) { return c[a.sel], a.err }
-func (a *auth) Input(Choice) (string, error)      { return a.input, a.err }
-func (a *auth) Notify(string, ...interface{})     {}
+func (a *auth) Username() (string, error)     { return a.user, a.err }
+func (a *auth) Password() (string, error)     { return a.pass, a.err }
+func (a *auth) Notify(string, ...interface{}) {}
+
+func (a *auth) Select(c []Choice) (Choice, error) {
+	c[a.sel].Key()
+	c[a.sel].Value()
+	return c[a.sel], a.err
+}
+
+func (a *auth) Input(c Choice) (string, error) {
+	c.Prompt()
+	return a.input, a.err
+}
 
 func newClientServer(auth bool) (*Client, *mock.Server) {
 	var s *mock.Server
