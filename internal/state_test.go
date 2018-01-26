@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -71,8 +72,16 @@ func TestStateUpdate(t *testing.T) {
 
 	assert.False(t, a.Modified())
 	assert.False(t, b.Modified())
+	fi1, err1 := os.Stat(tmp)
 	a.Save()
+	fi2, err2 := os.Stat(tmp)
 	assert.True(t, b.Modified())
+
+	assert.NoError(t, err1)
+	assert.NoError(t, err2)
+
+	fmt.Printf("size=%v mod=%v\n", fi1.Size(), fi1.ModTime())
+	fmt.Printf("size=%v mod=%v\n", fi2.Size(), fi2.ModTime())
 
 	b.Set("k2", nil)
 	b.Update()
