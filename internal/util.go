@@ -99,24 +99,19 @@ func StringsEq(a, b []string) bool {
 }
 
 // Dedent removes leading tab characters from each line in s. The first line is
-// ignored, the next non-blank line determines the amount of indentation to
-// remove.
+// skipped, the next line containing non-tab characters determines the number of
+// tabs to remove.
 func Dedent(s string) string {
-	i, n := strings.IndexByte(s, '\n'), 1
-	if i != -1 {
-	loop:
-		for i+n < len(s) {
-			switch s[i+n] {
-			case '\t':
-				n++
-			case '\n':
-				i, n = i+n, 1
-			default:
-				break loop
-			}
+	n, i := 0, strings.IndexByte(s, '\n')
+	for j := i + 1; j < len(s); j++ {
+		if c := s[j]; c == '\n' {
+			i = j
+		} else if c != '\t' {
+			n = j - i - 1
+			break
 		}
 	}
-	if n--; n == 0 {
+	if i == -1 || n == 0 {
 		return s
 	}
 	b := make([]byte, 0, len(s))
