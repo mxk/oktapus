@@ -19,6 +19,7 @@ import (
 // Client provides access to Okta API.
 type Client struct {
 	BaseURL url.URL
+	Client  *http.Client
 
 	session   Session
 	sidCookie string
@@ -26,12 +27,12 @@ type Client struct {
 
 // Session contains Okta session information.
 type Session struct {
-	ID        string
-	Login     string
-	UserID    string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	Status    string
+	ID        string    `json:"id"`
+	Login     string    `json:"login"`
+	UserID    string    `json:"userId"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Status    string    `json:"status"`
 }
 
 // AppLink is an app that the user can access.
@@ -53,6 +54,7 @@ type AppLink struct {
 func NewClient(host string) *Client {
 	return &Client{
 		BaseURL: url.URL{Scheme: "https", Host: host, Path: "/api/v1/"},
+		Client:  http.DefaultClient,
 	}
 }
 
@@ -112,7 +114,7 @@ func (c *Client) OpenAWS(appLink, roleARN string) (*AWSAuth, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "*/*")
-	rsp, err := http.DefaultClient.Do(req)
+	rsp, err := c.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +188,7 @@ func (c *Client) do(method string, ref *url.URL, in, out interface{}) error {
 	req, err := c.newReq(method, ref, in)
 	if err == nil {
 		var rsp *http.Response
-		if rsp, err = http.DefaultClient.Do(req); err == nil {
+		if rsp, err = c.Client.Do(req); err == nil {
 			err = readResponse(rsp, out)
 		}
 	}

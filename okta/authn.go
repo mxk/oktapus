@@ -28,11 +28,11 @@ type Choice interface {
 // Factor is a factor object returned by MFA_ENROLL, MFA_REQUIRED, or
 // MFA_CHALLENGE authentication responses.
 type Factor struct {
-	ID         string
-	FactorType string
-	Provider   string
-	VendorName string
-	Profile    profile
+	ID         string                 `json:"id"`
+	FactorType string                 `json:"factorType"`
+	Provider   string                 `json:"provider"`
+	VendorName string                 `json:"vendorName"`
+	Profile    profile                `json:"profile"`
 	Links      struct{ Verify *link } `json:"_links"`
 	drv        mfaDriver
 }
@@ -65,7 +65,7 @@ type authnClient struct {
 	Authenticator
 }
 
-// response is a response to an authentication request.
+// response is the client's response to an authentication request.
 type response struct {
 	FID        string `json:"fid,omitempty"`
 	StateToken string `json:"stateToken"`
@@ -75,10 +75,10 @@ type response struct {
 
 // result is the result of an authentication request.
 type result struct {
-	StateToken   string
-	SessionToken string
-	Status       string
-	FactorResult string
+	StateToken   string                      `json:"stateToken"`
+	SessionToken string                      `json:"sessionToken"`
+	Status       string                      `json:"status"`
+	FactorResult string                      `json:"factorResult"`
 	Embedded     struct{ Factors []*Factor } `json:"_embedded"`
 	Links        struct{ Next, Prev *link }  `json:"_links"`
 }
@@ -279,12 +279,14 @@ func (totp) run(f *Factor, c *authnClient, r *result) (*result, error) {
 // push implements push notification verification protocol.
 type push struct{ driver }
 
+var pushPollDelay = 2 * time.Second
+
 func (push) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	in := response{FID: f.ID, StateToken: r.StateToken}
 	r, err := c.nav(f.Links.Verify, &in)
 	c.Notify("Waiting for approval from your %s... ", f.Profile.Name)
 	for err == nil && r.FactorResult == "WAITING" {
-		time.Sleep(2 * time.Second)
+		time.Sleep(pushPollDelay)
 		r, err = c.nav(r.Links.Next, &in)
 	}
 	c.Notify("%s\n", r.FactorResult)
