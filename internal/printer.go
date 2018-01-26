@@ -85,6 +85,9 @@ func (p *Printer) Print(w io.Writer, fn PrintRowFunc) {
 
 	// Column names and separators
 	if p.Writer != nil {
+		if len(p.pad) == 0 {
+			return // All columns have zero width
+		}
 		last := len(p.Cols) - 1
 		for i := range p.Cols {
 			p.PrintCol(i, p.Cols[i].Name, i < last)
