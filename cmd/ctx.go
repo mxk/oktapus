@@ -71,8 +71,8 @@ func (ctx *Ctx) Okta() *okta.Client {
 			log.E("Failed to decode Okta client state: %v", err)
 		}
 	}
-	if ctx.okta.Authenticated() {
-		err := ctx.okta.RefreshSession()
+	if ctx.okta.Session() != nil {
+		err := ctx.okta.RefreshSession("")
 		if err == nil {
 			ctx.Save()
 			return ctx.okta

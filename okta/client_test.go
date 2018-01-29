@@ -32,9 +32,9 @@ func TestClientAuthenticate(t *testing.T) {
 		mock.WriteJSON(w, sess)
 	}
 
-	assert.False(t, c.Authenticated())
+	assert.Nil(t, c.Session())
 	require.NoError(t, c.Authenticate(auth))
-	assert.True(t, c.Authenticated())
+	assert.NotNil(t, c.Session())
 	assert.Equal(t, "sid="+sess.ID, c.sidCookie)
 }
 
@@ -51,7 +51,7 @@ func TestClientRefresh(t *testing.T) {
 		mock.WriteJSON(w, sess)
 	}
 	sid, exp := sess.ID, c.session.ExpiresAt
-	require.NoError(t, c.RefreshSession())
+	require.NoError(t, c.RefreshSession(""))
 	assert.True(t, c.session.ExpiresAt.After(exp))
 	assert.Equal(t, "sid="+sid, c.sidCookie)
 }
@@ -77,7 +77,7 @@ func TestClientEncodeDecode(t *testing.T) {
 	c = NewClient("localhost")
 	c.Client = cc
 	require.NoError(t, c.GobDecode(b))
-	assert.True(t, c.Authenticated())
+	assert.NotNil(t, c.Session())
 
 	sess := s.Response["/api/v1/sessions"].(*Session)
 	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +85,7 @@ func TestClientEncodeDecode(t *testing.T) {
 		mock.WriteJSON(w, sess)
 	}
 	exp := c.session.ExpiresAt
-	require.NoError(t, c.RefreshSession())
+	require.NoError(t, c.RefreshSession(""))
 	assert.True(t, c.session.ExpiresAt.After(exp))
 }
 
@@ -102,7 +102,7 @@ func TestClientError(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		mock.WriteJSON(w, err)
 	}
-	assert.Equal(t, err, c.RefreshSession())
+	assert.Equal(t, err, c.RefreshSession(""))
 	assert.NotEmpty(t, err.Error())
 }
 
