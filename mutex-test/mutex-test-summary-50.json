@@ -1,0 +1,50 @@
+[
+  {
+    "Workers": 50,
+    "Delay": 0,
+    "Tests": 10,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 1000000000,
+    "Tests": 18,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 2000000000,
+    "Tests": 34,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 3000000000,
+    "Tests": 10,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 4000000000,
+    "Tests": 85,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 5000000000,
+    "Tests": 10,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 6000000000,
+    "Tests": 63,
+    "Failures": 1
+  },
+  {
+    "Workers": 50,
+    "Delay": 7000000000,
+    "Tests": 870,
+    "Failures": 0
+  }
+]
