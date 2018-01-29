@@ -68,9 +68,7 @@ func Run(args []string) {
 	}
 
 	// Run
-	ctx := NewCtx()
-	defer ctx.Save()
-	if err := cmd.Run(ctx, args); err != nil {
+	if err := cmd.Run(NewCtx(), args); err != nil {
 		log.F("Command error: %v\n", err)
 	}
 }
