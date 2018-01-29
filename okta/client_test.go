@@ -41,7 +41,8 @@ func TestClientAuthenticate(t *testing.T) {
 func TestClientRefresh(t *testing.T) {
 	c, s := newClientServer(true)
 	sess := s.Response["/api/v1/sessions"].(*Session)
-	s.Response["/api/v1/sessions/me"] = func(w http.ResponseWriter, r *http.Request) {
+	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
 		sid, err := r.Cookie("sid")
 		require.NoError(t, err)
 		assert.Equal(t, sess.ID, sid.Value)
@@ -79,7 +80,7 @@ func TestClientEncodeDecode(t *testing.T) {
 	assert.True(t, c.Authenticated())
 
 	sess := s.Response["/api/v1/sessions"].(*Session)
-	s.Response["/api/v1/sessions/me"] = func(w http.ResponseWriter, r *http.Request) {
+	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
 		sess.ExpiresAt = sess.ExpiresAt.Add(time.Hour)
 		mock.WriteJSON(w, sess)
 	}
@@ -96,7 +97,7 @@ func TestClientError(t *testing.T) {
 		Link:    "link",
 		ReqID:   "id",
 	}
-	s.Response["/api/v1/sessions/me"] = func(w http.ResponseWriter, r *http.Request) {
+	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		mock.WriteJSON(w, err)
