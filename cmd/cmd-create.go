@@ -19,17 +19,19 @@ import (
 )
 
 func init() {
-	register(&Create{command: command{
-		name:    []string{"create"},
+	register(&cmdInfo{
+		names:   []string{"create"},
 		summary: "Create new account(s)",
 		usage:   "[options] num account-name root-email",
 		minArgs: 3,
 		maxArgs: 3,
-	}})
+		new:     func() Cmd { return &Create{Name: "create"} },
+	})
 }
 
 type Create struct {
-	command
+	Name
+	PrintFmt
 	exec bool
 }
 
@@ -66,7 +68,7 @@ func (cmd *Create) Help(w *bufio.Writer) {
 type newAccountsOutput struct{ Name, Email string }
 
 func (cmd *Create) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.BoolVar(&cmd.exec, "exec", false,
 		"Execute account creation (list names/emails otherwise)")
 }
@@ -174,9 +176,9 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 	}
 	wg.Wait()
 	if !cmd.exec {
-		return cmd.PrintOutput(ls)
+		return cmd.Print(ls)
 	}
-	return cmd.PrintOutput(listResults(acs.Sort()))
+	return cmd.Print(listResults(acs.Sort()))
 }
 
 // counter generates strings with a single dynamic int field.

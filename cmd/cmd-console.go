@@ -26,17 +26,18 @@ const (
 )
 
 func init() {
-	register(&Console{command: command{
-		name:    []string{"console", "cons"},
+	register(&cmdInfo{
+		names:   []string{"console", "cons"},
 		summary: "Open AWS management console",
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &Console{Name: "console"} },
+	})
 }
 
 type Console struct {
-	command
+	Name
 	switchRole bool
 }
 

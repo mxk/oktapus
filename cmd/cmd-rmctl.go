@@ -8,22 +8,24 @@ import (
 )
 
 func init() {
-	register(&RmCtl{command: command{
-		name:    []string{"rmctl"},
+	register(&cmdInfo{
+		names:   []string{"rmctl"},
 		summary: "Remove account control information",
 		usage:   "-confirm [account-spec]",
 		maxArgs: 1,
 		hidden:  true,
-	}})
+		new:     func() Cmd { return &RmCtl{Name: "rmctl"} },
+	})
 }
 
 type RmCtl struct {
-	command
+	Name
+	PrintFmt
 	confirm bool
 }
 
 func (cmd *RmCtl) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.BoolVar(&cmd.confirm, "confirm", false, "Confirm operation")
 }
 
@@ -31,7 +33,7 @@ func (cmd *RmCtl) Run(ctx *Ctx, args []string) error {
 	if !cmd.confirm {
 		usageErr(cmd, "-confirm option required")
 	}
-	cmd.PadArgs(&args)
+	padArgs(cmd, &args)
 	acs, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
@@ -42,5 +44,5 @@ func (cmd *RmCtl) Run(ctx *Ctx, args []string) error {
 			_, ac.Err = ac.IAM.DeleteRole(&in)
 		}
 	})
-	return cmd.PrintOutput(listResults(acs))
+	return cmd.Print(listResults(acs))
 }

@@ -9,17 +9,19 @@ import (
 )
 
 func init() {
-	register(&Creds{command: command{
-		name:    []string{"creds"},
+	register(&cmdInfo{
+		names:   []string{"creds"},
 		summary: "Get account credentials",
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &Creds{Name: "creds"} },
+	})
 }
 
 type Creds struct {
-	command
+	Name
+	PrintFmt
 	renew  bool
 	user   string
 	policy string
@@ -42,7 +44,7 @@ func (cmd *Creds) Help(w *bufio.Writer) {
 }
 
 func (cmd *Creds) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.BoolVar(&cmd.renew, "renew", false,
 		"Renew temporary credentials")
 	fs.StringVar(&cmd.user, "user", "",
@@ -61,7 +63,7 @@ func (cmd *Creds) Run(ctx *Ctx, args []string) error {
 	}
 	out := listCreds(acs, cmd.renew)
 	if cmd.user == "" {
-		return cmd.PrintOutput(out)
+		return cmd.Print(out)
 	}
 	user := newPathName(cmd.user)
 	if cmd.tmp {
@@ -88,7 +90,7 @@ func (cmd *Creds) Run(ctx *Ctx, args []string) error {
 			c.Error = explainError(err)
 		}
 	})
-	return cmd.PrintOutput(out)
+	return cmd.Print(out)
 }
 
 // keyMaker creates new IAM user access keys.

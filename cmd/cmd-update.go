@@ -7,18 +7,20 @@ import (
 )
 
 func init() {
-	register(&Update{command: command{
-		name:    []string{"update", "tag"},
+	register(&cmdInfo{
+		names:   []string{"update", "tag"},
 		summary: "Update account tags and/or description",
 		usage:   "[options] account-spec [tags]",
 		minArgs: 1,
 		maxArgs: 2,
-	}})
+		new:     func() Cmd { return &Update{Name: "update"} },
+	})
 }
 
 type Update struct {
-	command
-	desc string
+	Name
+	PrintFmt
+	desc *string
 }
 
 func (cmd *Update) Help(w *bufio.Writer) {
@@ -34,32 +36,31 @@ func (cmd *Update) Help(w *bufio.Writer) {
 }
 
 func (cmd *Update) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.StringVar(&cmd.desc, "desc", "", "Set account description")
+	cmd.PrintFmt.FlagCfg(fs)
+	StringPtrVar(fs, &cmd.desc, "desc", "Set account description")
 }
 
 func (cmd *Update) Run(ctx *Ctx, args []string) error {
-	cmd.PadArgs(&args)
+	padArgs(cmd, &args)
 	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	setDesc := cmd.HaveFlag(&cmd.desc)
 	tags := newAccountSpec(args[1], ctx.AWS().CommonRole)
-	if !setDesc && len(tags.idx) == 0 {
+	if cmd.desc == nil && len(tags.idx) == 0 {
 		usageErr(cmd, "either description or tags must be specified")
 	}
 	mod := match[:0]
 	for _, ac := range match {
 		if ac.Err == nil {
-			if setDesc {
-				ac.Desc = cmd.desc
+			if cmd.desc != nil {
+				ac.Desc = *cmd.desc
 			}
 			ac.Tags = cmd.updateTags(ac.Tags, tags)
 			mod = append(mod, ac)
 		}
 	}
-	return cmd.PrintOutput(listAccounts(mod.Save()))
+	return cmd.Print(listAccounts(mod.Save()))
 }
 
 func (cmd *Update) updateTags(tags []string, s *accountSpec) []string {

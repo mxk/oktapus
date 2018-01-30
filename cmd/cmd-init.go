@@ -6,16 +6,20 @@ import (
 )
 
 func init() {
-	register(&Init{command: command{
-		name:    []string{"init"},
+	register(&cmdInfo{
+		names:   []string{"init"},
 		summary: "Initialize account control information",
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &Init{Name: "init"} },
+	})
 }
 
-type Init struct{ command }
+type Init struct {
+	Name
+	PrintFmt
+}
 
 func (cmd *Init) Help(w *bufio.Writer) {
 	writeHelp(w, `
@@ -44,5 +48,5 @@ func (cmd *Init) Run(ctx *Ctx, args []string) error {
 			ac.Err = errInit
 		}
 	})
-	return cmd.PrintOutput(listResults(match))
+	return cmd.Print(listResults(match))
 }

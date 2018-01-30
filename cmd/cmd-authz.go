@@ -11,17 +11,19 @@ import (
 // TODO: List role ARNs in output. How to use -tmp for oktapus users?
 
 func init() {
-	register(&Authz{command: command{
-		name:    []string{"authz"},
+	register(&cmdInfo{
+		names:   []string{"authz"},
 		summary: "Authorize account access",
 		usage:   "[options] account-spec role-name [role-name ...]",
 		minArgs: 2,
-	}})
+		new:     func() Cmd { return &Authz{Name: "authz"} },
+	})
 }
 
 type Authz struct {
-	command
-	desc      string
+	Name
+	PrintFmt
+	desc      *string
 	policy    string
 	principal string
 	tmp       bool
@@ -46,8 +48,8 @@ func (cmd *Authz) Help(w *bufio.Writer) {
 }
 
 func (cmd *Authz) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.StringVar(&cmd.desc, "desc", "",
+	cmd.PrintFmt.FlagCfg(fs)
+	StringPtrVar(fs, &cmd.desc, "desc",
 		"Set account description")
 	fs.StringVar(&cmd.policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
@@ -69,14 +71,10 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 			roles[i].path = tmpIAMPath + roles[i].path[1:]
 		}
 	}
-	if !cmd.HaveFlag(&cmd.principal) {
+	if cmd.principal == "" {
 		cmd.principal = ctx.AWS().Ident().AccountID
 	}
 	assumeRolePolicy := aws.String(newAssumeRolePolicy(cmd.principal))
-	var desc *string
-	if cmd.HaveFlag(&cmd.desc) {
-		desc = aws.String(cmd.desc)
-	}
 	acs.Apply(func(ac *Account) {
 		if ac.Err != nil {
 			return
@@ -84,7 +82,7 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 		for _, r := range roles {
 			in := iam.CreateRoleInput{
 				AssumeRolePolicyDocument: assumeRolePolicy,
-				Description:              desc,
+				Description:              cmd.desc,
 				Path:                     aws.String(r.path),
 				RoleName:                 aws.String(r.name),
 			}
@@ -102,5 +100,5 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 			}
 		}
 	})
-	return cmd.PrintOutput(listResults(acs))
+	return cmd.Print(listResults(acs))
 }

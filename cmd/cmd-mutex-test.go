@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,14 +21,15 @@ import (
 )
 
 func init() {
-	register(&MutexTest{command: command{
-		name:    []string{"mutex-test"},
+	register(&cmdInfo{
+		names:   []string{"mutex-test"},
 		summary: "Test account owner mutex",
 		usage:   "[options] num-workers",
 		minArgs: 1,
 		maxArgs: 1,
 		hidden:  true,
-	}})
+		new:     func() Cmd { return &MutexTest{Name: "mutex-test"} },
+	})
 }
 
 const reportBatch = 10
@@ -38,7 +40,7 @@ var (
 	freeDelay    = 10 * time.Second
 )
 
-type MutexTest struct{ command }
+type MutexTest struct{ Name }
 
 type delaySummary struct {
 	Workers  int
@@ -59,6 +61,8 @@ type testResult struct {
 	FinalOwner   string
 	Pass         bool
 }
+
+func (cmd *MutexTest) FlagCfg(fs *flag.FlagSet) {}
 
 func (cmd *MutexTest) Run(_ *Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])

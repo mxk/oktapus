@@ -6,17 +6,19 @@ import (
 )
 
 func init() {
-	register(&Free{command: command{
-		name:    []string{"free"},
+	register(&cmdInfo{
+		names:   []string{"free"},
 		summary: "Release accounts",
 		usage:   "[options] [account-spec]",
 		minArgs: 0,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &Free{Name: "free"} },
+	})
 }
 
 type Free struct {
-	command
+	Name
+	PrintFmt
 	force bool
 }
 
@@ -32,13 +34,13 @@ func (cmd *Free) Help(w *bufio.Writer) {
 }
 
 func (cmd *Free) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.BoolVar(&cmd.force, "force", false,
 		"Release account even if you are not the owner")
 }
 
 func (cmd *Free) Run(ctx *Ctx, args []string) error {
-	cmd.PadArgs(&args)
+	padArgs(cmd, &args)
 	acs, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
@@ -64,5 +66,5 @@ func (cmd *Free) Run(ctx *Ctx, args []string) error {
 	tmp.Filter(func(ac *Account) bool {
 		return ac.Err == nil
 	}).Save()
-	return cmd.PrintOutput(listResults(acs))
+	return cmd.Print(listResults(acs))
 }

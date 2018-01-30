@@ -3,21 +3,23 @@ package cmd
 import "flag"
 
 func init() {
-	register(&List{command: command{
-		name:    []string{"list", "ls"},
+	register(&cmdInfo{
+		names:   []string{"list", "ls"},
 		summary: "List accounts",
 		usage:   "[options] [account-spec]",
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &List{Name: "list"} },
+	})
 }
 
 type List struct {
-	command
+	Name
+	PrintFmt
 	refresh bool
 }
 
 func (cmd *List) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.BoolVar(&cmd.refresh, "refresh", false, "Refresh account information")
 }
 
@@ -27,10 +29,10 @@ func (cmd *List) Run(ctx *Ctx, args []string) error {
 			return err
 		}
 	}
-	cmd.PadArgs(&args)
+	padArgs(cmd, &args)
 	match, err := ctx.Accounts(args[0])
 	if err != nil {
 		return err
 	}
-	return cmd.PrintOutput(listAccounts(match))
+	return cmd.Print(listAccounts(match))
 }

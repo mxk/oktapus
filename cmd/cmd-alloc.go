@@ -9,17 +9,19 @@ import (
 )
 
 func init() {
-	register(&Alloc{command: command{
-		name:    []string{"alloc"},
+	register(&cmdInfo{
+		names:   []string{"alloc"},
 		summary: "Allocate accounts",
 		usage:   "[options] [num] [account-spec]",
 		minArgs: 1,
 		maxArgs: 2,
-	}})
+		new:     func() Cmd { return &Alloc{Name: "alloc"} },
+	})
 }
 
 type Alloc struct {
-	command
+	Name
+	PrintFmt
 	owner string
 }
 
@@ -39,7 +41,7 @@ func (cmd *Alloc) Help(w *bufio.Writer) {
 }
 
 func (cmd *Alloc) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
+	cmd.PrintFmt.FlagCfg(fs)
 	fs.StringVar(&cmd.owner, "owner", "", "Override default owner `name`")
 }
 
@@ -49,7 +51,7 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 		if n < 1 || 100 < n {
 			usageErr(cmd, "number of accounts must be between 1 and 100")
 		}
-		cmd.PadArgs(&args)
+		padArgs(cmd, &args)
 		args = args[1:]
 	} else if len(args) != 1 {
 		usageErr(cmd, "first argument must be a number")
@@ -106,5 +108,5 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 		n -= len(batch)
 		alloc = append(alloc, batch...)
 	}
-	return cmd.PrintOutput(listCreds(alloc.Sort(), false))
+	return cmd.Print(listCreds(alloc.Sort(), false))
 }

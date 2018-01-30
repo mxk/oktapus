@@ -7,30 +7,29 @@ import (
 )
 
 func init() {
-	register(&AccountSpec{command: command{
-		name:    []string{"account-spec"},
+	register(&cmdInfo{
+		names:   []string{"account-spec"},
 		summary: "Show detailed help for account-spec argument",
 		maxArgs: -1,
 		hidden:  true,
-	}})
+		new:     func() Cmd { return AccountSpec{} },
+	})
 }
 
-type AccountSpec struct{ command }
+type AccountSpec struct{}
 
-func (cmd *AccountSpec) Help(w *bufio.Writer) {
-	cmd.long(w)
-}
+func (AccountSpec) Info() *cmdInfo           { return cmds["account-spec"] }
+func (AccountSpec) Help(w *bufio.Writer)     { accountSpecLongHelp(w) }
+func (AccountSpec) FlagCfg(fs *flag.FlagSet) {}
 
-func (cmd *AccountSpec) FlagCfg(fs *flag.FlagSet) {}
-
-func (cmd *AccountSpec) Run(ctx *Ctx, args []string) error {
+func (AccountSpec) Run(ctx *Ctx, args []string) error {
 	buf := bufio.NewWriter(os.Stdout)
 	defer buf.Flush()
-	cmd.long(buf)
+	accountSpecLongHelp(buf)
 	return nil
 }
 
-func (*AccountSpec) short(w *bufio.Writer) {
+func accountSpecHelp(w *bufio.Writer) {
 	w.WriteByte('\n')
 	writeHelp(w, `
 		Run 'oktapus help account-spec' for details on account filtering
@@ -38,7 +37,7 @@ func (*AccountSpec) short(w *bufio.Writer) {
 	`)
 }
 
-func (*AccountSpec) long(w *bufio.Writer) {
+func accountSpecLongHelp(w *bufio.Writer) {
 	writeHelp(w, `
 		Account Filtering Specifications
 
