@@ -37,6 +37,7 @@ func usageErr(cmd Cmd, format string, v ...interface{}) {
 func help(err error) {
 	w, bin, exit := helpSetup(err)
 	defer exit()
+	fmt.Fprintf(w, "%s v%s\n", internal.AppName, internal.AppVersion)
 	fmt.Fprintf(w, "Usage: %s command [options] args\n", bin)
 	fmt.Fprintf(w, "       %s command help\n", bin)
 	fmt.Fprintf(w, "       %s help [command]\n\n", bin)
