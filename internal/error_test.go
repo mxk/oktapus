@@ -1,4 +1,4 @@
-package awsgw
+package internal
 
 import (
 	"bytes"
@@ -14,21 +14,21 @@ import (
 
 func TestError(t *testing.T) {
 	src := fmt.Errorf("error @ %v", time.Now())
-	enc := encodableError(src)
+	enc := EncodableError(src)
 	assert.NotEqual(t, src, enc)
 	dec := encodeDecode(t, src)
 
-	assert.True(t, dec == encodableError(dec))
+	assert.True(t, dec == EncodableError(dec))
 	assert.Equal(t, src.Error(), dec.Error())
 }
 
 func TestAWSError(t *testing.T) {
 	src := awserr.New("code", "msg", nil)
-	enc := encodableError(src)
+	enc := EncodableError(src)
 	assert.NotEqual(t, src, enc)
 	dec := encodeDecode(t, src).(awserr.BatchedErrors)
 
-	assert.True(t, dec == encodableError(dec))
+	assert.True(t, dec == EncodableError(dec))
 	assert.Equal(t, src.Error(), dec.Error())
 	assert.Equal(t, src.Code(), dec.Code())
 	assert.Equal(t, src.Message(), dec.Message())
@@ -38,7 +38,7 @@ func TestAWSError(t *testing.T) {
 
 func TestOrigError(t *testing.T) {
 	src := awserr.New("code", "msg", awserr.New("origCode", "origMsg", nil))
-	enc := encodableError(src)
+	enc := EncodableError(src)
 	assert.NotEqual(t, src, enc)
 	dec := encodeDecode(t, src).(awserr.BatchedErrors)
 
@@ -58,11 +58,11 @@ func TestOrigError(t *testing.T) {
 
 func TestRequestError(t *testing.T) {
 	src := awserr.NewRequestFailure(awserr.New("code", "msg", nil), 404, "id")
-	enc := encodableError(src)
+	enc := EncodableError(src)
 	assert.NotEqual(t, src, enc)
 	dec := encodeDecode(t, src).(awserr.RequestFailure)
 
-	assert.True(t, dec == encodableError(dec))
+	assert.True(t, dec == EncodableError(dec))
 	assert.Equal(t, src.Error(), dec.Error())
 	assert.Equal(t, src.Code(), dec.Code())
 	assert.Equal(t, src.Message(), dec.Message())
@@ -74,7 +74,7 @@ func TestRequestError(t *testing.T) {
 
 func encodeDecode(t *testing.T, err error) error {
 	type wrapper struct{ Err error }
-	src := wrapper{encodableError(err)}
+	src := wrapper{EncodableError(err)}
 	var buf bytes.Buffer
 	var dst wrapper
 	require.NoError(t, gob.NewEncoder(&buf).Encode(src))

@@ -1,4 +1,4 @@
-package awsgw
+package internal
 
 import (
 	"encoding/gob"
@@ -12,10 +12,16 @@ func init() {
 	gob.Register(new(awsReqErr))
 }
 
-// encodableError returns a representation of err that can be encoded by gob.
-func encodableError(err error) error {
+// GobRegistered is an interface implemented by types that can be safely encoded
+// in a gob stream.
+type GobRegistered interface {
+	GobRegistered()
+}
+
+// EncodableError returns a representation of err that can be encoded by gob.
+func EncodableError(err error) error {
 	switch err := err.(type) {
-	case nil, *strErr, *awsErr, *awsReqErr:
+	case nil, GobRegistered:
 		return err
 	case awserr.Error:
 		var orig []error
@@ -25,7 +31,7 @@ func encodableError(err error) error {
 			orig = []error{e}
 		}
 		for i := range orig {
-			orig[i] = encodableError(orig[i])
+			orig[i] = EncodableError(orig[i])
 		}
 		// Casting here only to confirm interface implementation
 		e := awserr.Error(&awsErr{
@@ -48,7 +54,8 @@ func encodableError(err error) error {
 
 type strErr struct{ Err string }
 
-func (e *strErr) Error() string { return e.Err }
+func (e *strErr) Error() string  { return e.Err }
+func (e *strErr) GobRegistered() {}
 
 //noinspection GoSnakeCaseUsage
 type awsErr struct {
@@ -63,6 +70,7 @@ func (e *awsErr) Code() string      { return e.getErr().Code() }
 func (e *awsErr) Message() string   { return e.getErr().Message() }
 func (e *awsErr) OrigErr() error    { return e.getErr().OrigErr() }
 func (e *awsErr) OrigErrs() []error { return e.getErr().OrigErrs() }
+func (e *awsErr) GobRegistered()    {}
 
 func (e *awsErr) getErr() awserr.BatchedErrors {
 	if e.err == nil {
@@ -86,6 +94,7 @@ func (e *awsReqErr) OrigErr() error    { return e.getErr().OrigErr() }
 func (e *awsReqErr) OrigErrs() []error { return e.getErr().OrigErrs() }
 func (e *awsReqErr) StatusCode() int   { return e.getErr().StatusCode() }
 func (e *awsReqErr) RequestID() string { return e.getErr().RequestID() }
+func (e *awsReqErr) GobRegistered()    {}
 
 func (e *awsReqErr) getErr() requestFailure {
 	if e.err == nil {

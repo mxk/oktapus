@@ -121,7 +121,7 @@ func (c *StaticCreds) Save() *StaticCreds {
 	if c.valid() {
 		s := *c
 		s.ProviderName = ""
-		s.Err = encodableError(c.Err)
+		s.Err = internal.EncodableError(c.Err)
 		return &s
 	}
 	return nil
