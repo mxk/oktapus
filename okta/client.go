@@ -90,7 +90,7 @@ func (c *Client) RefreshSession(sid string) error {
 	}
 	// The returned ID is an ExternalSessionID that does not replace the
 	// original sid cookie.
-	out.ID = c.session.ID
+	out.ID = sid
 	if err = c.setSession(&out); err != nil {
 		c.sidCookie = prev
 	}

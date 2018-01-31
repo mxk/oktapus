@@ -54,6 +54,17 @@ func TestClientRefresh(t *testing.T) {
 	require.NoError(t, c.RefreshSession(""))
 	assert.True(t, c.session.ExpiresAt.After(exp))
 	assert.Equal(t, "sid="+sid, c.sidCookie)
+	assert.Equal(t, sid, c.Session().ID)
+
+	restore := "oldsession"
+	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
+		sid, _ := r.Cookie("sid")
+		assert.Equal(t, restore, sid.Value)
+		mock.WriteJSON(w, sess)
+	}
+	require.NoError(t, c.RefreshSession(restore))
+	assert.Equal(t, "sid="+restore, c.sidCookie)
+	assert.Equal(t, restore, c.Session().ID)
 }
 
 func TestClientClose(t *testing.T) {
