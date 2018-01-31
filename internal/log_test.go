@@ -16,14 +16,14 @@ func TestLog(t *testing.T) {
 		assert.Equal(t, want, buf.String())
 		buf.Reset()
 	}
-	Log := log{&buf}
-	Log.D("debug")
+	l := &log{w: &buf}
+	l.D("debug")
 	eq("[D] debug\n")
-	Log.I("info")
+	l.I("info")
 	eq("[I] info\n")
-	Log.W("warning")
+	l.W("warning")
 	eq("[W] warning\n")
-	Log.E("error")
+	l.E("error")
 	eq("[E] error\n")
 }
 
@@ -40,4 +40,29 @@ func TestLogFatal(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, e.Success())
 	assert.Equal(t, "[F] fatal\n", string(out))
+}
+
+func TestLogWriter(t *testing.T) {
+	var buf bytes.Buffer
+	prev := Log.SetWriter(&buf)
+	require.True(t, prev == os.Stderr)
+	Log.I("writer")
+	assert.Equal(t, "[I] writer\n", buf.String())
+	assert.True(t, Log.SetWriter(prev) == &buf)
+}
+
+func TestLogFunc(t *testing.T) {
+	var buf bytes.Buffer
+	Log.SetWriter(nil)
+	Log.SetFunc(func(m *LogMsg) {
+		buf.WriteByte(m.Level)
+		buf.WriteByte(' ')
+		buf.WriteString(m.Msg)
+	})
+	Log.I("func")
+	assert.Equal(t, "I func\n", buf.String())
+	buf.Reset()
+	Log.SetFunc(nil)
+	Log.I("nil")
+	assert.Empty(t, buf.String())
 }
