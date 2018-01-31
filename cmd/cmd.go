@@ -238,6 +238,12 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 
+func init() {
+	gob.Register([]*resultsOutput{})
+	gob.Register([]*credsOutput{})
+	gob.Register([]*listOutput{})
+}
+
 // resultsOutput is the result of an account operation that does not provide any
 // other output.
 type resultsOutput struct {
