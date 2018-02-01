@@ -54,7 +54,7 @@ func help(err error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		fmt.Fprintf(w, "    %-*s  %s\n", maxLen, name, cmds[name].summary)
+		fmt.Fprintf(w, "  %-*s  %s\n", maxLen, name, cmds[name].summary)
 	}
 	accountSpecHelp(w)
 	w.WriteByte('\n')
