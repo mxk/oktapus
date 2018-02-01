@@ -15,17 +15,19 @@ func init() {
 		usage:   "[options] [num] [account-spec]",
 		minArgs: 1,
 		maxArgs: 2,
-		new:     func() Cmd { return &Alloc{Name: "alloc"} },
+		new:     func() Cmd { return &alloc{Name: "alloc"} },
 	})
 }
 
-type Alloc struct {
+type alloc struct {
 	Name
 	PrintFmt
-	owner string
+	Owner string
+	Num   int
+	Spec  string
 }
 
-func (cmd *Alloc) Help(w *bufio.Writer) {
+func (cmd *alloc) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Account allocation assigns an owner to an account, preventing anyone
 		else from allocating that account until it is freed. The owner is
@@ -40,12 +42,12 @@ func (cmd *Alloc) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Alloc) FlagCfg(fs *flag.FlagSet) {
+func (cmd *alloc) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	fs.StringVar(&cmd.owner, "owner", "", "Override default owner `name`")
+	fs.StringVar(&cmd.Owner, "owner", "", "Override default owner `name`")
 }
 
-func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
+func (cmd *alloc) Run(ctx *Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
 		if n < 1 || 100 < n {
@@ -58,23 +60,33 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 	} else {
 		n = -1
 	}
+	cmd.Num = n
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out.([]*credsOutput))
+	}
+	return err
+}
 
+func (cmd *alloc) Call(ctx *Ctx) (interface{}, error) {
 	// Find free accounts and randomize their order
-	acs, err := ctx.Accounts(args[0])
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	acs = acs.Filter(func(ac *Account) bool {
 		return ac.Err == nil && ac.Owner == ""
 	}).Shuffle()
+	n := cmd.Num
 	if n == -1 {
 		n = len(acs)
 	}
 
 	// Allocate in batches
 	owner := ctx.AWS().CommonRole
-	if cmd.owner != "" {
-		owner = cmd.owner
+	if cmd.Owner != "" {
+		owner = cmd.Owner
 	}
 	alloc := make(Accounts, 0, n)
 	for n > 0 {
@@ -84,8 +96,13 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 				ac.Owner = ""
 			}
 			alloc.Save()
-			return fmt.Errorf("allocation failed (need %d more account(s))",
-				n-len(acs))
+			n -= len(acs)
+			s := "s"
+			if n == 1 {
+				s = ""
+			}
+			return nil, fmt.Errorf("allocation failed (need %d more account%s)",
+				n, s)
 		}
 
 		// Set owner
@@ -108,5 +125,5 @@ func (cmd *Alloc) Run(ctx *Ctx, args []string) error {
 		n -= len(batch)
 		alloc = append(alloc, batch...)
 	}
-	return cmd.Print(listCreds(alloc.Sort(), false))
+	return listCreds(alloc.Sort(), false), nil
 }
