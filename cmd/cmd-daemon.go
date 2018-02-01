@@ -71,7 +71,7 @@ func run(ctx *Ctx, r *daemon.Request) error {
 	// TODO: Recover
 	cmd := r.Cmd.(CallableCmd)
 	out, err := cmd.Call(ctx)
-	r.Out <- &daemon.Response{out, err}
+	r.Out <- &daemon.Response{Out: out, Err: err}
 	return nil
 }
 

@@ -17,6 +17,11 @@ import (
 // fdEnv is an environment variable containing daemon's socket file descriptor.
 var fdEnv = strings.ToUpper(internal.AppName) + "_DAEMON_FD"
 
+var (
+	callTimeout   = 15 * time.Second
+	keepaliveRate = 10 * time.Second
+)
+
 // msg contains either a log message or a response from the daemon. An empty msg
 // is a keepalive.
 type msg struct {
@@ -40,7 +45,7 @@ func Call(ctx Ctx, cmd interface{}) (interface{}, error) {
 	}
 	dec := gob.NewDecoder(cn)
 	for {
-		cn.SetReadDeadline(internal.Time().Add(15 * time.Second))
+		cn.SetReadDeadline(internal.Time().Add(callTimeout))
 		var m msg
 		if err := dec.Decode(&m); err != nil {
 			panic(err)
@@ -200,20 +205,18 @@ func serve(cn net.Conn, ch chan<- *Request) {
 		log.E("Request decode error: %v", err)
 		return
 	}
-	keepalive := time.NewTicker(10 * time.Second)
+	keepalive := time.NewTicker(keepaliveRate)
 	defer keepalive.Stop()
 	for {
 		select {
 		case ch <- req:
 			ch = nil
 		case rsp := <-out:
-			if rsp == nil {
-				log.E("Response not returned")
-				return
-			}
-			rsp.Err = internal.EncodableError(rsp.Err)
-			if err := enc.Encode(msg{Rsp: rsp}); err != nil {
-				log.E("Response encode error: %v", err)
+			if rsp != nil {
+				rsp.Err = internal.EncodableError(rsp.Err)
+				if err := enc.Encode(msg{Rsp: rsp}); err != nil {
+					log.E("Response encode error: %v", err)
+				}
 			}
 			return
 		case <-keepalive.C:
