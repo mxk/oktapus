@@ -54,6 +54,7 @@ func TestLogFunc(t *testing.T) {
 		buf.WriteByte(m.Level)
 		buf.WriteByte(' ')
 		buf.WriteString(m.Msg)
+		buf.WriteByte('\n')
 	})
 	Log.I("func")
 	assert.Equal(t, "I func\n", buf.String())

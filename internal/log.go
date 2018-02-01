@@ -8,10 +8,11 @@ import (
 	"sync"
 )
 
-var Log = &log{w: os.Stderr, e: os.Exit}
+// Log is the default logger.
+var Log = NewLogger(os.Stderr, nil)
 
-// LogFunc is a function called for each log message. The logger guarantees that
-// the function will never be called concurrently.
+// LogFunc is called for each log message. It will never be called concurrently
+// by any loggers.
 type LogFunc func(m *LogMsg)
 
 // ExitFunc is called by Log.F to terminate the process.
@@ -23,16 +24,20 @@ type LogMsg struct {
 	Msg   string
 }
 
+// log writes messages to an io.Writer and/or a LogFunc.
 type log struct {
 	w io.Writer
 	f LogFunc
 	e ExitFunc
 }
 
+// NewLogger returns a new log instance.
+func NewLogger(w io.Writer, f LogFunc) *log {
+	return &log{w, f, os.Exit}
+}
+
+// logMu is held during all output operations.
 var logMu sync.Mutex
-var bufs = sync.Pool{New: func() interface{} {
-	return new(bytes.Buffer)
-}}
 
 // SetWriter sets log output writer. If w is nil, logging to a writer is
 // disabled.
@@ -75,6 +80,10 @@ func (l *log) F(format string, v ...interface{}) {
 
 func (l *log) Msg(m *LogMsg) { l.out(m.Level, "%s", m.Msg) }
 
+var bufs = sync.Pool{New: func() interface{} {
+	return new(bytes.Buffer)
+}}
+
 func (l *log) out(lvl byte, format string, v ...interface{}) {
 	b := bufs.Get().(*bytes.Buffer)
 	b.Reset()
@@ -88,10 +97,11 @@ func (l *log) out(lvl byte, format string, v ...interface{}) {
 	}
 	var m *LogMsg
 	if l.f != nil {
-		m = &LogMsg{
-			Level: lvl,
-			Msg:   string(b.Bytes()[si:]),
+		msg := b.Bytes()[si:]
+		if i := len(msg) - 1; i >= 0 && msg[i] == '\n' {
+			msg = msg[:i]
 		}
+		m = &LogMsg{Level: lvl, Msg: string(msg)}
 	}
 	logMu.Lock()
 	defer logMu.Unlock()
