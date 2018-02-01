@@ -14,29 +14,39 @@ func init() {
 		usage:   "-confirm [account-spec]",
 		maxArgs: 1,
 		hidden:  true,
-		new:     func() Cmd { return &RmCtl{Name: "rmctl"} },
+		new:     func() Cmd { return &rmCtl{Name: "rmctl"} },
 	})
 }
 
-type RmCtl struct {
+type rmCtl struct {
 	Name
 	PrintFmt
-	confirm bool
+	Confirm bool
+	Spec    string
 }
 
-func (cmd *RmCtl) FlagCfg(fs *flag.FlagSet) {
+func (cmd *rmCtl) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.confirm, "confirm", false, "Confirm operation")
+	fs.BoolVar(&cmd.Confirm, "confirm", false, "Confirm operation")
 }
 
-func (cmd *RmCtl) Run(ctx *Ctx, args []string) error {
-	if !cmd.confirm {
+func (cmd *rmCtl) Run(ctx *Ctx, args []string) error {
+	if !cmd.Confirm {
 		usageErr(cmd, "-confirm option required")
 	}
 	padArgs(cmd, &args)
-	acs, err := ctx.Accounts(args[0])
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
+	}
+	return err
+}
+
+func (cmd *rmCtl) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	acs.Apply(func(ac *Account) {
 		if ac.Err == nil {
@@ -44,5 +54,5 @@ func (cmd *RmCtl) Run(ctx *Ctx, args []string) error {
 			_, ac.Err = ac.IAM.DeleteRole(&in)
 		}
 	})
-	return cmd.Print(listResults(acs))
+	return listResults(acs), nil
 }
