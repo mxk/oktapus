@@ -12,16 +12,17 @@ func init() {
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-		new:     func() Cmd { return &Init{Name: "init"} },
+		new:     func() Cmd { return &initCmd{Name: "init"} },
 	})
 }
 
-type Init struct {
+type initCmd struct {
 	Name
 	PrintFmt
+	Spec string
 }
 
-func (cmd *Init) Help(w *bufio.Writer) {
+func (cmd *initCmd) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Initialize account control information.
 
@@ -33,13 +34,22 @@ func (cmd *Init) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Init) Run(ctx *Ctx, args []string) error {
-	match, err := ctx.Accounts(args[0])
+func (cmd *initCmd) Run(ctx *Ctx, args []string) error {
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out.([]*resultsOutput))
+	}
+	return err
+}
+
+func (cmd *initCmd) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	errInit := errors.New("already initialized")
-	match.Apply(func(ac *Account) {
+	acs.Apply(func(ac *Account) {
 		if ac.Ctl == nil {
 			ac.Ctl = new(Ctl)
 			ac.Err = ac.Ctl.init(ac.IAM)
@@ -48,5 +58,5 @@ func (cmd *Init) Run(ctx *Ctx, args []string) error {
 			ac.Err = errInit
 		}
 	})
-	return cmd.Print(listResults(match))
+	return listResults(acs), nil
 }
