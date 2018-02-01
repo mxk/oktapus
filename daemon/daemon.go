@@ -18,10 +18,10 @@ func init() {
 	gob.Register(new(internal.LogMsg))
 }
 
-// Ctx defines hooks for configuring the daemon.
+// Ctx is the interface for starting and locating the daemon process.
 type Ctx interface {
-	DaemonSig() map[string]string
-	DaemonCmd(addr string) *exec.Cmd
+	EnvMap() map[string]string
+	StartDaemon(c *exec.Cmd) error
 }
 
 // Request is a command sent to the daemon for execution.

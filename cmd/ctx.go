@@ -134,8 +134,8 @@ func (ctx *Ctx) Call(cmd CallableCmd) (interface{}, error) {
 	return daemon.Call(ctx, cmd)
 }
 
-// DaemonSig returns an environment map for generating daemon signature.
-func (ctx *Ctx) DaemonSig() map[string]string {
+// EnvMap returns an environment map for generating daemon signature.
+func (ctx *Ctx) EnvMap() map[string]string {
 	uid := ""
 	if u, err := user.Current(); err == nil {
 		uid = u.Uid
@@ -161,17 +161,13 @@ func (ctx *Ctx) DaemonSig() map[string]string {
 	}
 }
 
-// DaemonCmd returns a command that starts a new daemon process.
-func (ctx *Ctx) DaemonCmd(addr string) *exec.Cmd {
-	c := exec.Command(os.Args[0], "daemon", addr)
-	c.Env = os.Environ()
+// StartDaemon configures and starts a new daemon process.
+func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 	if ctx.UseOkta() {
 		s := ctx.Okta().Session()
 		c.Env = append(c.Env, "OKTA_SID="+s.ID)
 	}
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return c
+	return c.Start()
 }
 
 // newOktaCreds returns a CredsProvider that obtains a SAML assertion from Okta

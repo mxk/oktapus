@@ -2,9 +2,9 @@ package daemon
 
 import (
 	"encoding/gob"
-	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,7 +26,7 @@ type msg struct {
 
 // Addr returns the address of the daemon process for the given context.
 func Addr(ctx Ctx) string {
-	m := ctx.DaemonSig()
+	m := ctx.EnvMap()
 	return filepath.Join(os.TempDir(), internal.AppName+"."+sig(m))
 }
 
@@ -154,24 +154,32 @@ func dialOrStart(ctx Ctx) *net.UnixConn {
 
 // start creates a new daemon process.
 func start(ctx Ctx, addr string) {
-	c := ctx.DaemonCmd(addr)
+	path, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		panic(err)
+	}
 	s := listenUnix(addr)
-	s.SetUnlinkOnClose(false)
 	defer s.Close()
 	f, err := s.File()
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
-	if c.SysProcAttr == nil {
-		c.SysProcAttr = new(syscall.SysProcAttr)
+	name := filepath.Base(path)
+	c := exec.Cmd{
+		Path:        name,
+		Args:        []string{name, "daemon", addr},
+		Env:         append(os.Environ(), fdEnv+"=3"),
+		Dir:         filepath.Dir(path),
+		Stdout:      os.Stdout,
+		Stderr:      os.Stderr,
+		ExtraFiles:  []*os.File{f},
+		SysProcAttr: &syscall.SysProcAttr{Setpgid: true},
 	}
-	c.SysProcAttr.Setpgid = true
-	c.ExtraFiles = append(c.ExtraFiles, f)
-	c.Env = append(c.Env, fmt.Sprintf("%s=%d", fdEnv, 2+len(c.ExtraFiles)))
-	if err = c.Start(); err != nil {
+	if err = ctx.StartDaemon(&c); err != nil {
 		panic(err)
 	}
+	s.SetUnlinkOnClose(false)
 }
 
 // serve handles a single connection request.
