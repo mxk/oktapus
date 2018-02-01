@@ -51,7 +51,7 @@ func (cmd *initCmd) Call(ctx *Ctx) (interface{}, error) {
 	errInit := errors.New("already initialized")
 	acs.Apply(func(ac *Account) {
 		if ac.Ctl == nil {
-			ac.Ctl = new(Ctl)
+			ac.Ctl = &Ctl{Tags: []string{"init"}}
 			ac.Err = ac.Ctl.init(ac.IAM)
 			// TODO: Use errInit if role exists
 		} else if ac.Err == nil {
