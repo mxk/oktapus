@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -221,16 +222,36 @@ func StringPtrVar(fs *flag.FlagSet, p **string, name string, usage string) {
 	fs.Var(strPtrValue{p}, name, usage)
 }
 
-func (f strPtrValue) String() string {
-	if *f.v == nil {
+func (s strPtrValue) String() string {
+	if *s.v == nil {
 		return ""
 	}
-	return **f.v
+	return **s.v
 }
 
-func (f strPtrValue) Set(s string) error {
-	*f.v = &s
+func (s strPtrValue) Set(val string) error {
+	*s.v = &val
 	return nil
+}
+
+// boolPtrValue implements flag.Value for *bool types.
+type boolPtrValue struct{ v **bool }
+
+func BoolPtrVar(fs *flag.FlagSet, p **bool, name string, usage string) {
+	fs.Var(boolPtrValue{p}, name, usage)
+}
+
+func (b boolPtrValue) String() string {
+	if *b.v == nil {
+		return "false"
+	}
+	return strconv.FormatBool(**b.v)
+}
+
+func (b boolPtrValue) Set(val string) error {
+	v, err := strconv.ParseBool(val)
+	*b.v = &v
+	return err
 }
 
 // usageError indicates a problem with the command-line arguments.

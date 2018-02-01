@@ -17,15 +17,17 @@ func init() {
 
 type killDaemon struct {
 	Name
-	active, others bool
+	active *bool
+	others bool
 }
 
 func (cmd *killDaemon) FlagCfg(fs *flag.FlagSet) {
-	fs.BoolVar(&cmd.active, "active", true, "Kill the active daemon")
+	BoolPtrVar(fs, &cmd.active, "active", "Kill the active daemon")
 	fs.BoolVar(&cmd.others, "others", false, "Kill non-active daemons")
 }
 
 func (cmd *killDaemon) Run(ctx *Ctx, args []string) error {
-	daemon.Kill(ctx, cmd.active, cmd.others)
+	active := !cmd.others || (cmd.active != nil && *cmd.active)
+	daemon.Kill(ctx, active, cmd.others)
 	return nil
 }
