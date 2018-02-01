@@ -12,17 +12,17 @@ func init() {
 		summary: "Show detailed help for account-spec argument",
 		maxArgs: -1,
 		hidden:  true,
-		new:     func() Cmd { return AccountSpec{} },
+		new:     func() Cmd { return specHelp{} },
 	})
 }
 
-type AccountSpec struct{}
+type specHelp struct{}
 
-func (AccountSpec) Info() *cmdInfo           { return cmds["account-spec"] }
-func (AccountSpec) Help(w *bufio.Writer)     { accountSpecLongHelp(w) }
-func (AccountSpec) FlagCfg(fs *flag.FlagSet) {}
+func (specHelp) Info() *cmdInfo           { return cmds["account-spec"] }
+func (specHelp) Help(w *bufio.Writer)     { accountSpecLongHelp(w) }
+func (specHelp) FlagCfg(fs *flag.FlagSet) {}
 
-func (AccountSpec) Run(ctx *Ctx, args []string) error {
+func (specHelp) Run(ctx *Ctx, args []string) error {
 	buf := bufio.NewWriter(os.Stdout)
 	defer buf.Flush()
 	accountSpecLongHelp(buf)
