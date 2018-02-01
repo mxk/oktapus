@@ -32,16 +32,17 @@ func init() {
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-		new:     func() Cmd { return &Console{Name: "console"} },
+		new:     func() Cmd { return &console{Name: "console"} },
 	})
 }
 
-type Console struct {
+type console struct {
 	Name
-	switchRole bool
+	SwitchRole bool
+	Spec       string
 }
 
-func (cmd *Console) Help(w *bufio.Writer) {
+func (cmd *console) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Open AWS management console.
 
@@ -59,39 +60,43 @@ func (cmd *Console) Help(w *bufio.Writer) {
 	`)
 }
 
-func (cmd *Console) FlagCfg(fs *flag.FlagSet) {
-	fs.BoolVar(&cmd.switchRole, "sr", false,
+func (cmd *console) FlagCfg(fs *flag.FlagSet) {
+	fs.BoolVar(&cmd.SwitchRole, "sr", false,
 		`Open "Switch Role" page to avoid logging out`)
 }
 
-func (cmd *Console) Run(ctx *Ctx, args []string) error {
-	match, err := ctx.Accounts(args[0])
+func (cmd *console) Run(ctx *Ctx, args []string) error {
+	// TODO: Call creds command instead and open from the current process?
+	cmd.Spec = args[0]
+	_, err := ctx.Call(cmd)
+	return err
+}
+
+func (cmd *console) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	switch len(match) {
-	case 0:
-		log.F("Account not found")
-	case 1:
-	default:
-		log.F("Multiple matching accounts found")
+	if len(acs) != 1 {
+		return nil, fmt.Errorf("account spec %q matched %d accounts",
+			cmd.Spec, len(acs))
 	}
-	ac := match[0]
-	if cmd.switchRole {
-		return cmd.SwitchRole(ac.ID, ac.Name, ctx.AWS().CommonRole)
+	ac := acs[0]
+	if cmd.SwitchRole {
+		return nil, cmd.switchRole(ac.ID, ac.Name, ctx.AWS().CommonRole)
 	}
 	c, err := ac.Creds(false)
 	if err == nil {
-		err = cmd.Open(c.Value)
+		err = cmd.open(c.Value)
 	}
-	return err
+	return nil, err
 }
 
 // colors are predefined on the switch role page. Custom colors not accepted.
 var colors = []string{"F2B0A9", "FBBF93", "FAD791", "B7CA9D", "99BCE3"}
 
-// SwitchRole allows the user to access another account without logging out.
-func (*Console) SwitchRole(accountID, accountName, role string) error {
+// switchRole allows the user to access another account without logging out.
+func (*console) switchRole(accountID, accountName, role string) error {
 	id, _ := strconv.ParseInt(accountID, 10, 64)
 	q := make(url.Values)
 	q.Set("account", accountID)
@@ -101,9 +106,9 @@ func (*Console) SwitchRole(accountID, accountName, role string) error {
 	return browser.OpenURL(roleURL + "?" + q.Encode())
 }
 
-// Open launches AWS management console using the process described here:
+// open launches AWS management console using the process described here:
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html
-func (*Console) Open(cr credentials.Value) error {
+func (*console) open(cr credentials.Value) error {
 	in := struct {
 		AccessKeyID     string `json:"sessionId"`
 		SecretAccessKey string `json:"sessionKey"`
@@ -121,7 +126,6 @@ func (*Console) Open(cr credentials.Value) error {
 	if err != nil {
 		return err
 	}
-
 	h := req.Header
 	h.Set("Accept", "application/json")
 	h.Set("User-Agent", internal.UserAgent)
