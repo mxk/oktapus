@@ -28,7 +28,7 @@ func init() {
 		minArgs: 1,
 		maxArgs: 1,
 		hidden:  true,
-		new:     func() Cmd { return &MutexTest{Name: "mutex-test"} },
+		new:     func() Cmd { return &mutexTest{Name: "mutex-test"} },
 	})
 }
 
@@ -40,7 +40,7 @@ var (
 	freeDelay    = 10 * time.Second
 )
 
-type MutexTest struct{ Name }
+type mutexTest struct{ Name }
 
 type delaySummary struct {
 	Workers  int
@@ -62,9 +62,9 @@ type testResult struct {
 	Pass         bool
 }
 
-func (cmd *MutexTest) FlagCfg(fs *flag.FlagSet) {}
+func (cmd *mutexTest) FlagCfg(fs *flag.FlagSet) {}
 
-func (cmd *MutexTest) Run(_ *Ctx, args []string) error {
+func (cmd *mutexTest) Run(_ *Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if n < 1 || err != nil {
 		usageErr(cmd, "number of workers must be > 0")
