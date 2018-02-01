@@ -31,15 +31,19 @@ func (daemonCmd) Run(ctx *Ctx, args []string) error {
 	if _, err := os.Stat(addr); err == nil {
 		defer os.Remove(addr)
 	}
-	// TODO: Close stdout and stderr
-	log.SetWriter(nil)
 	const daemonTimeout = 36 * time.Hour
 	timeout := time.NewTimer(daemonTimeout)
 	ticker := time.NewTicker(10 * time.Minute)
 	ctx.NoDaemon = true
+	first := true
 	for {
 		select {
 		case c := <-call:
+			if first {
+				first = false
+				log.SetWriter(nil)
+				// TODO: Close stdout and stderr
+			}
 			if err := run(ctx, c); err != nil {
 				return err
 			}
@@ -55,18 +59,18 @@ func (daemonCmd) Run(ctx *Ctx, args []string) error {
 }
 
 // run executes a remote command.
-func run(ctx *Ctx, c *daemon.Cmd) error {
-	if c == nil {
+func run(ctx *Ctx, r *daemon.Request) error {
+	if r == nil {
 		return fmt.Errorf("command channel closed")
 	}
-	defer close(c.Out)
-	if _, ok := c.Cmd.(CallableCmd); !ok {
-		return fmt.Errorf("received command: %v", c.Cmd)
+	defer close(r.Out)
+	if _, ok := r.Cmd.(CallableCmd); !ok {
+		return fmt.Errorf("received command: %v", r.Cmd)
 	}
 	// TODO: Recover
-	cmd := c.Cmd.(CallableCmd)
-	out, err := cmd.Call(ctx, c.Args)
-	c.Out <- &daemon.Result{out, err}
+	cmd := r.Cmd.(CallableCmd)
+	out, err := cmd.Call(ctx)
+	r.Out <- &daemon.Response{out, err}
 	return nil
 }
 
