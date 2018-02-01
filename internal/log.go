@@ -95,18 +95,14 @@ func (l *log) out(lvl byte, format string, v ...interface{}) {
 	if n := len(format); n > 0 && format[n-1] != '\n' {
 		b.WriteByte('\n')
 	}
-	var m *LogMsg
+	logMu.Lock()
+	defer logMu.Unlock()
 	if l.f != nil {
 		msg := b.Bytes()[si:]
 		if i := len(msg) - 1; i >= 0 && msg[i] == '\n' {
 			msg = msg[:i]
 		}
-		m = &LogMsg{Level: lvl, Msg: string(msg)}
-	}
-	logMu.Lock()
-	defer logMu.Unlock()
-	if m != nil {
-		l.f(m)
+		l.f(&LogMsg{Level: lvl, Msg: string(msg)})
 	}
 	if l.w != nil {
 		l.w.Write(b.Bytes())
