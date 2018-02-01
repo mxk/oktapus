@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"os/exec"
-	"os/user"
+	"sort"
 
 	"github.com/LuminalHQ/oktapus/internal"
 )
@@ -14,49 +14,44 @@ import (
 var log = internal.Log
 
 func init() {
-	gob.Register(new(Result))
+	gob.Register(new(Response))
 	gob.Register(new(internal.LogMsg))
 }
 
 // Ctx defines hooks for configuring the daemon.
 type Ctx interface {
-	DaemonSig(w *bufio.Writer)
+	DaemonSig() map[string]string
 	DaemonCmd(addr string) *exec.Cmd
 }
 
-// Cmd is a command sent to the daemon for execution.
-type Cmd struct {
-	Cmd  interface{}
-	Args []string
-	Out  chan<- *Result
+// Request is a command sent to the daemon for execution.
+type Request struct {
+	Cmd interface{}
+	Out chan<- *Response
 }
 
-// Result is the command execution result.
-type Result struct {
+// Response is the command execution result.
+type Response struct {
 	Out interface{}
 	Err error
 }
 
 // sig returns an environment signature, which is a hash of variables that
 // affect daemon behavior.
-func sig(ctx Ctx) string {
+func sig(m map[string]string) string {
 	h := sha512.New()
 	w := bufio.NewWriter(h)
-	uid := ""
-	if u, err := user.Current(); err == nil {
-		uid = u.Uid
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	lines := [...][2]string{
-		{"VERSION", internal.AppVersion},
-		{"UID", uid},
-	}
-	for _, s := range lines {
-		w.WriteString(s[0])
+	sort.Strings(keys)
+	for _, k := range keys {
+		w.WriteString(k)
 		w.WriteByte('=')
-		w.WriteString(s[1])
+		w.WriteString(m[k])
 		w.WriteByte('\n')
 	}
-	ctx.DaemonSig(w)
 	var s [sha512.Size]byte
 	w.Flush()
 	h.Sum(s[:0])

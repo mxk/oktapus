@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"os"
 	"os/exec"
+	"os/user"
 	"sort"
 	"strconv"
 
@@ -127,38 +127,37 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 }
 
 // Call executes cmd locally or via a daemon process.
-func (ctx *Ctx) Call(cmd CallableCmd, args []string) (interface{}, error) {
+func (ctx *Ctx) Call(cmd CallableCmd) (interface{}, error) {
 	if ctx.NoDaemon {
-		return cmd.Call(ctx, args)
+		return cmd.Call(ctx)
 	}
-	return daemon.Call(ctx, cmd, args)
+	return daemon.Call(ctx, cmd)
 }
 
-// DaemonSig writes a description of ctx to b to generate a unique daemon
-// signature.
-func (ctx *Ctx) DaemonSig(w *bufio.Writer) {
-	keyID := ""
+// DaemonSig returns an environment map for generating daemon signature.
+func (ctx *Ctx) DaemonSig() map[string]string {
+	uid := ""
+	if u, err := user.Current(); err == nil {
+		uid = u.Uid
+	}
+	akid := ""
 	if !ctx.UseOkta() {
 		if sess, err := newSession(nil); err == nil {
 			v, err := sess.Config.Credentials.Get()
 			if err == nil && v.SessionToken == "" {
-				keyID = v.AccessKeyID
+				akid = v.AccessKeyID
 			}
 		}
 	}
-	lines := [...][2]string{
-		{"AWS_ACCESS_KEY_ID", keyID},
-		{"OKTA_ORG", ctx.OktaHost},
-		{"OKTA_SID", ctx.OktaSID},
-		{"OKTA_USERNAME", ctx.OktaUser},
-		{"OKTA_AWS_APP_URL", ctx.OktaAWSAppLink},
-		{"OKTA_AWS_ROLE_TO_ASSUME", ctx.AWSRoleARN},
-	}
-	for _, s := range lines {
-		w.WriteString(s[0])
-		w.WriteByte('=')
-		w.WriteString(s[1])
-		w.WriteByte('\n')
+	return map[string]string{
+		"VERSION":                 internal.AppVersion,
+		"UID":                     uid,
+		"AWS_ACCESS_KEY_ID":       akid,
+		"OKTA_ORG":                ctx.OktaHost,
+		"OKTA_SID":                ctx.OktaSID,
+		"OKTA_USERNAME":           ctx.OktaUser,
+		"OKTA_AWS_APP_URL":        ctx.OktaAWSAppLink,
+		"OKTA_AWS_ROLE_TO_ASSUME": ctx.AWSRoleARN,
 	}
 }
 

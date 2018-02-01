@@ -9,47 +9,53 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/LuminalHQ/oktapus/internal"
 )
 
-// fdEnv is an environment variable containing daemon's unix socket file
-// descriptor.
+// fdEnv is an environment variable containing daemon's socket file descriptor.
 var fdEnv = strings.ToUpper(internal.AppName) + "_DAEMON_FD"
+
+// msg contains either a log message or a response from the daemon. An empty msg
+// is a keepalive.
+type msg struct {
+	Msg *internal.LogMsg
+	Rsp *Response
+}
 
 // Addr returns the address of the daemon process for the given context.
 func Addr(ctx Ctx) string {
-	return filepath.Join(os.TempDir(), internal.AppName+"."+sig(ctx))
+	m := ctx.DaemonSig()
+	return filepath.Join(os.TempDir(), internal.AppName+"."+sig(m))
 }
 
 // Call executes cmd remotely and returns the result.
-func Call(ctx Ctx, cmd interface{}, args []string) (interface{}, error) {
+func Call(ctx Ctx, cmd interface{}) (interface{}, error) {
 	cn := dialOrStart(ctx)
 	defer cn.Close()
-	err := gob.NewEncoder(cn).Encode(&Cmd{Cmd: cmd, Args: args})
+	err := gob.NewEncoder(cn).Encode(&cmd)
 	if err != nil {
 		panic(err)
 	}
 	dec := gob.NewDecoder(cn)
-	// TODO: Timeout
 	for {
-		var v interface{}
-		if err := dec.Decode(&v); err != nil {
+		cn.SetReadDeadline(internal.Time().Add(15 * time.Second))
+		var m msg
+		if err := dec.Decode(&m); err != nil {
 			panic(err)
 		}
-		switch v := v.(type) {
-		case *Result:
-			return v.Out, v.Err
-		case *internal.LogMsg:
-			log.Msg(v)
-		default:
-			panic(fmt.Sprintf("unexpected daemon response: %#v", v))
+		if m.Msg != nil {
+			log.Msg(m.Msg)
+		}
+		if m.Rsp != nil {
+			return m.Rsp.Out, m.Rsp.Err
 		}
 	}
 }
 
 // Listen returns the channel on which the daemon receives incoming commands.
-func Listen(addr string) <-chan *Cmd {
+func Listen(addr string) <-chan *Request {
 	var s net.Listener
 	if v := os.Getenv(fdEnv); v != "" {
 		fd, err := strconv.Atoi(v)
@@ -63,16 +69,15 @@ func Listen(addr string) <-chan *Cmd {
 	} else {
 		s = listenUnix(addr)
 	}
-	ch := make(chan *Cmd)
+	ch := make(chan *Request)
 	go func() {
 		defer close(ch)
 		for {
 			cn, err := s.Accept()
 			if err != nil {
 				panic(err)
-			} else if !serve(cn, ch) {
-				return
 			}
+			serve(cn, ch)
 		}
 	}()
 	return ch
@@ -105,14 +110,17 @@ func Kill(ctx Ctx, active, others bool) {
 		if err != nil {
 			panic(err)
 		}
-		name := filepath.Ext(addr)[1:]
+		sig := filepath.Ext(addr)[1:]
 		cn, err := net.DialUnix("unix", nil, raddr)
 		if err != nil {
-			log.W("Error dialing daemon %q: %v", name, err)
+			if e, ok := err.(*net.OpError); !ok || !os.IsNotExist(e.Err) {
+				log.W("Error dialing daemon %q: %v", sig, err)
+			}
 			continue
 		}
-		if err = gob.NewEncoder(cn).Encode(&Cmd{Cmd: "quit"}); err != nil {
-			log.W("Error killing daemon %q: %v", name, err)
+		v := interface{}("quit")
+		if err = gob.NewEncoder(cn).Encode(&v); err != nil {
+			log.W("Error killing daemon %q: %v", sig, err)
 		}
 		cn.Close()
 	}
@@ -129,8 +137,8 @@ func dialOrStart(ctx Ctx) *net.UnixConn {
 	if err == nil {
 		return cn
 	}
-	e, exist := err.(*net.OpError)
-	if !exist {
+	e, ok := err.(*net.OpError)
+	if !ok {
 		panic(err)
 	}
 	sc, ok := e.Err.(*os.SyscallError)
@@ -167,41 +175,46 @@ func start(ctx Ctx, addr string) {
 }
 
 // serve handles a single connection request.
-func serve(cn net.Conn, ch chan<- *Cmd) bool {
+func serve(cn net.Conn, ch chan<- *Request) {
 	defer cn.Close()
 	ok, enc := true, gob.NewEncoder(cn)
 	prev := log.SetFunc(func(m *internal.LogMsg) {
 		if ok {
-			v := interface{}(m)
-			if err := enc.Encode(&v); err != nil {
+			if err := enc.Encode(msg{Msg: m}); err != nil {
 				ok = false
 			}
 		}
 	})
 	defer log.SetFunc(prev)
-	c := new(Cmd)
-	if err := gob.NewDecoder(cn).Decode(c); err != nil {
-		log.E("Call decode error: %v", err)
-		return false
+	out := make(chan *Response)
+	req := &Request{Out: out}
+	if err := gob.NewDecoder(cn).Decode(&req.Cmd); err != nil {
+		log.E("Request decode error: %v", err)
+		return
 	}
-	// TODO: Timeouts
-	out := make(chan *Result)
-	c.Out = out
-	ch <- c
-	r := <-out
-	if r == nil {
-		log.E("Call result not returned")
-		return false
+	keepalive := time.NewTicker(10 * time.Second)
+	defer keepalive.Stop()
+	for {
+		select {
+		case ch <- req:
+			ch = nil
+		case rsp := <-out:
+			if rsp == nil {
+				log.E("Response not returned")
+				return
+			}
+			rsp.Err = internal.EncodableError(rsp.Err)
+			if err := enc.Encode(msg{Rsp: rsp}); err != nil {
+				log.E("Response encode error: %v", err)
+			}
+			return
+		case <-keepalive.C:
+			if err := enc.Encode(msg{}); err != nil {
+				log.E("Keepalive encode error: %v", err)
+				keepalive.Stop()
+			}
+		}
 	}
-	if r.Err != nil {
-		r.Err = internal.EncodableError(r.Err)
-	}
-	v := interface{}(r)
-	if err := enc.Encode(&v); err != nil {
-		log.E("Call encode error: %v", err)
-		ok = false
-	}
-	return ok
 }
 
 // listenUnix creates a new unix listening socket.

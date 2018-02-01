@@ -13,6 +13,8 @@ import (
 )
 
 func TestError(t *testing.T) {
+	assert.Nil(t, EncodableError(nil))
+
 	src := fmt.Errorf("error @ %v", time.Now())
 	enc := EncodableError(src)
 	assert.NotEqual(t, src, enc)

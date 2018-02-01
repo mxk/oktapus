@@ -46,7 +46,7 @@ type Cmd interface {
 // CallableCmd is a command that can be called remotely.
 type CallableCmd interface {
 	Cmd
-	Call(ctx *Ctx, args []string) (interface{}, error)
+	Call(ctx *Ctx) (interface{}, error)
 }
 
 // Run is the main program entry point. It executes the command specified by
@@ -313,7 +313,7 @@ func listCreds(acs Accounts, renew bool) []*credsOutput {
 			Error:     explainError(ac.Err),
 		}
 		if ac.Err == nil {
-			co.Expires = expTime(cr.Exp)
+			co.Expires = expTime{cr.Exp}
 			co.AccessKeyID = cr.AccessKeyID
 			co.SecretAccessKey = cr.SecretAccessKey
 			co.SessionToken = cr.SessionToken
@@ -377,18 +377,18 @@ func (o *listOutput) PrintRow(p *internal.Printer) {
 
 // expTime handles credential expiration time encoding for JSON and printer
 // outputs.
-type expTime time.Time
+type expTime struct{ time.Time }
 
 func (t expTime) MarshalJSON() ([]byte, error) {
-	if time.Time(t).IsZero() {
+	if t.IsZero() {
 		return []byte(`""`), nil
 	}
-	return time.Time(t).MarshalJSON()
+	return t.MarshalJSON()
 }
 
 func (t expTime) String() string {
-	if time.Time(t).IsZero() {
+	if t.IsZero() {
 		return ""
 	}
-	return time.Time(t).Sub(internal.Time()).Truncate(time.Second).String()
+	return t.Sub(internal.Time()).Truncate(time.Second).String()
 }
