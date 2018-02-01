@@ -64,7 +64,7 @@ func (cmd *alloc) Run(ctx *Ctx, args []string) error {
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
 	if err == nil {
-		err = cmd.Print(out.([]*credsOutput))
+		err = cmd.Print(out)
 	}
 	return err
 }

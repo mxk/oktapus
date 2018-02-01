@@ -67,7 +67,7 @@ func (cmd *authz) Run(ctx *Ctx, args []string) error {
 	cmd.Roles = args[1:]
 	out, err := ctx.Call(cmd)
 	if err == nil {
-		err = cmd.Print(out.([]*resultsOutput))
+		err = cmd.Print(out)
 	}
 	return err
 }

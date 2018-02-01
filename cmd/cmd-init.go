@@ -38,7 +38,7 @@ func (cmd *initCmd) Run(ctx *Ctx, args []string) error {
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
 	if err == nil {
-		err = cmd.Print(out.([]*resultsOutput))
+		err = cmd.Print(out)
 	}
 	return err
 }
