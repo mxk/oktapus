@@ -15,20 +15,21 @@ func init() {
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-		new:     func() Cmd { return &Creds{Name: "creds"} },
+		new:     func() Cmd { return &creds{Name: "creds"} },
 	})
 }
 
-type Creds struct {
+type creds struct {
 	Name
 	PrintFmt
-	renew  bool
-	user   string
-	policy string
-	tmp    bool
+	Renew  bool
+	User   string
+	Policy string
+	Tmp    bool
+	Spec   string
 }
 
-func (cmd *Creds) Help(w *bufio.Writer) {
+func (cmd *creds) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Get account credentials.
 
@@ -43,37 +44,46 @@ func (cmd *Creds) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Creds) FlagCfg(fs *flag.FlagSet) {
+func (cmd *creds) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.renew, "renew", false,
+	fs.BoolVar(&cmd.Renew, "renew", false,
 		"Renew temporary credentials")
-	fs.StringVar(&cmd.user, "user", "",
+	fs.StringVar(&cmd.User, "user", "",
 		"Get long-term credentials for the `name`d IAM user")
-	fs.StringVar(&cmd.policy, "policy",
+	fs.StringVar(&cmd.Policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"Set user policy `ARN`")
-	fs.BoolVar(&cmd.tmp, "tmp", false,
+	fs.BoolVar(&cmd.Tmp, "tmp", false,
 		"Delete this user automatically when the account is freed")
 }
 
-func (cmd *Creds) Run(ctx *Ctx, args []string) error {
-	acs, err := ctx.Accounts(args[0])
+func (cmd *creds) Run(ctx *Ctx, args []string) error {
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
+	}
+	return err
+}
+
+func (cmd *creds) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	out := listCreds(acs, cmd.renew)
-	if cmd.user == "" {
-		return cmd.Print(out)
+	out := listCreds(acs, cmd.Renew)
+	if cmd.User == "" {
+		return out, nil
 	}
-	user := newPathName(cmd.user)
-	if cmd.tmp {
+	user := newPathName(cmd.User)
+	if cmd.Tmp {
 		user.path = tmpIAMPath + user.path[1:]
 	}
 	creds := make(map[string]*credsOutput, len(out))
 	for _, c := range out {
 		creds[c.AccountID] = c
 	}
-	km := newKeyMaker(user.path, user.name, cmd.policy)
+	km := newKeyMaker(user.path, user.name, cmd.Policy)
 	acs.Apply(func(ac *Account) {
 		if ac.Err != nil {
 			return
@@ -90,7 +100,7 @@ func (cmd *Creds) Run(ctx *Ctx, args []string) error {
 			c.Error = explainError(err)
 		}
 	})
-	return cmd.Print(out)
+	return out, nil
 }
 
 // keyMaker creates new IAM user access keys.
