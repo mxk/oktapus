@@ -8,31 +8,36 @@ func init() {
 		summary: "List accounts",
 		usage:   "[options] [account-spec]",
 		maxArgs: 1,
-		new:     func() Cmd { return &List{Name: "list"} },
+		new:     func() Cmd { return &list{Name: "list"} },
 	})
 }
 
-type List struct {
+type list struct {
 	Name
 	PrintFmt
-	refresh bool
+	Refresh bool
+	Spec    string
 }
 
-func (cmd *List) FlagCfg(fs *flag.FlagSet) {
+func (cmd *list) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.refresh, "refresh", false, "Refresh account information")
+	fs.BoolVar(&cmd.Refresh, "refresh", false, "Refresh account information")
 }
 
-func (cmd *List) Run(ctx *Ctx, args []string) error {
-	if cmd.refresh {
-		if err := ctx.AWS().Refresh(); err != nil {
-			return err
-		}
-	}
+func (cmd *list) Run(ctx *Ctx, args []string) error {
 	padArgs(cmd, &args)
-	match, err := ctx.Accounts(args[0])
-	if err != nil {
-		return err
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out.([]*listOutput))
 	}
-	return cmd.Print(listAccounts(match))
+	return err
+}
+
+func (cmd *list) Call(ctx *Ctx) (interface{}, error) {
+	if cmd.Refresh {
+		ctx.all = nil
+	}
+	acs, err := ctx.Accounts(cmd.Spec)
+	return listAccounts(acs), err
 }
