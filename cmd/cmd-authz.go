@@ -11,23 +11,27 @@ import (
 // TODO: List role ARNs in output. How to use -tmp for oktapus users?
 
 func init() {
-	register(&Authz{command: command{
-		name:    []string{"authz"},
+	register(&cmdInfo{
+		names:   []string{"authz"},
 		summary: "Authorize account access",
 		usage:   "[options] account-spec role-name [role-name ...]",
 		minArgs: 2,
-	}})
+		new:     func() Cmd { return &authz{Name: "authz"} },
+	})
 }
 
-type Authz struct {
-	command
-	desc      string
-	policy    string
-	principal string
-	tmp       bool
+type authz struct {
+	Name
+	PrintFmt
+	Desc      *string
+	Policy    string
+	Principal string
+	Tmp       bool
+	Spec      string
+	Roles     []string
 }
 
-func (cmd *Authz) Help(w *bufio.Writer) {
+func (cmd *authz) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Authorize account access by creating a new IAM role.
 
@@ -45,38 +49,44 @@ func (cmd *Authz) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Authz) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.StringVar(&cmd.desc, "desc", "",
+func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
+	cmd.PrintFmt.FlagCfg(fs)
+	StringPtrVar(fs, &cmd.Desc, "desc",
 		"Set account description")
-	fs.StringVar(&cmd.policy, "policy",
+	fs.StringVar(&cmd.Policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"Set role policy `ARN`")
-	fs.StringVar(&cmd.principal, "principal", "",
+	fs.StringVar(&cmd.Principal, "principal", "",
 		"Override default principal `ARN` for AssumeRole policy")
-	fs.BoolVar(&cmd.tmp, "tmp", false,
+	fs.BoolVar(&cmd.Tmp, "tmp", false,
 		"Delete this role automatically when the account is freed")
 }
 
-func (cmd *Authz) Run(ctx *Ctx, args []string) error {
-	acs, err := ctx.Accounts(args[0])
-	if err != nil {
-		return err
+func (cmd *authz) Run(ctx *Ctx, args []string) error {
+	cmd.Spec = args[0]
+	cmd.Roles = args[1:]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
 	}
-	roles := newPathNames(args[1:])
-	if cmd.tmp {
+	return err
+}
+
+func (cmd *authz) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
+	if err != nil {
+		return nil, err
+	}
+	roles := newPathNames(cmd.Roles)
+	if cmd.Tmp {
 		for i := range roles {
 			roles[i].path = tmpIAMPath + roles[i].path[1:]
 		}
 	}
-	if !cmd.HaveFlag(&cmd.principal) {
-		cmd.principal = ctx.AWS().Ident().AccountID
+	if cmd.Principal == "" {
+		cmd.Principal = ctx.AWS().Ident().AccountID
 	}
-	assumeRolePolicy := aws.String(newAssumeRolePolicy(cmd.principal))
-	var desc *string
-	if cmd.HaveFlag(&cmd.desc) {
-		desc = aws.String(cmd.desc)
-	}
+	assumeRolePolicy := aws.String(newAssumeRolePolicy(cmd.Principal))
 	acs.Apply(func(ac *Account) {
 		if ac.Err != nil {
 			return
@@ -84,16 +94,16 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 		for _, r := range roles {
 			in := iam.CreateRoleInput{
 				AssumeRolePolicyDocument: assumeRolePolicy,
-				Description:              desc,
+				Description:              cmd.Desc,
 				Path:                     aws.String(r.path),
 				RoleName:                 aws.String(r.name),
 			}
 			if _, ac.Err = ac.IAM.CreateRole(&in); ac.Err != nil {
 				break
 			}
-			if cmd.policy != "" {
+			if cmd.Policy != "" {
 				in := iam.AttachRolePolicyInput{
-					PolicyArn: aws.String(cmd.policy),
+					PolicyArn: aws.String(cmd.Policy),
 					RoleName:  aws.String(r.name),
 				}
 				if _, ac.Err = ac.IAM.AttachRolePolicy(&in); ac.Err != nil {
@@ -102,5 +112,5 @@ func (cmd *Authz) Run(ctx *Ctx, args []string) error {
 			}
 		}
 	})
-	return cmd.PrintOutput(listResults(acs))
+	return listResults(acs), nil
 }

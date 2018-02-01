@@ -1,18 +1,23 @@
 package cmd
 
+import "flag"
+
 func init() {
-	register(&Test{command: command{
-		name:    []string{"test"},
+	register(&cmdInfo{
+		names:   []string{"test"},
 		summary: "command for testing... stuff",
 		usage:   "...",
 		maxArgs: -1,
 		hidden:  true,
-	}})
+		new:     func() Cmd { return &test{Name: "test"} },
+	})
 }
 
-type Test struct{ command }
+type test struct{ Name }
 
-func (Test) Run(ctx *Ctx, args []string) error {
+func (test) FlagCfg(fs *flag.FlagSet) {}
+
+func (test) Run(ctx *Ctx, args []string) error {
 	ctx.Okta()
 	return nil
 }

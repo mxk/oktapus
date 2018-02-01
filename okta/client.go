@@ -63,25 +63,36 @@ func (c *Client) Authenticate(authn Authenticator) error {
 	return authenticate(c, authn)
 }
 
-// Authenticated returns true if authentication is complete.
-func (c *Client) Authenticated() bool {
-	return c.sidCookie != "" && internal.Time().Before(c.session.ExpiresAt)
+// Session returns current session information or nil if the client is not
+// authenticated.
+func (c *Client) Session() *Session {
+	if c.sidCookie != "" && internal.Time().Before(c.session.ExpiresAt) {
+		s := c.session
+		return &s
+	}
+	return nil
 }
 
-// RefreshSession extends the expiration time of the current session.
-func (c *Client) RefreshSession() error {
+// RefreshSession extends the expiration time of an existing session. If sid is
+// empty, the current session is refreshed.
+func (c *Client) RefreshSession(sid string) error {
+	if sid == "" {
+		sid = c.session.ID
+	}
+	prev := c.sidCookie
+	c.sidCookie = sidCookie(sid)
 	var out Session
-	// Okta API documentation is not very good, to put it mildly. Both "Get
-	// Current Session" and "Refresh Current Session" calls seem to extend
-	// session expiration time. Both also return an ID that does not match our
-	// sid cookie. Using the new ID for subsequent requests results in E0000007
-	// "Not found" error. Okta support says this is an ExternalSessionID.
-	ref := url.URL{Path: "sessions/me"}
-	err := c.do(http.MethodGet, &ref, nil, &out)
-	if err == nil {
-		out.ID = c.session.ID
-		out.ExpiresAt = out.ExpiresAt.Add(-time.Minute)
-		err = c.setSession(&out)
+	ref := url.URL{Path: "sessions/me/lifecycle/refresh"}
+	err := c.do(http.MethodPost, &ref, nil, &out)
+	if err != nil {
+		c.sidCookie = prev
+		return err
+	}
+	// The returned ID is an ExternalSessionID that does not replace the
+	// original sid cookie.
+	out.ID = sid
+	if err = c.setSession(&out); err != nil {
+		c.sidCookie = prev
 	}
 	return err
 }
@@ -163,7 +174,6 @@ func (c *Client) createSession(sessionToken string) error {
 	ref := url.URL{Path: "sessions"}
 	err := c.do(http.MethodPost, &ref, &in{sessionToken}, &out)
 	if err == nil {
-		out.ExpiresAt = out.ExpiresAt.Add(-time.Minute)
 		err = c.setSession(&out)
 	}
 	return err

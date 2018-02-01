@@ -6,21 +6,24 @@ import (
 )
 
 func init() {
-	register(&Free{command: command{
-		name:    []string{"free"},
+	register(&cmdInfo{
+		names:   []string{"free"},
 		summary: "Release accounts",
 		usage:   "[options] [account-spec]",
 		minArgs: 0,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &free{Name: "free"} },
+	})
 }
 
-type Free struct {
-	command
-	force bool
+type free struct {
+	Name
+	PrintFmt
+	Force bool
+	Spec  string
 }
 
-func (cmd *Free) Help(w *bufio.Writer) {
+func (cmd *free) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Release owned accounts.
 
@@ -31,21 +34,30 @@ func (cmd *Free) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Free) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.BoolVar(&cmd.force, "force", false,
+func (cmd *free) FlagCfg(fs *flag.FlagSet) {
+	cmd.PrintFmt.FlagCfg(fs)
+	fs.BoolVar(&cmd.Force, "force", false,
 		"Release account even if you are not the owner")
 }
 
-func (cmd *Free) Run(ctx *Ctx, args []string) error {
-	cmd.PadArgs(&args)
-	acs, err := ctx.Accounts(args[0])
+func (cmd *free) Run(ctx *Ctx, args []string) error {
+	padArgs(cmd, &args)
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
+	}
+	return err
+}
+
+func (cmd *free) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	commonRole := ctx.AWS().CommonRole
 	acs = acs.Filter(func(ac *Account) bool {
-		return ac.Err == nil && (cmd.force || ac.Owner == commonRole)
+		return ac.Err == nil && (cmd.Force || ac.Owner == commonRole)
 	})
 
 	// Clear owner and delete temporary users/roles
@@ -64,5 +76,5 @@ func (cmd *Free) Run(ctx *Ctx, args []string) error {
 	tmp.Filter(func(ac *Account) bool {
 		return ac.Err == nil
 	}).Save()
-	return cmd.PrintOutput(listResults(acs))
+	return listResults(acs), nil
 }

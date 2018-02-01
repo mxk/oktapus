@@ -2,17 +2,17 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
@@ -20,22 +20,33 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-// cmds maps command names to their implementations. New commands are added by
-// calling register() from an init() function.
-var cmds = make(map[string]Cmd)
+// cmds maps command names to info structs. New commands are added by calling
+// register() from init().
+var cmds = make(map[string]*cmdInfo)
 
-// Cmd defines the common command interface.
+// cmdInfo contains basic command information.
+type cmdInfo struct {
+	names   []string
+	summary string
+	usage   string
+	minArgs int
+	maxArgs int
+	hidden  bool
+	new     func() Cmd
+}
+
+// Cmd is an executable command interface.
 type Cmd interface {
-	Name() string      // Canonical command name
-	Aliases() []string // Alternate command names
-	Summary() string   // Short description for the main help page
-	Usage() string     // Syntax of options and arguments
-	NArgs() (int, int) // Min/max number of positional arguments
-	Hidden() bool      // Hide the command from the main help page
+	Info() *cmdInfo                    // Get command information
+	Help(w *bufio.Writer)              // Write detailed help info to w
+	FlagCfg(fs *flag.FlagSet)          // Configure flags
+	Run(ctx *Ctx, args []string) error // Run command
+}
 
-	Help(w *bufio.Writer)              // Writes detailed help info to w
-	FlagCfg(fs *flag.FlagSet)          // Configures flags
-	Run(ctx *Ctx, args []string) error // Runs command
+// CallableCmd is a command that can be called remotely.
+type CallableCmd interface {
+	Cmd
+	Call(ctx *Ctx) (interface{}, error)
 }
 
 // Run is the main program entry point. It executes the command specified by
@@ -50,12 +61,12 @@ func Run(args []string) {
 		if err == flag.ErrHelp {
 			err = nil
 		}
-		cmdHelp(cmd, err)
+		cmdHelp(cmd.Info(), err)
 	}
 
 	// Verify positional argument count
-	args = fs.Args()
-	if min, max := cmd.NArgs(); min == max && len(args) != min {
+	args, ci := fs.Args(), cmd.Info()
+	if min, max := ci.minArgs, ci.maxArgs; min == max && len(args) != min {
 		if min <= 0 {
 			usageErr(cmd, "command does not accept any arguments")
 		} else {
@@ -68,25 +79,22 @@ func Run(args []string) {
 	}
 
 	// Run
-	ctx := NewCtx()
-	defer ctx.Save()
-	if err := cmd.Run(ctx, args); err != nil {
+	if err := cmd.Run(NewCtx(), args); err != nil {
 		log.F("Command error: %v\n", err)
 	}
 }
 
-// register adds a new command to the cmds map.
-func register(cmd Cmd) {
-	name := cmd.Name()
-	if _, ok := cmds[name]; ok {
-		panic("cmd: duplicate command name: " + name)
-	}
-	cmds[name] = cmd
-	for _, alias := range cmd.Aliases() {
-		if _, ok := cmds[alias]; ok {
-			panic("cmd: duplicate command alias: " + alias)
+// register adds new command information to the cmds map.
+func register(ci *cmdInfo) {
+	for _, name := range ci.names {
+		if _, ok := cmds[name]; ok {
+			panic("duplicate command name: " + name)
 		}
-		cmds[alias] = cmd
+		cmds[name] = ci
+	}
+	cmd := ci.new()
+	if _, ok := cmd.(CallableCmd); ok {
+		gob.Register(cmd)
 	}
 }
 
@@ -94,18 +102,18 @@ func register(cmd Cmd) {
 // help, it shows the relevant help information and exits.
 func getCmd(args []string) (Cmd, []string) {
 	if len(args) > 0 {
-		if cmd := cmds[args[0]]; cmd != nil {
+		if ci := cmds[args[0]]; ci != nil {
 			if len(args) > 1 && isHelp(args[1]) {
-				cmdHelp(cmd, nil)
+				cmdHelp(ci, nil)
 			}
-			return cmd, args[1:]
+			return ci.new(), args[1:]
 		}
 		var unknown string
 		if !isHelp(args[0]) {
 			unknown = args[0]
 		} else if len(args) > 1 {
-			if cmd := cmds[args[1]]; cmd != nil {
-				cmdHelp(cmd, nil)
+			if ci := cmds[args[1]]; ci != nil {
+				cmdHelp(ci, nil)
 			}
 			unknown = args[1]
 		}
@@ -115,6 +123,20 @@ func getCmd(args []string) (Cmd, []string) {
 	}
 	help(nil)
 	panic("never reached")
+}
+
+// padArgs grows args to cmd's maximum number of arguments.
+func padArgs(cmd Cmd, args *[]string) {
+	max := cmd.Info().maxArgs
+	if n := len(*args); n < max {
+		if cap(*args) >= max {
+			*args = (*args)[:max]
+		} else {
+			tmp := make([]string, max)
+			copy(tmp, *args)
+			*args = tmp
+		}
+	}
 }
 
 // explainError returns a user-friendly representation of err.
@@ -143,84 +165,47 @@ func explainError(err error) string {
 	return ""
 }
 
-// command provides a partial implementation of the Cmd interface.
-type command struct {
-	name    []string
-	summary string
-	usage   string
-	minArgs int
-	maxArgs int
-	hidden  bool
+// Name provides common Cmd method implementations.
+type Name string
 
-	Flags  *flag.FlagSet
-	OutFmt string // -out flag
-
-	setFlags map[unsafe.Pointer]struct{}
+func (n Name) Info() *cmdInfo {
+	return cmds[string(n)]
 }
 
-func (c *command) Name() string      { return c.name[0] }
-func (c *command) Aliases() []string { return c.name[1:] }
-func (c *command) Summary() string   { return c.summary }
-func (c *command) Usage() string     { return c.usage }
-func (c *command) NArgs() (int, int) { return c.minArgs, c.maxArgs }
-func (c *command) Hidden() bool      { return c.hidden }
-
-// Help writes command help information to w.
-func (c *command) Help(w *bufio.Writer) {
-	w.WriteString(c.summary)
+func (n Name) Help(w *bufio.Writer) {
+	ci := cmds[string(n)]
+	w.WriteString(ci.summary)
 	w.WriteString(".\n")
-	if strings.Contains(c.usage, "account-spec") {
+	if strings.Contains(ci.usage, "account-spec") {
 		accountSpecHelp(w)
 	}
 }
 
-// FlagCfg configures command flags.
-func (c *command) FlagCfg(fs *flag.FlagSet) {
-	c.Flags = fs
+// PrintFmt implements the -out flag for commands that print table or JSON output.
+type PrintFmt string
+
+// flag.Value interface.
+func (f PrintFmt) String() string { return string(f) }
+func (f *PrintFmt) Set(s string) error {
+	*f = PrintFmt(s)
+	return nil
+}
+
+func (f *PrintFmt) FlagCfg(fs *flag.FlagSet) {
 	out := "json"
 	if terminal.IsTerminal(syscall.Stdout) {
 		out = "text"
 	}
-	fs.StringVar(&c.OutFmt, "out", out, "Output `format`: text|json")
+	*f = PrintFmt(out)
+	fs.Var(f, "out", "Output `format`: text|json")
 }
 
-// PadArgs ensures that args has at least maxArgs values.
-func (c *command) PadArgs(args *[]string) {
-	if n := len(*args); n < c.maxArgs {
-		if cap(*args) >= c.maxArgs {
-			*args = (*args)[:c.maxArgs]
-		} else {
-			tmp := make([]string, c.maxArgs)
-			copy(tmp, *args)
-			*args = tmp
-		}
-	}
-}
-
-// HaveFlag returns true if the specified flag was set on the command line. Ptr
-// must be a pointer obtained from or given to one of flag.FlagSet methods.
-func (c *command) HaveFlag(ptr interface{}) bool {
-	if c.setFlags == nil {
-		if c.Flags == nil || c.Flags.NFlag() == 0 {
-			return false
-		}
-		m := make(map[unsafe.Pointer]struct{}, c.Flags.NFlag())
-		c.Flags.Visit(func(f *flag.Flag) {
-			p := unsafe.Pointer(reflect.ValueOf(f.Value).Pointer())
-			m[p] = struct{}{}
-		})
-		c.setFlags = m
-	}
-	_, ok := c.setFlags[unsafe.Pointer(reflect.ValueOf(ptr).Pointer())]
-	return ok
-}
-
-// PrintOutput writes command output to stdout. When text format is used, cfg
-// and fn are forwarded to the printer.
-func (c *command) PrintOutput(v interface{}) error {
+// Print writes command output to stdout. When text format is used, cfg and fn
+// are forwarded to the printer.
+func (f PrintFmt) Print(v interface{}) error {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
-	if c.OutFmt == "text" {
+	if f == "text" {
 		internal.NewPrinter(v).Print(w, nil)
 		return nil
 	}
@@ -230,10 +215,55 @@ func (c *command) PrintOutput(v interface{}) error {
 	return enc.Encode(v)
 }
 
+// strPtrValue implements flag.Value for *string types.
+type strPtrValue struct{ v **string }
+
+func StringPtrVar(fs *flag.FlagSet, p **string, name string, usage string) {
+	fs.Var(strPtrValue{p}, name, usage)
+}
+
+func (s strPtrValue) String() string {
+	if s.v == nil || *s.v == nil {
+		return ""
+	}
+	return **s.v
+}
+
+func (s strPtrValue) Set(val string) error {
+	*s.v = &val
+	return nil
+}
+
+// boolPtrValue implements flag.Value for *bool types.
+type boolPtrValue struct{ v **bool }
+
+func BoolPtrVar(fs *flag.FlagSet, p **bool, name string, usage string) {
+	fs.Var(boolPtrValue{p}, name, usage)
+}
+
+func (b boolPtrValue) String() string {
+	if b.v == nil || *b.v == nil {
+		return "false"
+	}
+	return strconv.FormatBool(**b.v)
+}
+
+func (b boolPtrValue) Set(val string) error {
+	v, err := strconv.ParseBool(val)
+	*b.v = &v
+	return err
+}
+
 // usageError indicates a problem with the command-line arguments.
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
+
+func init() {
+	gob.Register([]*resultsOutput{})
+	gob.Register([]*credsOutput{})
+	gob.Register([]*listOutput{})
+}
 
 // resultsOutput is the result of an account operation that does not provide any
 // other output.
@@ -283,7 +313,7 @@ func listCreds(acs Accounts, renew bool) []*credsOutput {
 			Error:     explainError(ac.Err),
 		}
 		if ac.Err == nil {
-			co.Expires = expTime(cr.Exp)
+			co.Expires = expTime{cr.Exp}
 			co.AccessKeyID = cr.AccessKeyID
 			co.SecretAccessKey = cr.SecretAccessKey
 			co.SessionToken = cr.SessionToken
@@ -347,18 +377,18 @@ func (o *listOutput) PrintRow(p *internal.Printer) {
 
 // expTime handles credential expiration time encoding for JSON and printer
 // outputs.
-type expTime time.Time
+type expTime struct{ time.Time }
 
 func (t expTime) MarshalJSON() ([]byte, error) {
-	if time.Time(t).IsZero() {
+	if t.IsZero() {
 		return []byte(`""`), nil
 	}
-	return time.Time(t).MarshalJSON()
+	return t.MarshalJSON()
 }
 
 func (t expTime) String() string {
-	if time.Time(t).IsZero() {
+	if t.IsZero() {
 		return ""
 	}
-	return time.Time(t).Sub(internal.Time()).Truncate(time.Second).String()
+	return t.Sub(internal.Time()).Truncate(time.Second).String()
 }

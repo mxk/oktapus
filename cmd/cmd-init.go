@@ -6,18 +6,23 @@ import (
 )
 
 func init() {
-	register(&Init{command: command{
-		name:    []string{"init"},
+	register(&cmdInfo{
+		names:   []string{"init"},
 		summary: "Initialize account control information",
 		usage:   "[options] account-spec",
 		minArgs: 1,
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &initCmd{Name: "init"} },
+	})
 }
 
-type Init struct{ command }
+type initCmd struct {
+	Name
+	PrintFmt
+	Spec string
+}
 
-func (cmd *Init) Help(w *bufio.Writer) {
+func (cmd *initCmd) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Initialize account control information.
 
@@ -29,20 +34,29 @@ func (cmd *Init) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Init) Run(ctx *Ctx, args []string) error {
-	match, err := ctx.Accounts(args[0])
+func (cmd *initCmd) Run(ctx *Ctx, args []string) error {
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
+	}
+	return err
+}
+
+func (cmd *initCmd) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	errInit := errors.New("already initialized")
-	match.Apply(func(ac *Account) {
+	acs.Apply(func(ac *Account) {
 		if ac.Ctl == nil {
-			ac.Ctl = new(Ctl)
+			ac.Ctl = &Ctl{Tags: []string{"init"}}
 			ac.Err = ac.Ctl.init(ac.IAM)
 			// TODO: Use errInit if role exists
 		} else if ac.Err == nil {
 			ac.Err = errInit
 		}
 	})
-	return cmd.PrintOutput(listResults(match))
+	return listResults(acs), nil
 }

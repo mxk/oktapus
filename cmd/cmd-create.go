@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,21 +20,27 @@ import (
 )
 
 func init() {
-	register(&Create{command: command{
-		name:    []string{"create"},
+	register(&cmdInfo{
+		names:   []string{"create"},
 		summary: "Create new account(s)",
 		usage:   "[options] num account-name root-email",
 		minArgs: 3,
 		maxArgs: 3,
-	}})
+		new:     func() Cmd { return &create{Name: "create"} },
+	})
+	gob.Register([]*newAccountsOutput{})
 }
 
-type Create struct {
-	command
-	exec bool
+type create struct {
+	Name
+	PrintFmt
+	Exec     bool
+	Num      int
+	NameTpl  string
+	EmailTpl string
 }
 
-func (cmd *Create) Help(w *bufio.Writer) {
+func (cmd *create) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Create new accounts.
 
@@ -65,36 +72,45 @@ func (cmd *Create) Help(w *bufio.Writer) {
 
 type newAccountsOutput struct{ Name, Email string }
 
-func (cmd *Create) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.BoolVar(&cmd.exec, "exec", false,
+func (cmd *create) FlagCfg(fs *flag.FlagSet) {
+	cmd.PrintFmt.FlagCfg(fs)
+	fs.BoolVar(&cmd.Exec, "exec", false,
 		"Execute account creation (list names/emails otherwise)")
 }
 
-func (cmd *Create) Run(ctx *Ctx, args []string) error {
+func (cmd *create) Run(ctx *Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
-	name, email := args[1], args[2]
+	cmd.NameTpl, cmd.EmailTpl = args[1], args[2]
 	if err != nil {
 		usageErr(cmd, "first argument must be a number")
 	} else if n <= 0 {
 		usageErr(cmd, "number of accounts must be > 0")
 	} else if n > 50 {
 		usageErr(cmd, "number of accounts must be <= 50")
-	} else if i := strings.IndexByte(email, '@'); i == -1 {
+	} else if i := strings.IndexByte(cmd.EmailTpl, '@'); i == -1 {
 		usageErr(cmd, "invalid email address")
 	}
+	cmd.Num = n
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
+	}
+	return err
+}
 
+func (cmd *create) Call(ctx *Ctx) (interface{}, error) {
 	// Only the organization's master account can create new accounts
 	c := ctx.AWS()
 	masterID := c.OrgInfo().MasterAccountID
 	if id := c.Ident(); id.AccountID == "" || id.AccountID != masterID {
-		return fmt.Errorf("current account (%s) is not org master (%s)",
+		return nil, fmt.Errorf("current account (%s) is not org master (%s)",
 			id.AccountID, masterID)
 	}
 
 	// Configure name/email counters
-	nameCtr, nameErr := newCounter(name)
-	emailCtr, emailErr := newCounter(email)
+	n := cmd.Num
+	nameCtr, nameErr := newCounter(cmd.NameTpl)
+	emailCtr, emailErr := newCounter(cmd.EmailTpl)
 	if nameErr != nil {
 		usageErr(cmd, nameErr.Error())
 	} else if emailErr != nil {
@@ -103,13 +119,13 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 		usageErr(cmd, "account name/email format mismatch")
 	} else if nameCtr != nil {
 		if err := c.Refresh(); err != nil {
-			return err
+			return nil, err
 		}
 		setCounters(c.Accounts(), nameCtr, emailCtr)
 	} else if n > 1 {
 		usageErr(cmd, "account name/email must be dynamic templates")
 	} else {
-		nameCtr, emailCtr = &counter{p: name}, &counter{p: email}
+		nameCtr, emailCtr = &counter{p: cmd.NameTpl}, &counter{p: cmd.EmailTpl}
 	}
 
 	// Create accounts
@@ -118,7 +134,7 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 	go func() {
 		defer close(in)
 		for ; n > 0; n-- {
-			if cmd.exec {
+			if cmd.Exec {
 				in <- &orgs.CreateAccountInput{
 					AccountName: aws.String(nameCtr.String()),
 					Email:       aws.String(emailCtr.String()),
@@ -145,7 +161,7 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 		} else {
 			acs = append(acs, &Account{
 				Account: &awsgw.Account{Name: aws.StringValue(r.Name)},
-				Err:     err,
+				Err:     r.err,
 			})
 			continue
 		}
@@ -173,10 +189,10 @@ func (cmd *Create) Run(ctx *Ctx, args []string) error {
 		}(acs[len(acs)-1])
 	}
 	wg.Wait()
-	if !cmd.exec {
-		return cmd.PrintOutput(ls)
+	if !cmd.Exec {
+		return ls, nil
 	}
-	return cmd.PrintOutput(listResults(acs.Sort()))
+	return listResults(acs.Sort()), nil
 }
 
 // counter generates strings with a single dynamic int field.

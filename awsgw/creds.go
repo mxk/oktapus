@@ -121,7 +121,7 @@ func (c *StaticCreds) Save() *StaticCreds {
 	if c.valid() {
 		s := *c
 		s.ProviderName = ""
-		s.Err = encodableError(c.Err)
+		s.Err = internal.EncodableError(c.Err)
 		return &s
 	}
 	return nil
@@ -144,11 +144,13 @@ func (c *StaticCreds) valid() bool {
 }
 
 // SAMLCreds is a CredsProvider that exchanges a SAML assertion for temporary
-// security credentials.
+// security credentials. If Renew is set, it is called to renew the SAML
+// assertion before calling AssumeRoleWithSAML.
 type SAMLCreds struct {
 	stsCreds
 	sts.AssumeRoleWithSAMLInput
-	api AssumeRoleWithSAMLFunc
+	Renew func(in *sts.AssumeRoleWithSAMLInput) error
+	api   AssumeRoleWithSAMLFunc
 }
 
 // NewSAMLCreds returns a new SAML-based CredsProvider.
@@ -166,6 +168,11 @@ func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role, saml string) *SAM
 // Retrieve returns new STS credentials.
 func (c *SAMLCreds) Retrieve() (credentials.Value, error) {
 	return c.retrieve("SAMLCreds", func() (*sts.Credentials, error) {
+		if c.Renew != nil {
+			if err := c.Renew(&c.AssumeRoleWithSAMLInput); err != nil {
+				return nil, err
+			}
+		}
 		out, err := c.api(&c.AssumeRoleWithSAMLInput)
 		return out.Credentials, err
 	})

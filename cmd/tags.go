@@ -117,26 +117,21 @@ func newAccountSpec(spec, user string) *accountSpec {
 	return s
 }
 
-// Filter removes accounts from all that do not match the spec.
-func (s *accountSpec) Filter(all *Accounts) error {
-	var result Accounts
-	var err error
+// Filter returns only those accounts that match the spec.
+func (s *accountSpec) Filter(all Accounts) (Accounts, error) {
 	if s.ids || len(s.spec) > 64 {
-		result, err = s.filterNamesOrIDs(*all)
-	} else {
-		// Assume that we're filtering by tags. If a matching account name is
-		// found, we switch filters at that point. This eliminates the need to
-		// make two passes through all accounts.
-		result, err = s.filterTags(*all)
+		return s.filterNamesOrIDs(all)
 	}
-	*all = result
-	return err
+	// Assume that we're filtering by tags. If a matching account name is found,
+	// we switch filters at that point. This eliminates the need to make two
+	// passes through all accounts.
+	return s.filterTags(all)
 }
 
 // filterNamesOrIDs filters accounts by either names or IDs. All non-negated
 // entries in s.idx must match an account. Error status is not considered.
 func (s *accountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
-	result := all[:0]
+	var result Accounts
 	if len(s.idx) == 0 {
 		return result, nil
 	}
@@ -172,7 +167,7 @@ func (s *accountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
 // filterTags filters accounts by tags, switching over to names if an account
 // with a matching name is found.
 func (s accountSpec) filterTags(all Accounts) (Accounts, error) {
-	result := all[:0]
+	var result Accounts
 	for i, ac := range all {
 		if _, ok := s.idx[ac.Name]; ok {
 			return s.filterNamesOrIDs(all[i:])

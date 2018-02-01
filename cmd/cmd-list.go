@@ -3,34 +3,41 @@ package cmd
 import "flag"
 
 func init() {
-	register(&List{command: command{
-		name:    []string{"list", "ls"},
+	register(&cmdInfo{
+		names:   []string{"list", "ls"},
 		summary: "List accounts",
 		usage:   "[options] [account-spec]",
 		maxArgs: 1,
-	}})
+		new:     func() Cmd { return &list{Name: "list"} },
+	})
 }
 
-type List struct {
-	command
-	refresh bool
+type list struct {
+	Name
+	PrintFmt
+	Refresh bool
+	Spec    string
 }
 
-func (cmd *List) FlagCfg(fs *flag.FlagSet) {
-	cmd.command.FlagCfg(fs)
-	fs.BoolVar(&cmd.refresh, "refresh", false, "Refresh account information")
+func (cmd *list) FlagCfg(fs *flag.FlagSet) {
+	cmd.PrintFmt.FlagCfg(fs)
+	fs.BoolVar(&cmd.Refresh, "refresh", false, "Refresh account information")
 }
 
-func (cmd *List) Run(ctx *Ctx, args []string) error {
-	if cmd.refresh {
-		if err := ctx.AWS().Refresh(); err != nil {
-			return err
-		}
+func (cmd *list) Run(ctx *Ctx, args []string) error {
+	padArgs(cmd, &args)
+	cmd.Spec = args[0]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
 	}
-	cmd.PadArgs(&args)
-	match, err := ctx.Accounts(args[0])
-	if err != nil {
-		return err
+	return err
+}
+
+func (cmd *list) Call(ctx *Ctx) (interface{}, error) {
+	if cmd.Refresh {
+		ctx.all = nil
 	}
-	return cmd.PrintOutput(listAccounts(match))
+	acs, err := ctx.Accounts(cmd.Spec)
+	return listAccounts(acs), err
 }
