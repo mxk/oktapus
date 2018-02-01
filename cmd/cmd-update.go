@@ -13,17 +13,19 @@ func init() {
 		usage:   "[options] account-spec [tags]",
 		minArgs: 1,
 		maxArgs: 2,
-		new:     func() Cmd { return &Update{Name: "update"} },
+		new:     func() Cmd { return &update{Name: "update"} },
 	})
 }
 
-type Update struct {
+type update struct {
 	Name
 	PrintFmt
-	desc *string
+	Desc *string
+	Spec string
+	Tags string
 }
 
-func (cmd *Update) Help(w *bufio.Writer) {
+func (cmd *update) Help(w *bufio.Writer) {
 	writeHelp(w, `
 		Update account tags and/or description.
 
@@ -35,35 +37,44 @@ func (cmd *Update) Help(w *bufio.Writer) {
 	accountSpecHelp(w)
 }
 
-func (cmd *Update) FlagCfg(fs *flag.FlagSet) {
+func (cmd *update) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	StringPtrVar(fs, &cmd.desc, "desc", "Set account description")
+	StringPtrVar(fs, &cmd.Desc, "desc", "Set account `description`")
 }
 
-func (cmd *Update) Run(ctx *Ctx, args []string) error {
+func (cmd *update) Run(ctx *Ctx, args []string) error {
 	padArgs(cmd, &args)
-	match, err := ctx.Accounts(args[0])
-	if err != nil {
-		return err
+	cmd.Spec, cmd.Tags = args[0], args[1]
+	out, err := ctx.Call(cmd)
+	if err == nil {
+		err = cmd.Print(out)
 	}
-	tags := newAccountSpec(args[1], ctx.AWS().CommonRole)
-	if cmd.desc == nil && len(tags.idx) == 0 {
+	return err
+}
+
+func (cmd *update) Call(ctx *Ctx) (interface{}, error) {
+	acs, err := ctx.Accounts(cmd.Spec)
+	if err != nil {
+		return nil, err
+	}
+	tags := newAccountSpec(cmd.Tags, ctx.AWS().CommonRole)
+	if cmd.Desc == nil && len(tags.idx) == 0 {
 		usageErr(cmd, "either description or tags must be specified")
 	}
-	mod := match[:0]
-	for _, ac := range match {
+	mod := acs[:0]
+	for _, ac := range acs {
 		if ac.Err == nil {
-			if cmd.desc != nil {
-				ac.Desc = *cmd.desc
+			if cmd.Desc != nil {
+				ac.Desc = *cmd.Desc
 			}
 			ac.Tags = cmd.updateTags(ac.Tags, tags)
 			mod = append(mod, ac)
 		}
 	}
-	return cmd.Print(listAccounts(mod.Save()))
+	return listAccounts(mod.Save()), nil
 }
 
-func (cmd *Update) updateTags(tags []string, s *accountSpec) []string {
+func (cmd *update) updateTags(tags []string, s *accountSpec) []string {
 	m := make(map[string]struct{}, len(tags)+len(s.spec))
 	for _, tag := range tags {
 		m[tag] = struct{}{} // TODO: Validate?
