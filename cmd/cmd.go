@@ -223,7 +223,7 @@ func StringPtrVar(fs *flag.FlagSet, p **string, name string, usage string) {
 }
 
 func (s strPtrValue) String() string {
-	if *s.v == nil {
+	if s.v == nil || *s.v == nil {
 		return ""
 	}
 	return **s.v
@@ -242,7 +242,7 @@ func BoolPtrVar(fs *flag.FlagSet, p **bool, name string, usage string) {
 }
 
 func (b boolPtrValue) String() string {
-	if *b.v == nil {
+	if b.v == nil || *b.v == nil {
 		return "false"
 	}
 	return strconv.FormatBool(**b.v)

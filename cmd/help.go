@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -97,6 +98,14 @@ func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
 		fmt.Fprintf(w, "Error: %v\n", err)
 	}
 	return w, internal.AppName, func() {
+		defer os.Exit(2)
+		if p := recover(); p != nil {
+			w.WriteString("panic: ")
+			fmt.Fprintln(w, p)
+			w.WriteByte('\n')
+			w.Write(debug.Stack())
+			code = 2
+		}
 		w.Flush()
 		os.Exit(code)
 	}
