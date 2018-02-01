@@ -60,6 +60,7 @@ func (daemonCmd) Run(ctx *Ctx, args []string) error {
 
 // run executes a remote command.
 func run(ctx *Ctx, r *daemon.Request) error {
+	// TODO: Intercept log.F calls?
 	if r == nil {
 		return fmt.Errorf("command channel closed")
 	}

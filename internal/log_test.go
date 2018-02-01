@@ -3,7 +3,6 @@ package internal
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,7 +15,10 @@ func TestLog(t *testing.T) {
 		assert.Equal(t, want, buf.String())
 		buf.Reset()
 	}
-	l := &log{w: &buf}
+	l := new(log)
+	exitCode := 0
+	l.SetWriter(&buf)
+	l.SetExitFunc(func(code int) { exitCode = code })
 	l.D("debug")
 	eq("[D] debug\n")
 	l.I("info")
@@ -25,21 +27,15 @@ func TestLog(t *testing.T) {
 	eq("[W] warning\n")
 	l.E("error")
 	eq("[E] error\n")
-}
-
-func TestLogFatal(t *testing.T) {
-	if os.Getenv("TEST_CHILD") == "1" {
-		Log.F("fatal")
-		panic("fail")
-	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestLogFatal")
-	cmd.Env = append(os.Environ(), "TEST_CHILD=1")
-
-	out, err := cmd.CombinedOutput()
-	e, ok := err.(*exec.ExitError)
-	require.True(t, ok)
-	require.False(t, e.Success())
-	assert.Equal(t, "[F] fatal\n", string(out))
+	l.Msg(&LogMsg{Level: 'X', Msg: "msg"})
+	eq("[X] msg\n")
+	defer func() {
+		eq("[F] fatal\n")
+		assert.NotNil(t, recover())
+		assert.Equal(t, 1, exitCode)
+	}()
+	l.F("fatal")
+	panic(nil)
 }
 
 func TestLogWriter(t *testing.T) {

@@ -8,8 +8,16 @@ import (
 	"sync"
 )
 
-var Log = &log{w: os.Stderr}
+var Log = &log{w: os.Stderr, e: os.Exit}
 
+// LogFunc is a function called for each log message. The logger guarantees that
+// the function will never be called concurrently.
+type LogFunc func(m *LogMsg)
+
+// ExitFunc is called by Log.F to terminate the process.
+type ExitFunc func(code int)
+
+// LogMsg is passed to LogFunc for each log call.
 type LogMsg struct {
 	Level byte
 	Msg   string
@@ -18,16 +26,13 @@ type LogMsg struct {
 type log struct {
 	w io.Writer
 	f LogFunc
+	e ExitFunc
 }
 
 var logMu sync.Mutex
 var bufs = sync.Pool{New: func() interface{} {
 	return new(bytes.Buffer)
 }}
-
-// LogFunc is a function called for each log message. The logger guarantees that
-// the function will never be called concurrently.
-type LogFunc func(m *LogMsg)
 
 // SetWriter sets log output writer. If w is nil, logging to a writer is
 // disabled.
@@ -47,13 +52,25 @@ func (l *log) SetFunc(fn LogFunc) (prev LogFunc) {
 	return prev
 }
 
+// SetExitFunc sets termination function for Log.F.
+func (l *log) SetExitFunc(fn ExitFunc) (prev ExitFunc) {
+	logMu.Lock()
+	defer logMu.Unlock()
+	prev, l.e = l.e, fn
+	return prev
+}
+
 func (l *log) D(format string, v ...interface{}) { l.out('D', format, v...) }
 func (l *log) I(format string, v ...interface{}) { l.out('I', format, v...) }
 func (l *log) W(format string, v ...interface{}) { l.out('W', format, v...) }
 func (l *log) E(format string, v ...interface{}) { l.out('E', format, v...) }
 func (l *log) F(format string, v ...interface{}) {
 	l.out('F', format, v...)
-	os.Exit(1)
+	if l.e == nil {
+		os.Exit(1)
+	}
+	l.e(1)
+	panic("ExitFunc did not terminate execution")
 }
 
 func (l *log) Msg(m *LogMsg) { l.out(m.Level, "%s", m.Msg) }
