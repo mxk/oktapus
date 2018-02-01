@@ -9,15 +9,15 @@ func init() {
 		usage:   "...",
 		maxArgs: -1,
 		hidden:  true,
-		new:     func() Cmd { return &Test{Name: "test"} },
+		new:     func() Cmd { return &test{Name: "test"} },
 	})
 }
 
-type Test struct{ Name }
+type test struct{ Name }
 
-func (Test) FlagCfg(fs *flag.FlagSet) {}
+func (test) FlagCfg(fs *flag.FlagSet) {}
 
-func (Test) Run(ctx *Ctx, args []string) error {
+func (test) Run(ctx *Ctx, args []string) error {
 	ctx.Okta()
 	return nil
 }
