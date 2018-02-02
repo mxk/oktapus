@@ -262,6 +262,19 @@ func detachRolePolicies(c *iam.IAM, role string) error {
 	})
 }
 
+// isAWSAccountID tests whether id is a valid AWS account ID.
+func isAWSAccountID(id string) bool {
+	if len(id) != 12 {
+		return false
+	}
+	for i := 11; i >= 0; i-- {
+		if c := id[i]; c < '0' || '9' < c {
+			return false
+		}
+	}
+	return true
+}
+
 // goForEach takes a slice of input values and calls fn on each one in a
 // separate goroutine. Only one non-nil error is returned.
 func goForEach(in interface{}, fn func(v interface{}) error) error {
