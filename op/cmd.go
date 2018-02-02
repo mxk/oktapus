@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -253,11 +254,6 @@ func (b boolPtrValue) Set(val string) error {
 	*b.v = &v
 	return err
 }
-
-// usageError indicates a problem with the command-line arguments.
-type usageError string
-
-func (e usageError) Error() string { return string(e) }
 
 func init() {
 	gob.Register([]*resultsOutput{})
