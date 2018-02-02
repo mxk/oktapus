@@ -1,4 +1,4 @@
-package cmd
+package op
 
 import (
 	"fmt"
@@ -22,59 +22,50 @@ const assumeRolePolicyTpl = `{
 	}]
 }`
 
-const adminPolicy = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "Allow",
-		"Action": "*",
-		"Resource": "*"
-	}]
-}`
+// TmpIAMPath is a path for temporary users and roles.
+const TmpIAMPath = ctlPath + "tmp/"
 
-// tmpIAMPath is a path for temporary users and roles.
-const tmpIAMPath = ctlPath + "tmp/"
+// PathName is a split representation of an IAM user/role/group path and name.
+type PathName struct{ Path, Name string }
 
-// pathName is a split representation of an IAM user/role/group path and name.
-type pathName struct{ path, name string }
-
-// newPathName splits a string in the format "[[/]path/]name" into its
+// NewPathName splits a string in the format "[[/]path/]name" into its
 // components. The path always begins and ends with a slash.
-func newPathName(s string) pathName {
+func NewPathName(s string) PathName {
 	if i := strings.LastIndexByte(s, '/'); i != -1 {
 		path, name := s[:i+1], s[i+1:]
 		if path[0] != '/' {
 			path = "/" + path
 		}
-		return pathName{path, name}
+		return PathName{path, name}
 	}
-	return pathName{"/", s}
+	return PathName{"/", s}
 }
 
-// newPathNames splits all strings in v via newPathName.
-func newPathNames(v []string) []pathName {
-	var pn []pathName
+// NewPathNames splits all strings in v via NewPathName.
+func NewPathNames(v []string) []PathName {
+	var pn []PathName
 	for _, s := range v {
-		pn = append(pn, newPathName(s))
+		pn = append(pn, NewPathName(s))
 	}
 	return pn
 }
 
-// createAccountResult contains the values returned by createAccount. If err is
+// CreateAccountResult contains the values returned by createAccount. If err is
 // not nil, Account will contain the original name from CreateAccountInput.
-type createAccountResult struct {
+type CreateAccountResult struct {
 	*orgs.Account
-	err error
+	Err error
 }
 
 // createAccounts creates multiple accounts concurrently.
-func createAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n int) <-chan createAccountResult {
+func CreateAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n int) <-chan CreateAccountResult {
 	workers := 5 // Only 5 accounts may be created at the same time
 	if workers > n {
 		workers = n
 	}
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	out := make(chan createAccountResult)
+	out := make(chan CreateAccountResult)
 	for ; workers > 0; workers-- {
 		go func() {
 			defer wg.Done()
@@ -88,7 +79,7 @@ func createAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n
 						ac.Name = v.AccountName
 					}
 				}
-				out <- createAccountResult{ac, err}
+				out <- CreateAccountResult{ac, err}
 			}
 		}()
 	}
@@ -129,9 +120,9 @@ func createAccount(c *orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Ac
 	}
 }
 
-// newAssumeRolePolicy returns an AssumeRole policy document that is used when
+// NewAssumeRolePolicy returns an AssumeRole policy document that is used when
 // creating new roles.
-func newAssumeRolePolicy(principal string) string {
+func NewAssumeRolePolicy(principal string) string {
 	if principal == "" {
 		return fmt.Sprintf(assumeRolePolicyTpl, "Deny", "*")
 	}
@@ -142,10 +133,10 @@ func newAssumeRolePolicy(principal string) string {
 	return fmt.Sprintf(assumeRolePolicyTpl, "Allow", principal)
 }
 
-// delTmpUsers deletes all users under the temporary IAM path.
-func delTmpUsers(c *iam.IAM) error {
+// DelTmpUsers deletes all users under the temporary IAM path.
+func DelTmpUsers(c *iam.IAM) error {
 	var users []string
-	in := iam.ListUsersInput{PathPrefix: aws.String(tmpIAMPath)}
+	in := iam.ListUsersInput{PathPrefix: aws.String(TmpIAMPath)}
 	pager := func(out *iam.ListUsersOutput, lastPage bool) bool {
 		for _, u := range out.Users {
 			users = append(users, aws.StringValue(u.UserName))
@@ -219,10 +210,10 @@ func detachUserPolicies(c *iam.IAM, user string) error {
 	})
 }
 
-// delTmpRoles deletes all roles under the temporary IAM path.
-func delTmpRoles(c *iam.IAM) error {
+// DelTmpRoles deletes all roles under the temporary IAM path.
+func DelTmpRoles(c *iam.IAM) error {
 	var roles []string
-	in := iam.ListRolesInput{PathPrefix: aws.String(tmpIAMPath)}
+	in := iam.ListRolesInput{PathPrefix: aws.String(TmpIAMPath)}
 	pager := func(out *iam.ListRolesOutput, lastPage bool) bool {
 		for _, r := range out.Roles {
 			roles = append(roles, aws.StringValue(r.RoleName))
@@ -304,10 +295,4 @@ func goForEach(in interface{}, fn func(v interface{}) error) error {
 		}
 	}
 	return err
-}
-
-// awsErrCode returns true if err is an awserr.Error with the given code.
-func awsErrCode(err error, code string) bool {
-	e, ok := err.(awserr.Error)
-	return ok && e.Code() == code
 }

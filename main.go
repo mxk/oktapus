@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/LuminalHQ/oktapus/cmd"
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func main() {
-	cmd.Run(os.Args[1:])
+	op.Run(os.Args[1:])
 }

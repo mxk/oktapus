@@ -1,4 +1,4 @@
-package cmd
+package op
 
 import (
 	"encoding/base64"
@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 )
 
-// ctlRole is the role that stores account control information.
-const ctlRole = "OktapusControl"
+// CtlRole is the role that stores account control information.
+const CtlRole = "OktapusControl"
 
 // ctlPath is a common path for automatically created IAM users and roles.
 const ctlPath = "/oktapus/"
@@ -28,8 +28,8 @@ const ctlPath = "/oktapus/"
 // errCtlUpdate indicates new account control information was not saved.
 var errCtlUpdate = errors.New("account control information update interrupted")
 
-// errNoCtl indicates missing account control information.
-var errNoCtl = errors.New("account control information not available")
+// ErrNoCtl indicates missing account control information.
+var ErrNoCtl = errors.New("account control information not available")
 
 // Account is an account in an AWS organization.
 type Account struct {
@@ -92,6 +92,7 @@ func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
 	}
 	f := s[:0]
 	if n > 0 {
+		//noinspection GoAssignmentToReceiver
 		if s = s[first : last+1]; n < len(s) {
 			for _, ac := range s {
 				if ac != nil {
@@ -142,7 +143,7 @@ func (s Accounts) RequireCtl() Accounts {
 // RefreshCtl retrieves current control information for all accounts.
 func (s Accounts) RefreshCtl() Accounts {
 	return s.Apply(func(ac *Account) {
-		if ac.Err = ac.ref.get(ac.IAM); ac.Err != nil {
+		if ac.Err = ac.ref.Get(ac.IAM); ac.Err != nil {
 			ac.Ctl = nil
 		} else {
 			if ac.Ctl == nil {
@@ -160,14 +161,14 @@ func (s Accounts) Save() Accounts {
 	return s.Apply(func(ac *Account) {
 		if ac.Ctl == nil {
 			if ac.Err == nil {
-				ac.Err = errNoCtl
+				ac.Err = ErrNoCtl
 			}
 			return
 		}
 
 		// Get current state and merge changes
 		var cur Ctl
-		if ac.Err = cur.get(ac.IAM); ac.Err != nil {
+		if ac.Err = cur.Get(ac.IAM); ac.Err != nil {
 			return
 		} else if ac.merge(&cur, &ac.ref); cur.eq(ac.Ctl) {
 			ac.ref = cur
@@ -181,7 +182,7 @@ func (s Accounts) Save() Accounts {
 		}
 
 		// Update state
-		if ac.Err = ac.Ctl.set(ac.IAM); ac.Err != nil {
+		if ac.Err = ac.Ctl.Set(ac.IAM); ac.Err != nil {
 			ac.ref = cur
 		} else {
 			ac.ref = *ac.Ctl
@@ -258,13 +259,13 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 }
 
 // init creates account control information in an uncontrolled account.
-func (ctl *Ctl) init(c *iam.IAM) error {
+func (ctl *Ctl) Init(c *iam.IAM) error {
 	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
 		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: aws.String(newAssumeRolePolicy("")),
+			AssumeRolePolicyDocument: aws.String(NewAssumeRolePolicy("")),
 			Description:              aws.String(b64),
 			Path:                     aws.String(ctlPath),
-			RoleName:                 aws.String(ctlRole),
+			RoleName:                 aws.String(CtlRole),
 		}
 		out, err := c.CreateRole(&in)
 		if err == nil && out.Role.Description == nil {
@@ -275,9 +276,9 @@ func (ctl *Ctl) init(c *iam.IAM) error {
 	})
 }
 
-// get retrieves current account control information.
-func (ctl *Ctl) get(c *iam.IAM) error {
-	in := iam.GetRoleInput{RoleName: aws.String(ctlRole)}
+// Get retrieves current account control information.
+func (ctl *Ctl) Get(c *iam.IAM) error {
+	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
 	out, err := c.GetRole(&in)
 	if err == nil {
 		return ctl.decode(out.Role.Description)
@@ -286,12 +287,12 @@ func (ctl *Ctl) get(c *iam.IAM) error {
 	return err
 }
 
-// set stores account control information.
-func (ctl *Ctl) set(c *iam.IAM) error {
+// Set stores account control information.
+func (ctl *Ctl) Set(c *iam.IAM) error {
 	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
 		in := iam.UpdateRoleDescriptionInput{
 			Description: aws.String(b64),
-			RoleName:    aws.String(ctlRole),
+			RoleName:    aws.String(CtlRole),
 		}
 		out, err := c.UpdateRoleDescription(&in)
 		return out.Role, err

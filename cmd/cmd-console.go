@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/op"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/pkg/browser"
@@ -26,13 +27,13 @@ const (
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"console", "cons"},
-		summary: "Open AWS management console",
-		usage:   "[options] account-spec",
-		minArgs: 1,
-		maxArgs: 1,
-		new:     func() Cmd { return &console{Name: "console"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"console", "cons"},
+		Summary: "Open AWS management console",
+		Usage:   "[options] account-spec",
+		MinArgs: 1,
+		MaxArgs: 1,
+		New:     func() op.Cmd { return &console{Name: "console"} },
 	})
 }
 
@@ -43,7 +44,7 @@ type console struct {
 }
 
 func (cmd *console) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		Open AWS management console.
 
 		This command accepts the same account-spec as all other commands, but it
@@ -65,14 +66,14 @@ func (cmd *console) FlagCfg(fs *flag.FlagSet) {
 		`Open "Switch Role" page to avoid logging out`)
 }
 
-func (cmd *console) Run(ctx *Ctx, args []string) error {
+func (cmd *console) Run(ctx *op.Ctx, args []string) error {
 	// TODO: Call creds command instead and open from the current process?
 	cmd.Spec = args[0]
 	_, err := ctx.Call(cmd)
 	return err
 }
 
-func (cmd *console) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *console) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err

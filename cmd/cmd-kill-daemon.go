@@ -5,14 +5,15 @@ import (
 	"flag"
 
 	"github.com/LuminalHQ/oktapus/daemon"
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"kill-daemon"},
-		summary: "Terminate daemon process",
-		usage:   "[options]",
-		new:     func() Cmd { return &killDaemon{Name: "kill-daemon"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"kill-daemon"},
+		Summary: "Terminate daemon process",
+		Usage:   "[options]",
+		New:     func() op.Cmd { return &killDaemon{Name: "kill-daemon"} },
 	})
 }
 
@@ -23,7 +24,7 @@ type killDaemon struct {
 }
 
 func (cmd *killDaemon) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		A daemon process maintains persistent account credential and information
 		cache. A separate daemon is started for each unique authentication
 		context, which is derived from environment variables such as OKTA_ORG,
@@ -36,7 +37,7 @@ func (cmd *killDaemon) Help(w *bufio.Writer) {
 		the current authentication context. If no options are specified, only
 		the active daemon is killed.
 	`)
-	accountSpecHelp(w)
+	op.AccountSpecHelp(w)
 }
 
 func (cmd *killDaemon) FlagCfg(fs *flag.FlagSet) {
@@ -44,7 +45,7 @@ func (cmd *killDaemon) FlagCfg(fs *flag.FlagSet) {
 	fs.BoolVar(&cmd.Others, "others", false, "Kill non-active daemons")
 }
 
-func (cmd *killDaemon) Run(ctx *Ctx, args []string) error {
+func (cmd *killDaemon) Run(ctx *op.Ctx, args []string) error {
 	active := cmd.All || !cmd.Others
 	others := cmd.All || cmd.Others
 	daemon.Kill(ctx, active, others)

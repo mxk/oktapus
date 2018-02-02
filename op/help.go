@@ -1,4 +1,4 @@
-package cmd
+package op
 
 import (
 	"bufio"
@@ -13,29 +13,23 @@ import (
 	"github.com/LuminalHQ/oktapus/internal"
 )
 
-// helpArgs contains arguments that trigger help display.
-var helpArgs = map[string]struct{}{
-	"help": {}, "-help": {}, "--help": {}, "-h": {}, "/?": {},
-}
+// usageError indicates a problem with the command-line arguments.
+type usageError string
 
-// isHelp returns true if s represents a command-line argument asking for help.
-func isHelp(s string) bool {
-	_, ok := helpArgs[s]
-	return ok
-}
+func (e usageError) Error() string { return string(e) }
 
-// usageErr reports a problem with the command-line arguments and exits.
-func usageErr(cmd Cmd, format string, v ...interface{}) {
+// UsageErr reports a problem with the command-line arguments and exits.
+func UsageErr(cmd Cmd, format string, v ...interface{}) {
 	if err := usageError(fmt.Sprintf(format, v...)); cmd != nil {
-		cmdHelp(cmd.Info(), err)
+		CmdHelp(cmd.Info(), err)
 	} else {
-		help(err)
+		Help(err)
 	}
 }
 
-// help writes global help information and command summary to stderr before
+// Help writes global help information and command summary to stderr before
 // exiting.
-func help(err error) {
+func Help(err error) {
 	w, bin, exit := helpSetup(err)
 	defer exit()
 	fmt.Fprintf(w, "%s v%s\n", internal.AppName, internal.AppVersion)
@@ -46,7 +40,7 @@ func help(err error) {
 	w.WriteString("Commands:\n")
 	names, maxLen := make([]string, 0, len(cmds)), 0
 	for name, ci := range cmds {
-		if name == ci.names[0] && !ci.hidden {
+		if name == ci.Names[0] && !ci.Hidden {
 			if names = append(names, name); maxLen < len(name) {
 				maxLen = len(name)
 			}
@@ -54,27 +48,27 @@ func help(err error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		fmt.Fprintf(w, "  %-*s  %s\n", maxLen, name, cmds[name].summary)
+		fmt.Fprintf(w, "  %-*s  %s\n", maxLen, name, cmds[name].Summary)
 	}
-	accountSpecHelp(w)
+	AccountSpecHelp(w)
 	w.WriteByte('\n')
 }
 
-// cmdHelp writes command-specific help information to stderr before exiting.
-func cmdHelp(ci *cmdInfo, err error) {
+// CmdHelp writes command-specific help information to stderr before exiting.
+func CmdHelp(ci *CmdInfo, err error) {
 	w, bin, exit := helpSetup(err)
 	defer exit()
-	name := ci.names[0]
-	if aliases := ci.names[1:]; len(aliases) > 0 {
+	name := ci.Names[0]
+	if aliases := ci.Names[1:]; len(aliases) > 0 {
 		name = fmt.Sprintf("{%s|%s}", name, strings.Join(aliases, "|"))
 	}
-	sp, usage := " ", ci.usage
+	sp, usage := " ", ci.Usage
 	if len(usage) == 0 {
 		sp = ""
 	}
 	fmt.Fprintf(w, "Usage: %s %s%s%s\n", bin, name, sp, usage)
 	fmt.Fprintf(w, "       %s %s help\n\n", bin, name)
-	cmd := ci.new()
+	cmd := ci.New()
 	cmd.Help(w)
 	var fs flag.FlagSet
 	var buf bytes.Buffer
@@ -85,6 +79,31 @@ func cmdHelp(ci *cmdInfo, err error) {
 		w.Write(buf.Bytes())
 	}
 	w.WriteByte('\n')
+}
+
+func AccountSpecHelp(w *bufio.Writer) {
+	w.WriteByte('\n')
+	WriteHelp(w, `
+		Run 'oktapus help account-spec' for details on account filtering
+		specifications.
+	`)
+}
+
+// WriteHelp writes multi-line string s to w, removing any indentation.
+func WriteHelp(w *bufio.Writer, s string) {
+	w.WriteString(strings.TrimSpace(internal.Dedent(s)))
+	w.WriteByte('\n')
+}
+
+// helpArgs contains arguments that trigger help display.
+var helpArgs = map[string]struct{}{
+	"help": {}, "-help": {}, "--help": {}, "-h": {}, "/?": {},
+}
+
+// isHelp returns true if s represents a command-line argument asking for help.
+func isHelp(s string) bool {
+	_, ok := helpArgs[s]
+	return ok
 }
 
 // helpSetup writes an error report to stderr and sets program exit code.
@@ -109,10 +128,4 @@ func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
 		w.Flush()
 		os.Exit(code)
 	}
-}
-
-// writeHelp writes multi-line string s to w, removing any indentation.
-func writeHelp(w *bufio.Writer, s string) {
-	w.WriteString(strings.TrimSpace(internal.Dedent(s)))
-	w.WriteByte('\n')
 }

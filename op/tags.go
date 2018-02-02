@@ -1,4 +1,4 @@
-package cmd
+package op
 
 import (
 	"fmt"
@@ -71,8 +71,8 @@ func (t *Tags) apply(set, clr Tags) {
 	*t = u
 }
 
-// accountSpec specifies how to filter accounts.
-type accountSpec struct {
+// AccountSpec specifies how to filter accounts.
+type AccountSpec struct {
 	spec    []string        // Original spec split by commas
 	idx     map[string]uint // Map of non-special tag names to spec indices
 	owner   map[string]bool // Map of owner names to match criteria
@@ -81,10 +81,10 @@ type accountSpec struct {
 	err     bool            // Include inaccessible accounts (ac.Error()!=nil)
 }
 
-// newAccountSpec parses the account spec string. User argument determines the
+// NewAccountSpec parses the account spec string. User argument determines the
 // meaning of "owner=me" specification.
-func newAccountSpec(spec, user string) *accountSpec {
-	s := new(accountSpec)
+func NewAccountSpec(spec, user string) *AccountSpec {
+	s := new(AccountSpec)
 	if spec == "" {
 		return s
 	}
@@ -117,8 +117,14 @@ func newAccountSpec(spec, user string) *accountSpec {
 	return s
 }
 
+// Num returns the number of unique account IDs, names, or non-special tags in
+// the spec.
+func (s *AccountSpec) Num() int {
+	return len(s.idx)
+}
+
 // Filter returns only those accounts that match the spec.
-func (s *accountSpec) Filter(all Accounts) (Accounts, error) {
+func (s *AccountSpec) Filter(all Accounts) (Accounts, error) {
 	if s.ids || len(s.spec) > 64 {
 		return s.filterNamesOrIDs(all)
 	}
@@ -128,9 +134,31 @@ func (s *accountSpec) Filter(all Accounts) (Accounts, error) {
 	return s.filterTags(all)
 }
 
+func (s *AccountSpec) Update(tags []string) ([]string, error) {
+	m := make(map[string]struct{}, len(tags)+len(s.spec))
+	for _, tag := range tags {
+		m[tag] = struct{}{} // TODO: Validate?
+	}
+	for _, tag := range s.spec {
+		if !isTag(tag, true) {
+			return nil, fmt.Errorf("invalid tag %q", tag)
+		} else if tag, _, neg := parseTag(tag); neg {
+			delete(m, tag)
+		} else {
+			m[tag] = struct{}{}
+		}
+	}
+	tags = make([]string, 0, len(m))
+	for tag := range m {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags, nil
+}
+
 // filterNamesOrIDs filters accounts by either names or IDs. All non-negated
 // entries in s.idx must match an account. Error status is not considered.
-func (s *accountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
+func (s *AccountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
 	var result Accounts
 	if len(s.idx) == 0 {
 		return result, nil
@@ -166,7 +194,7 @@ func (s *accountSpec) filterNamesOrIDs(all Accounts) (Accounts, error) {
 
 // filterTags filters accounts by tags, switching over to names if an account
 // with a matching name is found.
-func (s accountSpec) filterTags(all Accounts) (Accounts, error) {
+func (s AccountSpec) filterTags(all Accounts) (Accounts, error) {
 	var result Accounts
 	for i, ac := range all {
 		if _, ok := s.idx[ac.Name]; ok {

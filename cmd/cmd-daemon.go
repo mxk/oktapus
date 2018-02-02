@@ -1,31 +1,32 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/LuminalHQ/oktapus/daemon"
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"daemon"},
-		summary: "Persistent daemon process",
-		usage:   "[options] addr",
-		minArgs: 1,
-		maxArgs: 1,
-		hidden:  true,
-		new:     func() Cmd { return daemonCmd{Name: "daemon"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"daemon"},
+		Summary: "Persistent daemon process",
+		Usage:   "[options] addr",
+		MinArgs: 1,
+		MaxArgs: 1,
+		Hidden:  true,
+		New:     func() op.Cmd { return daemonCmd{Name: "daemon"} },
 	})
 }
 
-type daemonCmd struct{ Name }
+type daemonCmd struct {
+	Name
+	noFlags
+}
 
-func (daemonCmd) FlagCfg(fs *flag.FlagSet) {}
-
-func (daemonCmd) Run(ctx *Ctx, args []string) error {
+func (daemonCmd) Run(ctx *op.Ctx, args []string) error {
 	addr := args[0]
 	call := daemon.Listen(addr)
 	if _, err := os.Stat(addr); err == nil {
@@ -59,24 +60,24 @@ func (daemonCmd) Run(ctx *Ctx, args []string) error {
 }
 
 // run executes a remote command.
-func run(ctx *Ctx, r *daemon.Request) error {
+func run(ctx *op.Ctx, r *daemon.Request) error {
 	// TODO: Intercept log.F calls?
 	if r == nil {
 		return fmt.Errorf("command channel closed")
 	}
 	defer close(r.Out)
-	if _, ok := r.Cmd.(CallableCmd); !ok {
+	if _, ok := r.Cmd.(op.CallableCmd); !ok {
 		return fmt.Errorf("received command: %v", r.Cmd)
 	}
 	// TODO: Recover
-	cmd := r.Cmd.(CallableCmd)
+	cmd := r.Cmd.(op.CallableCmd)
 	out, err := cmd.Call(ctx)
 	r.Out <- &daemon.Response{Out: out, Err: err}
 	return nil
 }
 
 // periodic performs regular maintenance tasks.
-func periodic(ctx *Ctx) error {
+func periodic(ctx *op.Ctx) error {
 	if ctx.UseOkta() {
 		// TODO: Ignore temporary errors
 		if err := ctx.Okta().RefreshSession(""); err != nil {

@@ -2,43 +2,28 @@ package cmd
 
 import (
 	"bufio"
-	"flag"
 	"os"
+
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"account-spec"},
-		summary: "Show detailed help for account-spec argument",
-		maxArgs: -1,
-		hidden:  true,
-		new:     func() Cmd { return specHelp{} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"account-spec"},
+		Summary: "Show detailed help for account-spec argument",
+		MaxArgs: -1,
+		Hidden:  true,
+		New:     func() op.Cmd { return specHelp{Name: "account-spec"} },
 	})
 }
 
-type specHelp struct{}
-
-func (specHelp) Info() *cmdInfo           { return cmds["account-spec"] }
-func (specHelp) Help(w *bufio.Writer)     { accountSpecLongHelp(w) }
-func (specHelp) FlagCfg(fs *flag.FlagSet) {}
-
-func (specHelp) Run(ctx *Ctx, args []string) error {
-	buf := bufio.NewWriter(os.Stdout)
-	defer buf.Flush()
-	accountSpecLongHelp(buf)
-	return nil
+type specHelp struct {
+	Name
+	noFlags
 }
 
-func accountSpecHelp(w *bufio.Writer) {
-	w.WriteByte('\n')
-	writeHelp(w, `
-		Run 'oktapus help account-spec' for details on account filtering
-		specifications.
-	`)
-}
-
-func accountSpecLongHelp(w *bufio.Writer) {
-	writeHelp(w, `
+func (specHelp) Help(w *bufio.Writer) {
+	op.WriteHelp(w, `
 		Account Filtering Specifications
 
 		account-spec is a comma-separated list of account IDs, names, or tags.
@@ -82,4 +67,10 @@ func accountSpecLongHelp(w *bufio.Writer) {
 			When listing accounts, include those that cannot be accessed or are
 			not managed by oktapus.
 	`)
+}
+
+func (specHelp) Run(ctx *op.Ctx, args []string) error {
+	buf := bufio.NewWriter(os.Stdout)
+	specHelp{}.Help(buf)
+	return buf.Flush()
 }

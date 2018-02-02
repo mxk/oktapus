@@ -1,4 +1,4 @@
-package cmd
+package op
 
 import (
 	"errors"
@@ -31,9 +31,10 @@ type Ctx struct {
 	AWSRoleARN     string
 	NoDaemon       bool
 
+	All Accounts
+
 	okta *okta.Client
 	aws  *awsgw.Client
-	all  Accounts
 }
 
 // NewCtx populates a new context from the environment variables.
@@ -110,18 +111,18 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 // Accounts returns all accounts in the organization that match the spec.
 func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	c := ctx.AWS()
-	if ctx.all == nil {
+	if ctx.All == nil {
 		if err := c.Refresh(); err != nil {
 			return nil, err
 		}
 		info := c.Accounts()
-		ctx.all = make(Accounts, len(info))
+		ctx.All = make(Accounts, len(info))
 		for i, ac := range info {
-			ctx.all[i] = &Account{Account: ac}
+			ctx.All[i] = &Account{Account: ac}
 		}
 	}
-	ctx.all.RequireIAM(c).RequireCtl()
-	acs, err := newAccountSpec(spec, c.CommonRole).Filter(ctx.all)
+	ctx.All.RequireIAM(c).RequireCtl()
+	acs, err := NewAccountSpec(spec, c.CommonRole).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err
 }

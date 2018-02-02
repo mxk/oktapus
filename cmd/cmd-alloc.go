@@ -6,16 +6,18 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"alloc"},
-		summary: "Allocate accounts",
-		usage:   "[options] [num] [account-spec]",
-		minArgs: 1,
-		maxArgs: 2,
-		new:     func() Cmd { return &alloc{Name: "alloc"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"alloc"},
+		Summary: "Allocate accounts",
+		Usage:   "[options] [num] [account-spec]",
+		MinArgs: 1,
+		MaxArgs: 2,
+		New:     func() op.Cmd { return &alloc{Name: "alloc"} },
 	})
 }
 
@@ -28,7 +30,7 @@ type alloc struct {
 }
 
 func (cmd *alloc) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		Account allocation assigns an owner to an account, preventing anyone
 		else from allocating that account until it is freed. The owner is
 		effectively a per-account mutex.
@@ -39,7 +41,7 @@ func (cmd *alloc) Help(w *bufio.Writer) {
 		Otherwise, that number of requested accounts are allocated randomly from
 		the pool of all matching accounts.
 	`)
-	accountSpecHelp(w)
+	op.AccountSpecHelp(w)
 }
 
 func (cmd *alloc) FlagCfg(fs *flag.FlagSet) {
@@ -47,16 +49,16 @@ func (cmd *alloc) FlagCfg(fs *flag.FlagSet) {
 	fs.StringVar(&cmd.Owner, "owner", "", "Override default owner `name`")
 }
 
-func (cmd *alloc) Run(ctx *Ctx, args []string) error {
+func (cmd *alloc) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
 		if n < 1 || 100 < n {
-			usageErr(cmd, "number of accounts must be between 1 and 100")
+			op.UsageErr(cmd, "number of accounts must be between 1 and 100")
 		}
 		padArgs(cmd, &args)
 		args = args[1:]
 	} else if len(args) != 1 {
-		usageErr(cmd, "first argument must be a number")
+		op.UsageErr(cmd, "first argument must be a number")
 	} else {
 		n = -1
 	}
@@ -69,13 +71,13 @@ func (cmd *alloc) Run(ctx *Ctx, args []string) error {
 	return err
 }
 
-func (cmd *alloc) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *alloc) Call(ctx *op.Ctx) (interface{}, error) {
 	// Find free accounts and randomize their order
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err
 	}
-	acs = acs.Filter(func(ac *Account) bool {
+	acs = acs.Filter(func(ac *op.Account) bool {
 		return ac.Err == nil && ac.Owner == ""
 	}).Shuffle()
 	n := cmd.Num
@@ -88,7 +90,7 @@ func (cmd *alloc) Call(ctx *Ctx) (interface{}, error) {
 	if cmd.Owner != "" {
 		owner = cmd.Owner
 	}
-	alloc := make(Accounts, 0, n)
+	alloc := make(op.Accounts, 0, n)
 	for n > 0 {
 		if len(acs) < n {
 			// Not enough accounts, free any that were already allocated
@@ -111,7 +113,7 @@ func (cmd *alloc) Call(ctx *Ctx) (interface{}, error) {
 		for _, ac := range batch {
 			ac.Owner = owner
 		}
-		batch.Save().Filter(func(ac *Account) bool {
+		batch.Save().Filter(func(ac *op.Account) bool {
 			return ac.Err == nil
 		})
 
@@ -119,7 +121,7 @@ func (cmd *alloc) Call(ctx *Ctx) (interface{}, error) {
 		time.Sleep(10 * time.Second)
 
 		// Verify owner
-		batch.RefreshCtl().Filter(func(ac *Account) bool {
+		batch.RefreshCtl().Filter(func(ac *op.Account) bool {
 			return ac.Err == nil && ac.Owner == owner
 		})
 		n -= len(batch)

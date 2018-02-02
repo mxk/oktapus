@@ -13,6 +13,7 @@ import (
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -20,13 +21,13 @@ import (
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"create"},
-		summary: "Create new account(s)",
-		usage:   "[options] num account-name root-email",
-		minArgs: 3,
-		maxArgs: 3,
-		new:     func() Cmd { return &create{Name: "create"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"create"},
+		Summary: "Create new account(s)",
+		Usage:   "[options] num account-name root-email",
+		MinArgs: 3,
+		MaxArgs: 3,
+		New:     func() op.Cmd { return &create{Name: "create"} },
 	})
 	gob.Register([]*newAccountsOutput{})
 }
@@ -41,7 +42,7 @@ type create struct {
 }
 
 func (cmd *create) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		Create new accounts.
 
 		WARNING: Accounts can never be deleted. They can be closed and removed
@@ -78,17 +79,17 @@ func (cmd *create) FlagCfg(fs *flag.FlagSet) {
 		"Execute account creation (list names/emails otherwise)")
 }
 
-func (cmd *create) Run(ctx *Ctx, args []string) error {
+func (cmd *create) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	cmd.NameTpl, cmd.EmailTpl = args[1], args[2]
 	if err != nil {
-		usageErr(cmd, "first argument must be a number")
+		op.UsageErr(cmd, "first argument must be a number")
 	} else if n <= 0 {
-		usageErr(cmd, "number of accounts must be > 0")
+		op.UsageErr(cmd, "number of accounts must be > 0")
 	} else if n > 50 {
-		usageErr(cmd, "number of accounts must be <= 50")
+		op.UsageErr(cmd, "number of accounts must be <= 50")
 	} else if i := strings.IndexByte(cmd.EmailTpl, '@'); i == -1 {
-		usageErr(cmd, "invalid email address")
+		op.UsageErr(cmd, "invalid email address")
 	}
 	cmd.Num = n
 	out, err := ctx.Call(cmd)
@@ -98,7 +99,7 @@ func (cmd *create) Run(ctx *Ctx, args []string) error {
 	return err
 }
 
-func (cmd *create) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	// Only the organization's master account can create new accounts
 	c := ctx.AWS()
 	masterID := c.OrgInfo().MasterAccountID
@@ -112,18 +113,18 @@ func (cmd *create) Call(ctx *Ctx) (interface{}, error) {
 	nameCtr, nameErr := newCounter(cmd.NameTpl)
 	emailCtr, emailErr := newCounter(cmd.EmailTpl)
 	if nameErr != nil {
-		usageErr(cmd, nameErr.Error())
+		op.UsageErr(cmd, nameErr.Error())
 	} else if emailErr != nil {
-		usageErr(cmd, emailErr.Error())
+		op.UsageErr(cmd, emailErr.Error())
 	} else if (nameCtr == nil) != (emailCtr == nil) {
-		usageErr(cmd, "account name/email format mismatch")
+		op.UsageErr(cmd, "account name/email format mismatch")
 	} else if nameCtr != nil {
 		if err := c.Refresh(); err != nil {
 			return nil, err
 		}
 		setCounters(c.Accounts(), nameCtr, emailCtr)
 	} else if n > 1 {
-		usageErr(cmd, "account name/email must be dynamic templates")
+		op.UsageErr(cmd, "account name/email must be dynamic templates")
 	} else {
 		nameCtr, emailCtr = &counter{p: cmd.NameTpl}, &counter{p: cmd.EmailTpl}
 	}
@@ -150,24 +151,24 @@ func (cmd *create) Call(ctx *Ctx) (interface{}, error) {
 			emailCtr.n++
 		}
 	}()
-	out := createAccounts(c.OrgClient(), in, n)
+	out := op.CreateAccounts(c.OrgClient(), in, n)
 
 	// Configure accounts
 	var wg sync.WaitGroup
-	acs := make(Accounts, 0, n)
+	acs := make(op.Accounts, 0, n)
 	for r := range out {
-		if r.err == nil {
-			acs = append(acs, &Account{Account: c.Update(r.Account)})
+		if r.Err == nil {
+			acs = append(acs, &op.Account{Account: c.Update(r.Account)})
 		} else {
-			acs = append(acs, &Account{
+			acs = append(acs, &op.Account{
 				Account: &awsgw.Account{Name: aws.StringValue(r.Name)},
-				Err:     r.err,
+				Err:     r.Err,
 			})
 			continue
 		}
 		acs[len(acs)-1:].RequireIAM(c)
 		wg.Add(1)
-		go func(ac *Account) {
+		go func(ac *op.Account) {
 			defer wg.Done()
 
 			// Wait for credentials to become valid
@@ -184,8 +185,8 @@ func (cmd *create) Call(ctx *Ctx) (interface{}, error) {
 			// for the initial role.
 
 			// Initialize account control information
-			ac.Ctl = &Ctl{Tags: Tags{"new"}}
-			ac.Err = ac.Ctl.init(ac.IAM)
+			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
+			ac.Err = ac.Ctl.Init(ac.IAM)
 		}(acs[len(acs)-1])
 	}
 	wg.Wait()
@@ -258,7 +259,7 @@ func setCounters(acs []*awsgw.Account, name, email *counter) {
 }
 
 // waitForCreds blocks until account credentials become valid.
-func waitForCreds(ac *Account) error {
+func waitForCreds(ac *op.Account) error {
 	timeout := internal.Time().Add(time.Minute)
 	for {
 		_, err := ac.Creds(true)
@@ -271,11 +272,20 @@ func waitForCreds(ac *Account) error {
 	}
 }
 
+const adminPolicy = `{
+	"Version": "2012-10-17",
+	"Statement": [{
+		"Effect": "Allow",
+		"Action": "*",
+		"Resource": "*"
+	}]
+}`
+
 // createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
 func createOrgAccessRole(c *iam.IAM, masterAccountID string) error {
-	assumeRolePolicy := newAssumeRolePolicy(masterAccountID)
+	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
 	role := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String(assumeRolePolicy),
 		RoleName:                 aws.String("OrganizationAccountAccessRole"),

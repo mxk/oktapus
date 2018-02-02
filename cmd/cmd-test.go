@@ -1,23 +1,24 @@
 package cmd
 
-import "flag"
+import "github.com/LuminalHQ/oktapus/op"
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"test"},
-		summary: "command for testing... stuff",
-		usage:   "...",
-		maxArgs: -1,
-		hidden:  true,
-		new:     func() Cmd { return &test{Name: "test"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"test"},
+		Summary: "command for testing... stuff",
+		Usage:   "...",
+		MaxArgs: -1,
+		Hidden:  true,
+		New:     func() op.Cmd { return &test{Name: "test"} },
 	})
 }
 
-type test struct{ Name }
+type test struct {
+	Name
+	noFlags
+}
 
-func (test) FlagCfg(fs *flag.FlagSet) {}
-
-func (test) Run(ctx *Ctx, args []string) error {
+func (test) Run(ctx *op.Ctx, args []string) error {
 	ctx.Okta()
 	return nil
 }
