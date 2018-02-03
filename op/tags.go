@@ -1,8 +1,8 @@
 package op
 
 import (
+	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -26,12 +26,46 @@ func init() {
 }
 
 // Tags is a collection of keywords associated with an account. All methods
-// assume that the list of tags is sorted and each tag is unique.
+// assume that tags are sorted, each tag is unique, and no tag is negated.
 type Tags []string
 
-// diff returns tags that are set and/or cleared in t relative to u. Calling
-// u.apply(set, clr) would make u == t.
-func (t Tags) diff(u Tags) (set, clr Tags) {
+// ParseTags splits s into two disjoint sets of non-negated and negated tags.
+func ParseTags(s string) (set, clr Tags, err error) {
+	if s == "" {
+		return
+	}
+	tags := strings.Split(s, ",")
+	m := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		name, neg, err := parseTag(t, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		m[name] = neg
+	}
+	i, j := 0, len(tags)
+	for name, neg := range m {
+		if neg {
+			j--
+			tags[j] = name
+		} else {
+			tags[i] = name
+			i++
+		}
+	}
+	norm := func(t Tags) Tags {
+		if len(t) == 0 {
+			return nil
+		}
+		sort.Strings(t)
+		return t
+	}
+	return norm(tags[:i:j]), norm(tags[j:]), nil
+}
+
+// Diff returns tags that are set and/or cleared in t relative to u. Calling
+// u.Apply(set, clr) would make u == t.
+func (t Tags) Diff(u Tags) (set, clr Tags) {
 	for len(t) > 0 && len(u) > 0 {
 		if s, c := t[0], u[0]; s == c {
 			t, u = t[1:], u[1:]
@@ -46,63 +80,50 @@ func (t Tags) diff(u Tags) (set, clr Tags) {
 	return
 }
 
-// apply updates t by adding tags in set and removing those in clr. Setting tags
-// takes priority over clearing them if there is any overlap.
-func (t *Tags) apply(set, clr Tags) {
+// Apply updates t by adding tags in set and removing those in clr. Setting tags
+// takes priority over clearing them if the sets are not disjoint.
+func (t *Tags) Apply(set, clr Tags) {
 	if len(set) == 0 && len(clr) == 0 {
 		return
 	}
 	m := make(map[string]struct{}, len(*t)+len(set))
-	for _, x := range *t {
-		m[x] = struct{}{}
+	for _, name := range *t {
+		m[name] = struct{}{}
 	}
-	for _, x := range clr {
-		delete(m, x)
+	for _, name := range clr {
+		delete(m, name)
 	}
-	for _, x := range set {
-		m[x] = struct{}{}
+	for _, name := range set {
+		m[name] = struct{}{}
 	}
 	u := (*t)[:0]
-	for x := range m {
-		u = append(u, x)
+	if cap(u) < len(m) {
+		u = make(Tags, 0, len(m))
+	}
+	for name := range m {
+		u = append(u, name)
 	}
 	sort.Strings(u)
 	*t = u
 }
 
-// parseTag splits a tag into its components. The general format is:
-// "[!...]name[[!]=value]". If value is a boolean, it determines the initial
-// negation state instead of being returned as a string.
-func parseTag(tag string) (name, value string, neg bool) {
-	if i := strings.IndexByte(tag, '='); i != -1 {
-		tag, value = tag[:i], tag[i+1:]
-		if t, err := strconv.ParseBool(value); err == nil {
-			value, neg = "", !t
-		}
-		if i > 0 && tag[i-1] == '!' {
-			tag, neg = tag[:i-1], !neg
-		}
-	}
-	for len(tag) > 0 && tag[0] == '!' {
-		tag, neg = tag[1:], !neg
-	}
-	name = tag
-	return
-}
-
-// isTag returns true if s contains a valid tag name.
-func isTag(s string, negOK bool) bool {
-	name, val, neg := parseTag(s)
+// parseTag returns the name and negation state of tag t. An error is returned
+// if t is not a valid tag.
+func parseTag(t string, negOK bool) (name string, neg bool, err error) {
+	name, val, neg := parseSpec(t)
 	if len(name) == 0 || val != "" || (neg && !negOK) || isSpecial(name) {
-		return false
+		goto invalid
 	}
 	for i := len(name) - 1; i > 0; i-- {
 		if !tagChars[name[i]] {
-			return false
+			goto invalid
 		}
 	}
-	c := name[0] | 32
-	return 'a' <= c && c <= 'z'
+	if c := name[0] | 32; 'a' <= c && c <= 'z' {
+		return name, neg, nil
+	}
+invalid:
+	return "", false, fmt.Errorf("invalid tag %q", t)
 }
 
 // isSpecial returns true if tag is special. The tag must not be negated.

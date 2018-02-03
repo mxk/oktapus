@@ -23,7 +23,8 @@ type update struct {
 	PrintFmt
 	Desc *string
 	Spec string
-	Tags string
+	Set  op.Tags
+	Clr  op.Tags
 }
 
 func (cmd *update) Help(w *bufio.Writer) {
@@ -45,7 +46,14 @@ func (cmd *update) FlagCfg(fs *flag.FlagSet) {
 
 func (cmd *update) Run(ctx *op.Ctx, args []string) error {
 	padArgs(cmd, &args)
-	cmd.Spec, cmd.Tags = args[0], args[1]
+	set, clr, err := op.ParseTags(args[1])
+	if err != nil {
+		return err
+	}
+	if cmd.Desc == nil && len(set)+len(clr) == 0 {
+		op.UsageErr(cmd, "either description or tags must be specified")
+	}
+	cmd.Spec, cmd.Set, cmd.Clr = args[0], set, clr
 	out, err := ctx.Call(cmd)
 	if err == nil {
 		err = cmd.Print(out)
@@ -58,20 +66,13 @@ func (cmd *update) Call(ctx *op.Ctx) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Don't use AccountSpec for this
-	tags := op.NewAccountSpec(cmd.Tags, ctx.AWS().CommonRole)
-	if cmd.Desc == nil && tags.Num() == 0 {
-		op.UsageErr(cmd, "either description or tags must be specified")
-	}
 	mod := acs[:0]
 	for _, ac := range acs {
 		if ac.Err == nil {
 			if cmd.Desc != nil {
 				ac.Desc = *cmd.Desc
 			}
-			if ac.Tags, err = tags.Update(ac.Tags); err != nil {
-				op.UsageErr(cmd, err.Error())
-			}
+			ac.Tags.Apply(cmd.Set, cmd.Clr)
 			mod = append(mod, ac)
 		}
 	}

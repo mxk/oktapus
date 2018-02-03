@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	_ "github.com/LuminalHQ/oktapus/cmd"
 	"github.com/LuminalHQ/oktapus/op"
 )
 

@@ -122,7 +122,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 		}
 	}
 	ctx.All.RequireIAM(c).RequireCtl()
-	acs, err := NewAccountSpec(spec, c.CommonRole).Filter(ctx.All)
+	acs, err := ParseAccountSpec(spec, c.CommonRole).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err
 }

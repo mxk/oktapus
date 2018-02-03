@@ -253,9 +253,9 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 	if ctl.Desc == ref.Desc {
 		ctl.Desc = cur.Desc
 	}
-	set, clr := ctl.Tags.diff(ref.Tags)
+	set, clr := ctl.Tags.Diff(ref.Tags)
 	ctl.Tags = append(ctl.Tags[:0], cur.Tags...)
-	ctl.Tags.apply(set, clr)
+	ctl.Tags.Apply(set, clr)
 }
 
 // init creates account control information in an uncontrolled account.
