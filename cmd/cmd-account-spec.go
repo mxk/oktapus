@@ -34,38 +34,41 @@ func (specHelp) Help(w *bufio.Writer) {
 		also contain owner filtering criteria.
 
 		The general entry syntax is "[!]name[[!]=value]" where value is a
-		boolean expression for tags (0/1, true/false, etc.) or a string for
+		boolean expression for tags (0/1, true/false, etc.) or a string for the
 		owner spec.
 
 		Tag specification examples:
 
-		"mytag" or "mytag=true"
-			Matches accounts with "mytag" set.
+		  "mytag" or "mytag=true"
+		      Matches accounts with "mytag" set.
 
-		"!othertag" or "othertag=false"
-			Matches accounts with "othertag" not set.
+		  "!othertag" or "othertag=false"
+		      Matches accounts with "othertag" not set.
 
-		"mytag,!othertag"
-			Matches accounts with "mytag" set and "othertag" not set.
+		  "mytag,!othertag"
+		      Matches accounts with "mytag" set and "othertag" not set.
 
-		"owner"
-			Matches allocated accounts.
+		  "owner"
+		      Matches allocated accounts.
 
-		"!owner"
-			Matches free accounts.
+		  "!owner,mytag"
+		      Matches free accounts with "mytag" set.
 
-		"owner=me"
-			Matches accounts owned by the current user.
+		  "owner=me"
+		      Matches accounts owned by the current user.
 
-		"owner=user1@example.com,owner=user2@example.com"
-			Matches accounts owned by the specified users.
+		  "owner!=user1"
+		      Matches accounts not owned by user1 (including free ones).
 
-		"owner,owner!=me"
-			Matches accounts allocated by other users.
+		  "owner,owner!=me"
+		      Matches accounts allocated by other users.
 
-		"err"
-			When listing accounts, include those that cannot be accessed or are
-			not managed by oktapus.
+		  "owner=user1,owner=user2"
+		      Matches accounts owned by user1 or user2.
+
+		  "err"
+		      When listing accounts, include those that cannot be accessed or
+		      are not managed by oktapus.
 	`)
 }
 

@@ -9,10 +9,19 @@ import (
 type specType byte
 
 const (
-	unknown specType = iota
-	ids
-	names
-	tags
+	stUnknown specType = iota
+	stIds
+	stNames
+	stTags
+)
+
+type specFlags byte
+
+const (
+	sfErr specFlags = 1 << iota
+	sfFree
+	sfAlloc
+	sfAll = sfFree | sfAlloc
 )
 
 // AccountSpec specifies how to filter accounts.
@@ -21,8 +30,8 @@ type AccountSpec struct {
 	idx     map[string]uint // Map of non-special names to spec indices
 	owner   map[string]bool // Map of owner names to match criteria
 	tagMask uint64          // Tag matching mask
-	err     bool            // Include inaccessible accounts
 	typ     specType        // Static (ids/names) or dynamic (tags) spec type
+	flags   specFlags       // Account selection flags
 }
 
 // ParseAccountSpec parses the account spec string. User argument determines the
@@ -30,7 +39,8 @@ type AccountSpec struct {
 func ParseAccountSpec(spec, user string) *AccountSpec {
 	s := new(AccountSpec)
 	if spec == "" {
-		s.typ = tags
+		s.typ = stTags
+		s.flags = sfAll
 		return s
 	}
 	s.spec = strings.Split(spec, ",")
@@ -39,50 +49,68 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 		if name, val, neg := parseSpec(e); isSpecial(name) {
 			switch name {
 			case "err":
-				s.err = !neg
+				if neg {
+					s.flags &^= sfErr
+				} else {
+					s.flags |= sfErr
+				}
 			case "owner":
-				if s.owner == nil {
-					s.owner = make(map[string]bool, 2)
-				}
-				if val == "me" {
-					if user == "" {
-						continue
+				switch val {
+				case "":
+					if neg {
+						s.flags = s.flags&^sfAll | sfFree
+					} else {
+						s.flags = s.flags&^sfAll | sfAlloc
 					}
+				case "me":
 					val = user
+					fallthrough
+				default:
+					if s.owner == nil {
+						s.owner = make(map[string]bool, 2)
+					}
+					s.owner[val] = !neg
 				}
-				// owner[!]=x sets s.owner["x"] = !neg
-				// [!]owner sets s.owner[""] = neg
-				s.owner[val] = neg == (val == "")
-			default:
-				panic("unhandled tag: " + name)
 			}
 		} else {
 			if s.idx[name] = uint(i); !neg {
 				s.tagMask |= uint64(1) << uint(i)
 			}
-			if s.typ == unknown && isAWSAccountID(name) {
-				s.typ = ids
+			if s.typ == stUnknown && isAWSAccountID(name) {
+				s.typ = stIds
 			}
 		}
 	}
-	if s.typ == unknown && len(s.spec) > 64 {
-		s.typ = names
+	if s.typ == stUnknown && len(s.spec) > 64 {
+		s.typ = stNames
+	}
+	if s.flags&sfAll == 0 {
+		if s.owner == nil {
+			s.flags |= sfAll
+		} else {
+			for _, want := range s.owner {
+				if !want {
+					s.flags |= sfAll
+					break
+				}
+			}
+		}
 	}
 	return s
 }
 
 // IsStatic returns true if the spec uses account IDs and/or names.
 func (s *AccountSpec) IsStatic(all Accounts) bool {
-	if s.typ != unknown {
-		return s.typ != tags
+	if s.typ != stUnknown {
+		return s.typ != stTags
 	}
 	for _, ac := range all {
 		if _, ok := s.idx[ac.Name]; ok {
-			s.typ = names
+			s.typ = stNames
 			return true
 		}
 	}
-	s.typ = tags
+	s.typ = stTags
 	return false
 }
 
@@ -104,7 +132,7 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 	matched := make(map[string]struct{}, len(s.idx))
 	for _, ac := range all {
 		key := ac.Name
-		if s.typ == ids {
+		if s.typ == stIds {
 			key = ac.ID
 		}
 		if i, ok := s.idx[key]; ok {
@@ -119,7 +147,7 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 			_, _, neg := parseSpec(s.spec[i])
 			if _, ok := matched[key]; !(ok || neg) {
 				what := "name"
-				if s.typ == ids {
+				if s.typ == stIds {
 					what = "id"
 				}
 				return nil, fmt.Errorf("account %s %q not found", what, key)
@@ -134,19 +162,21 @@ func (s AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
 	var result Accounts
 	for _, ac := range all {
 		if ac.Ctl == nil {
-			if s.err {
+			if s.flags&sfErr != 0 {
 				result = append(result, ac)
 			}
 			continue
 		}
-		if s.owner != nil {
-			if want, ok := s.owner[ac.Owner]; ok {
-				if !want {
-					continue
-				}
-			} else if b, ok := s.owner[""]; !ok || b {
+		if ac.Owner == "" {
+			if s.flags&sfFree == 0 {
 				continue
 			}
+		} else if want, ok := s.owner[ac.Owner]; ok {
+			if !want {
+				continue
+			}
+		} else if s.flags&sfAlloc == 0 {
+			continue
 		}
 		var tagMask uint64
 		for _, tag := range ac.Tags {
