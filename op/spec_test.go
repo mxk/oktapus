@@ -1,6 +1,9 @@
 package op
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,12 +12,100 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestStatic(t *testing.T) {
+	all := accounts{
+		{id: "1", name: "a"},
+		{id: "2", name: "b"},
+		{id: "3", name: "c"},
+		{id: "4", name: "d"},
+	}.get()
+	tests := []*struct{ spec, want string }{{
+		spec: "000000000001",
+		want: "1",
+	}, {
+		spec: "000000000002,000000000004",
+		want: "2,4",
+	}, {
+		spec: "a",
+		want: "1",
+	}, {
+		spec: "d,c",
+		want: "3,4",
+	}, {
+		spec: "a" + strings.Repeat(",c", 64),
+		want: "1,3",
+	}}
+	for _, test := range tests {
+		match, err := ParseAccountSpec(test.spec, "").Filter(all)
+		require.NoError(t, err)
+		assert.Equal(t, test.want, getIDs(match), "spec=%q", test.spec)
+	}
+
+	_, err := ParseAccountSpec("000000000042", "").Filter(all)
+	assert.EqualError(t, err, `account id "000000000042" not found`)
+
+	_, err = ParseAccountSpec("c,x", "").Filter(all)
+	assert.EqualError(t, err, `account name "x" not found`)
+
+	_, err = ParseAccountSpec("x"+strings.Repeat(",y", 64), "").Filter(all)
+	assert.EqualError(t, err, `account name "x" not found`)
+}
+
+func TestDynamic(t *testing.T) {
+	all := accounts{
+		{id: "1", tags: "a"},
+		{id: "2", tags: "b"},
+		{id: "3", tags: "a,c"},
+		{id: "4", tags: "b,d"},
+		{id: "5", err: "not initialized"},
+	}.get()
+	tests := []*struct{ spec, want string }{{
+		spec: "",
+		want: "1,2,3,4",
+	}, {
+		spec: "err",
+		want: "1,2,3,4,5",
+	}, {
+		spec: "x",
+		want: "",
+	}, {
+		spec: "x,err=true",
+		want: "5",
+	}, {
+		spec: "x,err,err=0",
+		want: "",
+	}, {
+		spec: "a",
+		want: "1,3",
+	}, {
+		spec: "!a",
+		want: "2,4",
+	}, {
+		spec: "a,!a",
+		want: "",
+	}, {
+		spec: "a,!c",
+		want: "1",
+	}, {
+		spec: "c",
+		want: "3",
+	}, {
+		spec: "!a,d,err",
+		want: "4,5",
+	}}
+	for _, test := range tests {
+		match, err := ParseAccountSpec(test.spec, "").Filter(all)
+		require.NoError(t, err)
+		assert.Equal(t, test.want, getIDs(match), "spec=%q", test.spec)
+	}
+}
+
 func TestOwner(t *testing.T) {
 	all := accounts{
-		{"1", ""},
-		{"2", "a"},
-		{"3", "b"},
-		{"4", "c"},
+		{id: "1", owner: ""},
+		{id: "2", owner: "a"},
+		{id: "3", owner: "b"},
+		{id: "4", owner: "c"},
 	}.get()
 	tests := []*struct{ spec, want string }{{
 		spec: "",
@@ -80,15 +171,10 @@ func TestOwner(t *testing.T) {
 		spec: "owner=me,owner!=a",
 		want: "1,3,4",
 	}}
-	ids := make([]string, 0, len(all))
 	for _, test := range tests {
 		match, err := ParseAccountSpec(test.spec, "a").Filter(all)
 		require.NoError(t, err)
-		ids = ids[:0]
-		for _, ac := range match {
-			ids = append(ids, ac.ID)
-		}
-		assert.Equal(t, test.want, strings.Join(ids, ","), "spec=%q", test.spec)
+		assert.Equal(t, test.want, getIDs(match), "spec=%q", test.spec)
 	}
 
 	match, err := ParseAccountSpec("owner=me", "").Filter(all)
@@ -100,15 +186,36 @@ func TestOwner(t *testing.T) {
 	assert.Equal(t, all, match)
 }
 
-type accounts []struct{ id, owner string }
+type accounts []*struct{ id, name, owner, tags, err string }
 
 func (acs accounts) get() Accounts {
 	all := make(Accounts, len(acs))
 	for i, ac := range acs {
+		tags, _, err := ParseTags(ac.tags)
+		if err != nil {
+			panic(err)
+		}
 		all[i] = &Account{
-			Account: &awsgw.Account{ID: ac.id},
-			Ctl:     &Ctl{Owner: ac.owner},
+			Account: &awsgw.Account{
+				ID:   fmt.Sprintf("%012s", ac.id),
+				Name: ac.name,
+			},
+			Ctl: &Ctl{Owner: ac.owner, Tags: tags},
+		}
+		if ac.err != "" {
+			all[i].Ctl, all[i].Err = nil, errors.New(ac.err)
 		}
 	}
 	return all
+}
+
+func getIDs(acs Accounts) string {
+	var buf bytes.Buffer
+	for i, ac := range acs {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteString(strings.TrimLeft(ac.ID, "0"))
+	}
+	return buf.String()
 }

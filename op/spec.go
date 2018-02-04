@@ -126,9 +126,6 @@ func (s *AccountSpec) Filter(all Accounts) (Accounts, error) {
 // s.idx must match an account. Error status is not considered.
 func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 	var result Accounts
-	if len(s.idx) == 0 {
-		return result, nil
-	}
 	matched := make(map[string]struct{}, len(s.idx))
 	for _, ac := range all {
 		key := ac.Name
