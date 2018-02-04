@@ -23,7 +23,7 @@ const assumeRolePolicyTpl = `{
 }`
 
 // TmpIAMPath is a path for temporary users and roles.
-const TmpIAMPath = ctlPath + "tmp/"
+const TmpIAMPath = CtlPath + "tmp/"
 
 // PathName is a split representation of an IAM user/role/group path and name.
 type PathName struct{ Path, Name string }

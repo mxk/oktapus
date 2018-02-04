@@ -1,35 +1,16 @@
 package op
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"math"
 	"math/rand"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
-	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
-
-// CtlRole is the role that stores account control information.
-const CtlRole = "OktapusControl"
-
-// ctlPath is a common path for automatically created IAM users and roles.
-const ctlPath = "/oktapus/"
-
-// errCtlUpdate indicates new account control information was not saved.
-var errCtlUpdate = errors.New("account control information update interrupted")
-
-// ErrNoCtl indicates missing account control information.
-var ErrNoCtl = errors.New("account control information not available")
 
 // Account is an account in an AWS organization.
 type Account struct {
@@ -229,127 +210,4 @@ func (s byName) Less(i, j int) bool {
 		return s[i].ID < s[j].ID
 	}
 	return s[i].Name < s[j].Name
-}
-
-// Ctl contains account control information.
-type Ctl struct {
-	Owner string `json:"owner,omitempty"`
-	Desc  string `json:"desc,omitempty"`
-	Tags  Tags   `json:"tags,omitempty"`
-}
-
-// eq returns true if ctl == other.
-func (ctl *Ctl) eq(other *Ctl) bool {
-	return ctl == other || (ctl != nil && other != nil &&
-		ctl.Desc == other.Desc && ctl.Owner == other.Owner &&
-		internal.StringsEq(ctl.Tags, other.Tags))
-}
-
-// merge performs a 3-way merge of account control information changes.
-func (ctl *Ctl) merge(cur, ref *Ctl) {
-	if ctl.Owner == ref.Owner {
-		ctl.Owner = cur.Owner
-	}
-	if ctl.Desc == ref.Desc {
-		ctl.Desc = cur.Desc
-	}
-	set, clr := ctl.Tags.Diff(ref.Tags)
-	ctl.Tags = append(ctl.Tags[:0], cur.Tags...)
-	ctl.Tags.Apply(set, clr)
-}
-
-// init creates account control information in an uncontrolled account.
-func (ctl *Ctl) Init(c *iam.IAM) error {
-	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
-		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: aws.String(NewAssumeRolePolicy("")),
-			Description:              aws.String(b64),
-			Path:                     aws.String(ctlPath),
-			RoleName:                 aws.String(CtlRole),
-		}
-		out, err := c.CreateRole(&in)
-		if err == nil && out.Role.Description == nil {
-			// Probably a bug, but CreateRole does not return the description
-			out.Role.Description = in.Description
-		}
-		return out.Role, err
-	})
-}
-
-// Get retrieves current account control information.
-func (ctl *Ctl) Get(c *iam.IAM) error {
-	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
-	out, err := c.GetRole(&in)
-	if err == nil {
-		return ctl.decode(out.Role.Description)
-	}
-	*ctl = Ctl{}
-	return err
-}
-
-// Set stores account control information.
-func (ctl *Ctl) Set(c *iam.IAM) error {
-	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
-		in := iam.UpdateRoleDescriptionInput{
-			Description: aws.String(b64),
-			RoleName:    aws.String(CtlRole),
-		}
-		out, err := c.UpdateRoleDescription(&in)
-		return out.Role, err
-	})
-}
-
-// exec executes init or set operations.
-func (ctl *Ctl) exec(c *iam.IAM, fn func(b64 string) (*iam.Role, error)) error {
-	b64, err := ctl.encode()
-	if err != nil {
-		return err
-	}
-	r, err := fn(b64)
-	if err == nil && aws.StringValue(r.Description) != b64 {
-		err = errCtlUpdate
-	}
-	return err
-}
-
-const ctlVer = "1#"
-
-// encode encodes account control information into a base64 string.
-func (ctl *Ctl) encode() (string, error) {
-	sort.Strings(ctl.Tags)
-	b, err := json.Marshal(ctl)
-	if err == nil {
-		enc := base64.StdEncoding
-		b64 := make([]byte, len(ctlVer)+enc.EncodedLen(len(b)))
-		enc.Encode(b64[copy(b64, ctlVer):], b)
-		return string(b64), nil
-	}
-	return "", err
-}
-
-// decode decodes account control information from a base64 string.
-func (ctl *Ctl) decode(s *string) error {
-	if *ctl = (Ctl{}); s == nil || *s == "" {
-		return nil
-	}
-	b64, ver := *s, 0
-	if i := strings.IndexByte(b64, '#'); i > 0 {
-		if v, err := strconv.Atoi(b64[0:i]); err == nil {
-			b64, ver = b64[i+1:], v
-		}
-	}
-	b, err := base64.StdEncoding.DecodeString(b64)
-	if err == nil {
-		switch ver {
-		case 1:
-			err = json.Unmarshal(b, ctl)
-		default:
-			err = fmt.Errorf("unknown account control version (%d)", ver)
-		}
-		if err != nil {
-			*ctl = Ctl{}
-		}
-		sort.Strings(ctl.Tags)
-	}
-	return err
 }
