@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"sort"
@@ -106,9 +107,14 @@ func isHelp(s string) bool {
 	return ok
 }
 
+var (
+	helpWriter   = io.Writer(os.Stderr)
+	helpExitFunc = os.Exit
+)
+
 // helpSetup writes an error report to stderr and sets program exit code.
 func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
-	w, code := bufio.NewWriter(os.Stderr), 0
+	w, code := bufio.NewWriter(helpWriter), 0
 	if err != nil {
 		code = 1
 		if _, ok := err.(usageError); ok {
@@ -117,7 +123,7 @@ func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
 		fmt.Fprintf(w, "Error: %v\n", err)
 	}
 	return w, internal.AppName, func() {
-		defer os.Exit(2)
+		defer helpExitFunc(2)
 		if p := recover(); p != nil {
 			w.WriteString("panic: ")
 			fmt.Fprintln(w, p)
@@ -126,6 +132,6 @@ func helpSetup(err error) (w *bufio.Writer, bin string, exit func()) {
 			code = 2
 		}
 		w.Flush()
-		os.Exit(code)
+		helpExitFunc(code)
 	}
 }
