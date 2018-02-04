@@ -47,7 +47,7 @@ func TestStatic(t *testing.T) {
 	_, err = ParseAccountSpec("c,x", "").Filter(all)
 	assert.EqualError(t, err, `account name "x" not found`)
 
-	_, err = ParseAccountSpec("x"+strings.Repeat(",y", 64), "").Filter(all)
+	_, err = ParseAccountSpec("x"+strings.Repeat(",x", 64), "").Filter(all)
 	assert.EqualError(t, err, `account name "x" not found`)
 }
 
