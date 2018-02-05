@@ -14,54 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// OrgRouter contains API responses for a mock AWS organization.
-var OrgRouter = mock.NewDataTypeRouter(
-	&sts.GetCallerIdentityOutput{
-		Account: aws.String("000000000000"),
-		Arn:     aws.String("arn:aws:sts::000000000000:assumed-role/TestRole/TestSession"),
-		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE:user@example.com"),
-	},
-	&orgs.DescribeOrganizationOutput{
-		Organization: &orgs.Organization{
-			Arn:                aws.String("arn:aws:organizations::000000000000:organization/o-test"),
-			FeatureSet:         aws.String(orgs.OrganizationFeatureSetAll),
-			Id:                 aws.String("o-test"),
-			MasterAccountArn:   aws.String("arn:aws:organizations::000000000000:account/o-test/000000000000"),
-			MasterAccountEmail: aws.String("master@example.com"),
-			MasterAccountId:    aws.String("000000000000"),
-		},
-	},
-	&orgs.ListAccountsOutput{
-		Accounts: []*orgs.Account{{
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/000000000000"),
-			Email:           aws.String("master@example.com"),
-			Id:              aws.String("000000000000"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodInvited),
-			JoinedTimestamp: aws.Time(time.Unix(0, 0)),
-			Name:            aws.String("master"),
-			Status:          aws.String(orgs.AccountStatusActive),
-		}, {
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/111111111111"),
-			Email:           aws.String("test1@example.com"),
-			Id:              aws.String("111111111111"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodCreated),
-			JoinedTimestamp: aws.Time(time.Unix(1, 0)),
-			Name:            aws.String("test1"),
-			Status:          aws.String(orgs.AccountStatusActive),
-		}, {
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/222222222222"),
-			Email:           aws.String("test2@example.com"),
-			Id:              aws.String("222222222222"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodCreated),
-			JoinedTimestamp: aws.Time(time.Unix(2, 0)),
-			Name:            aws.String("test2"),
-			Status:          aws.String(orgs.AccountStatusSuspended),
-		}},
-	},
-)
-
 func TestClientConnect(t *testing.T) {
-	sess := mockSession()
+	sess := mock.NewSession(true)
 	c := NewClient(sess)
 	assert.Equal(t, sess, c.ConfigProvider())
 	assert.Empty(t, c.Ident().AccountID)
@@ -76,7 +30,7 @@ func TestClientConnect(t *testing.T) {
 
 func TestClientCommonRole(t *testing.T) {
 	// Assumed role
-	sess := mockSession()
+	sess := mock.NewSession(true)
 	c := NewClient(sess)
 	require.NoError(t, c.Connect())
 	assert.Equal(t, "user@example.com", c.CommonRole)
@@ -105,7 +59,7 @@ func TestClientCommonRole(t *testing.T) {
 
 func TestClientRefresh(t *testing.T) {
 	out := new(orgs.ListAccountsOutput)
-	OrgRouter.Get(out)
+	mock.OrgRouter.Get(out)
 	want := make([]*Account, len(out.Accounts))
 	for i := range want {
 		want[i] = &Account{ID: aws.StringValue(out.Accounts[i].Id)}
@@ -115,19 +69,18 @@ func TestClientRefresh(t *testing.T) {
 		new(Account).set(out.Accounts[0])
 	})
 
-	c := NewClient(mockSession())
+	c := NewClient(mock.NewSession(true))
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
 	assert.Equal(t, want, sortByID(c.Accounts()))
 }
 
 func TestClientEncodeDecode(t *testing.T) {
-	sess := mockSession()
+	sess := mock.NewSession(true)
 	creds := &StaticCreds{
 		Value: credentials.Value{
 			AccessKeyID:     "ID",
 			SecretAccessKey: "SECRET",
-			SessionToken:    "TOKEN",
 		},
 		Exp: time.Now().Add(time.Minute).Truncate(time.Second),
 	}
@@ -147,18 +100,12 @@ func TestClientEncodeDecode(t *testing.T) {
 }
 
 func TestClientCreds(t *testing.T) {
-	c := NewClient(mockSession())
+	c := NewClient(mock.NewSession(true))
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
 	cp := c.CredsProvider("111111111111").(*AssumeRoleCreds)
 	assert.Equal(t, "arn:aws:iam::111111111111:role/user@example.com", *cp.RoleArn)
 	assert.Equal(t, "user@example.com", *cp.RoleSessionName)
-}
-
-func mockSession() *mock.Session {
-	sess := mock.NewSession()
-	sess.Add(OrgRouter)
-	return sess
 }
 
 func sortByID(acs []*Account) []*Account {

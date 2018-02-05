@@ -25,7 +25,7 @@ func TestAccountCreds(t *testing.T) {
 		SessionToken:    "token",
 	}
 	exp := internal.Time().Add(time.Minute)
-	ac.Init(mock.NewSession(), &awsgw.StaticCreds{Value: v, Exp: exp})
+	ac.Init(mock.NewSession(false), &awsgw.StaticCreds{Value: v, Exp: exp})
 	assert.NotNil(t, ac.IAM())
 
 	cr, err := ac.Creds(true)
