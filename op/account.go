@@ -1,6 +1,7 @@
 package op
 
 import (
+	"errors"
 	"math"
 	"math/rand"
 	"sort"
@@ -8,28 +9,48 @@ import (
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
 // Account is an account in an AWS organization.
 type Account struct {
-	*awsgw.Account
 	*Ctl
+	ID   string
+	Name string
+	Err  error
 
-	IAM *iam.IAM
-	Err error
-
+	iam iamiface.IAMAPI
 	cp  awsgw.CredsProvider
 	ref Ctl
 }
 
+// NewAccount creates a new account with the given id and name.
+func NewAccount(id, name string) *Account {
+	return &Account{ID: id, Name: name}
+}
+
+// Init initializes the account IAM client.
+func (ac *Account) Init(sess client.ConfigProvider, cp awsgw.CredsProvider) {
+	cfg := aws.Config{Credentials: cp.Creds()}
+	ac.iam = iam.New(sess, &cfg)
+	ac.cp = cp
+}
+
+// IAM returns the account IAM client.
+func (ac *Account) IAM() iamiface.IAMAPI {
+	return ac.iam
+}
+
 // Creds returns temporary account credentials.
 func (ac *Account) Creds(renew bool) (*awsgw.StaticCreds, error) {
-	if renew {
+	if ac.cp == nil {
+		return nil, errors.New("account not initialized")
+	} else if renew {
 		ac.cp.Reset()
 	}
-	if _, err := ac.IAM.Config.Credentials.Get(); err != nil {
+	if _, err := ac.cp.Creds().Get(); err != nil {
 		return nil, err
 	}
 	return ac.cp.Save(), nil
@@ -89,20 +110,6 @@ func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
 	return f
 }
 
-// RequireIAM ensures that all accounts have an IAM client.
-func (s Accounts) RequireIAM(c *awsgw.Client) Accounts {
-	sess := c.ConfigProvider()
-	var cfg aws.Config
-	for _, ac := range s {
-		if ac.IAM == nil {
-			ac.cp = c.CredsProvider(ac.ID)
-			cfg.Credentials = credentials.NewCredentials(ac.cp)
-			ac.IAM = iam.New(sess, &cfg)
-		}
-	}
-	return s
-}
-
 // RequireCtl ensures that all accounts have control information. Existing
 // information is not refreshed.
 func (s Accounts) RequireCtl() Accounts {
@@ -124,7 +131,7 @@ func (s Accounts) RequireCtl() Accounts {
 // RefreshCtl retrieves current control information for all accounts.
 func (s Accounts) RefreshCtl() Accounts {
 	return s.Apply(func(ac *Account) {
-		if ac.Err = ac.ref.Get(ac.IAM); ac.Err != nil {
+		if ac.Err = ac.ref.Get(ac.iam); ac.Err != nil {
 			ac.Ctl = nil
 		} else {
 			if ac.Ctl == nil {
@@ -149,7 +156,7 @@ func (s Accounts) Save() Accounts {
 
 		// Get current state and merge changes
 		var cur Ctl
-		if ac.Err = cur.Get(ac.IAM); ac.Err != nil {
+		if ac.Err = cur.Get(ac.iam); ac.Err != nil {
 			return
 		} else if ac.merge(&cur, &ac.ref); cur.eq(ac.Ctl) {
 			ac.ref = cur
@@ -163,7 +170,7 @@ func (s Accounts) Save() Accounts {
 		}
 
 		// Update state
-		if ac.Err = ac.Ctl.Set(ac.IAM); ac.Err != nil {
+		if ac.Err = ac.Ctl.Set(ac.iam); ac.Err != nil {
 			ac.ref = cur
 		} else {
 			ac.ref = *ac.Ctl

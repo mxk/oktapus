@@ -66,8 +66,8 @@ func (cmd *free) Call(ctx *op.Ctx) (interface{}, error) {
 	acs.Apply(func(ac *op.Account) {
 		ac.Owner = ""
 		ch := make(chan error, 1)
-		go func() { ch <- op.DelTmpRoles(ac.IAM) }()
-		ac.Err = op.DelTmpUsers(ac.IAM)
+		go func() { ch <- op.DelTmpRoles(ac.IAM()) }()
+		ac.Err = op.DelTmpUsers(ac.IAM())
 		if err := <-ch; ac.Err == nil {
 			ac.Err = err
 		}

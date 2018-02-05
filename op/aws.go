@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
@@ -134,7 +135,7 @@ func NewAssumeRolePolicy(principal string) string {
 }
 
 // DelTmpUsers deletes all users under the temporary IAM path.
-func DelTmpUsers(c *iam.IAM) error {
+func DelTmpUsers(c iamiface.IAMAPI) error {
 	var users []string
 	in := iam.ListUsersInput{PathPrefix: aws.String(TmpIAMPath)}
 	pager := func(out *iam.ListUsersOutput, lastPage bool) bool {
@@ -153,7 +154,7 @@ func DelTmpUsers(c *iam.IAM) error {
 
 // delUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
-func delUser(c *iam.IAM, user string) error {
+func delUser(c iamiface.IAMAPI, user string) error {
 	if err := detachUserPolicies(c, user); err != nil {
 		return err
 	} else if err = delAccessKeys(c, user); err != nil {
@@ -165,7 +166,7 @@ func delUser(c *iam.IAM, user string) error {
 }
 
 // delAccessKeys deletes all user access keys.
-func delAccessKeys(c *iam.IAM, user string) error {
+func delAccessKeys(c iamiface.IAMAPI, user string) error {
 	var ids []string
 	in := iam.ListAccessKeysInput{UserName: aws.String(user)}
 	pager := func(out *iam.ListAccessKeysOutput, lastPage bool) bool {
@@ -188,7 +189,7 @@ func delAccessKeys(c *iam.IAM, user string) error {
 }
 
 // detachUserPolicies detaches all user policies.
-func detachUserPolicies(c *iam.IAM, user string) error {
+func detachUserPolicies(c iamiface.IAMAPI, user string) error {
 	var arns []string
 	in := iam.ListAttachedUserPoliciesInput{UserName: aws.String(user)}
 	pager := func(out *iam.ListAttachedUserPoliciesOutput, lastPage bool) bool {
@@ -211,7 +212,7 @@ func detachUserPolicies(c *iam.IAM, user string) error {
 }
 
 // DelTmpRoles deletes all roles under the temporary IAM path.
-func DelTmpRoles(c *iam.IAM) error {
+func DelTmpRoles(c iamiface.IAMAPI) error {
 	var roles []string
 	in := iam.ListRolesInput{PathPrefix: aws.String(TmpIAMPath)}
 	pager := func(out *iam.ListRolesOutput, lastPage bool) bool {
@@ -230,7 +231,7 @@ func DelTmpRoles(c *iam.IAM) error {
 
 // delRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
-func delRole(c *iam.IAM, role string) error {
+func delRole(c iamiface.IAMAPI, role string) error {
 	if err := detachRolePolicies(c, role); err != nil {
 		return err
 	}
@@ -240,7 +241,7 @@ func delRole(c *iam.IAM, role string) error {
 }
 
 // detachRolePolicies detaches all role policies.
-func detachRolePolicies(c *iam.IAM, role string) error {
+func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 	var arns []string
 	in := iam.ListAttachedRolePoliciesInput{RoleName: aws.String(role)}
 	pager := func(out *iam.ListAttachedRolePoliciesOutput, lastPage bool) bool {

@@ -99,7 +99,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 				Path:                     aws.String(r.Path),
 				RoleName:                 aws.String(r.Name),
 			}
-			if _, ac.Err = ac.IAM.CreateRole(&in); ac.Err != nil {
+			if _, ac.Err = ac.IAM().CreateRole(&in); ac.Err != nil {
 				break
 			}
 			if cmd.Policy != "" {
@@ -107,7 +107,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 					PolicyArn: aws.String(cmd.Policy),
 					RoleName:  aws.String(r.Name),
 				}
-				if _, ac.Err = ac.IAM.AttachRolePolicy(&in); ac.Err != nil {
+				if _, ac.Err = ac.IAM().AttachRolePolicy(&in); ac.Err != nil {
 					break
 				}
 			}

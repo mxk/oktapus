@@ -118,10 +118,12 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 		info := c.Accounts()
 		ctx.All = make(Accounts, len(info))
 		for i, ac := range info {
-			ctx.All[i] = &Account{Account: ac}
+			n := NewAccount(ac.ID, ac.Name)
+			n.Init(c.ConfigProvider(), c.CredsProvider(ac.ID))
+			ctx.All[i] = n
 		}
 	}
-	ctx.All.RequireIAM(c).RequireCtl()
+	ctx.All.RequireCtl()
 	acs, err := ParseAccountSpec(spec, c.CommonRole).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err

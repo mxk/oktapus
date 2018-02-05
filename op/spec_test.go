@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -195,13 +194,9 @@ func (acs accounts) get() Accounts {
 		if err != nil {
 			panic(err)
 		}
-		all[i] = &Account{
-			Account: &awsgw.Account{
-				ID:   fmt.Sprintf("%012s", ac.id),
-				Name: ac.name,
-			},
-			Ctl: &Ctl{Owner: ac.owner, Tags: tags},
-		}
+		n := NewAccount(fmt.Sprintf("%012s", ac.id), ac.name)
+		n.Ctl = &Ctl{Owner: ac.owner, Tags: tags}
+		all[i] = n
 		if ac.err != "" {
 			all[i].Ctl, all[i].Err = nil, errors.New(ac.err)
 		}

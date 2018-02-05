@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
@@ -157,16 +158,16 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	var wg sync.WaitGroup
 	acs := make(op.Accounts, 0, n)
 	for r := range out {
-		if r.Err == nil {
-			acs = append(acs, &op.Account{Account: c.Update(r.Account)})
-		} else {
-			acs = append(acs, &op.Account{
-				Account: &awsgw.Account{Name: aws.StringValue(r.Name)},
-				Err:     r.Err,
-			})
+		if r.Err != nil {
+			ac := op.NewAccount("", aws.StringValue(r.Name))
+			ac.Err = r.Err
+			acs = append(acs, ac)
 			continue
 		}
-		acs[len(acs)-1:].RequireIAM(c)
+		info := c.Update(r.Account)
+		ac := op.NewAccount(info.ID, info.Name)
+		ac.Init(c.ConfigProvider(), c.CredsProvider(ac.ID))
+		acs = append(acs, ac)
 		wg.Add(1)
 		go func(ac *op.Account) {
 			defer wg.Done()
@@ -177,7 +178,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Create OrganizationAccountAccessRole
-			if ac.Err = createOrgAccessRole(ac.IAM, masterID); ac.Err != nil {
+			if ac.Err = createOrgAccessRole(ac.IAM(), masterID); ac.Err != nil {
 				return
 			}
 
@@ -186,8 +187,8 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
-			ac.Err = ac.Ctl.Init(ac.IAM)
-		}(acs[len(acs)-1])
+			ac.Err = ac.Ctl.Init(ac.IAM())
+		}(ac)
 	}
 	wg.Wait()
 	if !cmd.Exec {
@@ -284,7 +285,7 @@ const adminPolicy = `{
 // createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
-func createOrgAccessRole(c *iam.IAM, masterAccountID string) error {
+func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
 	role := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String(assumeRolePolicy),

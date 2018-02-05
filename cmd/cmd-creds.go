@@ -7,6 +7,7 @@ import (
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
 func init() {
@@ -94,7 +95,7 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 			AccountID: c.AccountID,
 			Name:      c.Name,
 		}
-		if out, err := km.newKey(ac.IAM); err == nil {
+		if out, err := km.newKey(ac.IAM()); err == nil {
 			c.AccessKeyID = aws.StringValue(out.AccessKey.AccessKeyId)
 			c.SecretAccessKey = aws.StringValue(out.AccessKey.SecretAccessKey)
 		} else {
@@ -130,7 +131,7 @@ func newKeyMaker(path, user, policy string) *keyMaker {
 	}
 }
 
-func (m *keyMaker) newKey(c *iam.IAM) (*iam.CreateAccessKeyOutput, error) {
+func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUser(&m.user); err != nil &&
 		!awsErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 		return nil, err
