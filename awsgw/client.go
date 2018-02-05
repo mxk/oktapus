@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
@@ -53,7 +52,7 @@ func (c *Client) Connect() error {
 	}
 	var cfg aws.Config
 	if c.MasterCreds != nil {
-		cfg.Credentials = credentials.NewCredentials(c.MasterCreds)
+		cfg.Credentials = c.MasterCreds.Creds()
 	}
 	var wg sync.WaitGroup
 	wg.Add(2)
