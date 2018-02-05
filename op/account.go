@@ -48,7 +48,9 @@ func (ac *Account) Creds(renew bool) (*awsgw.StaticCreds, error) {
 	if ac.cp == nil {
 		return nil, errors.New("account not initialized")
 	} else if renew {
-		ac.cp.Reset()
+		if _, static := ac.cp.(*awsgw.StaticCreds); !static {
+			ac.cp.Reset()
+		}
 	}
 	if _, err := ac.cp.Creds().Get(); err != nil {
 		return nil, err
@@ -170,9 +172,7 @@ func (s Accounts) Save() Accounts {
 		}
 
 		// Update state
-		if ac.Err = ac.Ctl.Set(ac.iam); ac.Err != nil {
-			ac.ref = cur
-		} else {
+		if ac.Err = ac.Ctl.Set(ac.iam); ac.Err == nil {
 			ac.ref = *ac.Ctl
 		}
 	})
