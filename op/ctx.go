@@ -33,6 +33,7 @@ type Ctx struct {
 
 	All Accounts
 
+	sess client.ConfigProvider
 	okta *okta.Client
 	aws  *awsgw.Client
 }
@@ -86,23 +87,28 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	if ctx.aws != nil {
 		return ctx.aws
 	}
-	var cfg aws.Config
+	if ctx.sess == nil {
+		var err error
+		if ctx.UseOkta() {
+			// With Okta, all credentials must be explicit
+			cp := &credentials.ErrorProvider{
+				Err:          errors.New("missing credentials"),
+				ProviderName: "ErrorProvider",
+			}
+			cfg := aws.Config{Credentials: credentials.NewCredentials(cp)}
+			ctx.sess, err = newSession(&cfg)
+		} else {
+			ctx.sess, err = newSession(nil)
+		}
+		if err != nil {
+			log.F("Failed to create AWS session: %v", err)
+		}
+	}
+	ctx.aws = awsgw.NewClient(ctx.sess)
 	if ctx.UseOkta() {
-		// With Okta, all credentials must be explicit
-		cfg.Credentials = credentials.NewCredentials(&credentials.ErrorProvider{
-			Err:          errors.New("missing credentials"),
-			ProviderName: "ErrorProvider",
-		})
+		ctx.aws.MasterCreds = ctx.newOktaCreds(ctx.sess)
 	}
-	sess, err := newSession(&cfg)
-	if err != nil {
-		log.F("Failed to create AWS session: %v", err)
-	}
-	ctx.aws = awsgw.NewClient(sess)
-	if ctx.UseOkta() {
-		ctx.aws.MasterCreds = ctx.newOktaCreds(sess)
-	}
-	if err = ctx.aws.Connect(); err != nil {
+	if err := ctx.aws.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
 	}
 	return ctx.aws
@@ -145,7 +151,7 @@ func (ctx *Ctx) EnvMap() map[string]string {
 	}
 	akid := ""
 	if !ctx.UseOkta() {
-		if sess, err := newSession(nil); err == nil {
+		if sess, err := session.NewSession(); err == nil {
 			v, err := sess.Config.Credentials.Get()
 			if err == nil && v.SessionToken == "" {
 				akid = v.AccessKeyID
@@ -217,7 +223,7 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsgw.CredsProvider {
 }
 
 // newSession returns a new AWS session with the given config.
-func newSession(cfg *aws.Config) (*session.Session, error) {
+func newSession(cfg *aws.Config) (client.ConfigProvider, error) {
 	sess, err := session.NewSession(cfg)
 	if err == nil {
 		// Remove useless handler that writes messages to stdout
