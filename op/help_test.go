@@ -57,7 +57,7 @@ type helpCmd struct{}
 
 func (helpCmd) Info() *CmdInfo {
 	return &CmdInfo{
-		Names:   []string{"testcmd", "testalias"},
+		Names:   []string{"helpcmd", "helpalias"},
 		Summary: "test command summary",
 		New:     func() Cmd { return helpCmd{} },
 	}
