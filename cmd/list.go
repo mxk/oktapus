@@ -1,14 +1,18 @@
 package cmd
 
-import "flag"
+import (
+	"flag"
+
+	"github.com/LuminalHQ/oktapus/op"
+)
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"list", "ls"},
-		summary: "List accounts",
-		usage:   "[options] [account-spec]",
-		maxArgs: 1,
-		new:     func() Cmd { return &list{Name: "list"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"list", "ls"},
+		Summary: "List accounts",
+		Usage:   "[options] [account-spec]",
+		MaxArgs: 1,
+		New:     func() op.Cmd { return &list{Name: "list"} },
 	})
 }
 
@@ -24,7 +28,7 @@ func (cmd *list) FlagCfg(fs *flag.FlagSet) {
 	fs.BoolVar(&cmd.Refresh, "refresh", false, "Refresh account information")
 }
 
-func (cmd *list) Run(ctx *Ctx, args []string) error {
+func (cmd *list) Run(ctx *op.Ctx, args []string) error {
 	padArgs(cmd, &args)
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
@@ -34,9 +38,9 @@ func (cmd *list) Run(ctx *Ctx, args []string) error {
 	return err
 }
 
-func (cmd *list) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *list) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Refresh {
-		ctx.all = nil
+		ctx.All = nil
 	}
 	acs, err := ctx.Accounts(cmd.Spec)
 	return listAccounts(acs), err

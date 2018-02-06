@@ -2,8 +2,8 @@ package mock
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
@@ -17,28 +17,20 @@ import (
 // LogLevel is the log level for all mock sessions.
 var LogLevel = aws.LogOff
 
-// ServerFunc is a function that populates r.Data and r.Error, simulating an AWS
-// response. It replaces the Send and all Unmarshal handlers in the session.
-type ServerFunc func(r *request.Request)
-
-// Router returns the server function that should handle the given request or
-// nil if this request should be handled by another router.
-type Router interface {
-	Route(api string, r *request.Request) ServerFunc
-}
-
 // Session is a client.ConfigProvider that uses routers and server functions to
 // simulate AWS responses.
 type Session struct {
 	session.Session
-	AWS
+	sync.Mutex
+	ChainRouter
 }
 
 // NewSession returns a client.ConfigProvider that does not use any environment
-// variables or config files.
-func NewSession() *Session {
+// variables or config files. If dfltRouters is true, the session's ChainRouter
+// will contain all default router implementations.
+func NewSession(dfltRouters bool) *Session {
 	cfg := &aws.Config{
-		Credentials:      credentials.AnonymousCredentials,
+		Credentials:      credentials.NewStaticCredentials("akid", "secret", ""),
 		EndpointResolver: endpoints.DefaultResolver(),
 		LogLevel:         &LogLevel,
 		Logger:           aws.NewDefaultLogger(),
@@ -60,99 +52,81 @@ func NewSession() *Session {
 	// Install mock handler
 	sess.Handlers.Send.PushBackNamed(request.NamedHandler{
 		Name: "mock.SendHandler",
-		Fn:   sess.AWS.do,
+		Fn: func(r *request.Request) {
+			sess.Lock()
+			defer sess.Unlock()
+			r.Retryable = aws.Bool(false)
+			api := r.ClientInfo.ServiceName + ":" + r.Operation.Name
+			if !sess.Route(sess, r, api) {
+				panic("mock: " + api + " not implemented")
+			}
+		},
 	})
+
+	// Configure default routers
+	if dfltRouters {
+		sess.Add(NewSTSRouter())
+		sess.Add(NewOrgRouter())
+	}
 	return sess
 }
 
-// AWS handles requests as though they were sent to AWS servers. It maintains a
-// router chain and gives each router the option to handle each incoming
-// request.
-type AWS struct{ routers []Router }
-
-// Add inserts a new router into the chain, giving it priority over any existing
-// routers.
-func (s *AWS) Add(r Router) *AWS {
-	s.routers = append(s.routers, r)
-	return s
-}
-
-// do locates the router and server function to handle request r.
-func (s *AWS) do(r *request.Request) {
-	api := r.ClientInfo.ServiceName + ":" + r.Operation.Name
-	for i := len(s.routers) - 1; i >= 0; i-- {
-		if server := s.routers[i].Route(api, r); server != nil {
-			server(r)
-			return
+// AccountID returns the 12-digit account ID from id, which may an account ID
+// without leading zeros or an ARN.
+func AccountID(id string) string {
+	if len(id) == 12 {
+		return id
+	}
+	if len(id) < 12 {
+		var buf [12]byte
+		n := copy(buf[:], "000000000000"[:len(buf)-len(id)])
+		copy(buf[n:], id)
+		return string(buf[:])
+	}
+	orig := id
+	for i := 4; i > 0; i-- {
+		j := strings.IndexByte(id, ':')
+		if j == -1 {
+			panic("mock: invalid arn: " + orig)
 		}
+		id = id[j+1:]
 	}
-	panic("mock: " + api + " not implemented")
-}
-
-// ServerResult contains values that are assigned to request Data and Error
-// fields.
-type ServerResult struct {
-	Out interface{}
-	Err error
-}
-
-// DataTypeRouter handles requests based on the Data field type.
-type DataTypeRouter struct {
-	m map[reflect.Type]ServerResult
-}
-
-// NewDataTypeRouter returns a router that will serve 'out' values to all
-// requests with a matching data output type. All out values should be pointers
-// to AWS SDK *Output structs.
-func NewDataTypeRouter(out ...interface{}) *DataTypeRouter {
-	r := &DataTypeRouter{make(map[reflect.Type]ServerResult, len(out))}
-	for _, v := range out {
-		if _, ok := r.m[reflect.TypeOf(v)]; ok {
-			panic(fmt.Sprintf("mock: %T already contains %T", r, out))
-		}
-		r.Set(v, nil)
+	if strings.IndexByte(id, ':') != 12 {
+		panic("mock: invalid arn: " + orig)
 	}
-	return r
+	return id[:12]
 }
 
-// Set allows the router to handle API requests with the given output type. If
-// err is not nil, it will be used to set the request's Error field.
-func (r *DataTypeRouter) Set(out interface{}, err error) {
-	t := reflect.TypeOf(out)
-	if t.Kind() != reflect.Ptr {
-		panic(fmt.Sprintf("mock: %T is not a pointer", out))
-	} else if s := t.Elem(); s.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("mock: %T is not a struct", s))
-	} else if !strings.Contains(s.PkgPath(), "/aws-sdk-go/") ||
-		!strings.HasSuffix(s.Name(), "Output") {
-		panic(fmt.Sprintf("mock: %T is not an AWS output struct", s))
-	}
-	r.m[t] = ServerResult{out, err}
+// UserARN returns an IAM user ARN.
+func UserARN(account, name string) string {
+	return iamARN(account, "user", name)
 }
 
-// Get copies a response value of the matching type into out and returns the
-// associated error, if any.
-func (r *DataTypeRouter) Get(out interface{}) error {
-	if v, ok := r.m[reflect.TypeOf(out)]; ok {
-		reflect.ValueOf(out).Elem().Set(reflect.ValueOf(v.Out).Elem())
-		return v.Err
-	}
-	panic(fmt.Sprintf("mock: %T does not contain %T", r, out))
+// RoleARN returns an IAM role ARN.
+func RoleARN(account, name string) string {
+	return iamARN(account, "role", name)
 }
 
-// Route implements the Router interface.
-func (r *DataTypeRouter) Route(api string, req *request.Request) ServerFunc {
-	if _, ok := r.m[reflect.TypeOf(req.Data)]; ok {
-		return r.serve
-	}
-	return nil
+// PolicyARN returns an IAM policy ARN.
+func PolicyARN(account, name string) string {
+	return iamARN(account, "policy", name)
 }
 
-// serve is a ServerFunc.
-func (r *DataTypeRouter) serve(req *request.Request) {
-	if err := r.Get(req.Data); err != nil {
-		req.Error = err
+// iamARN constructs an IAM ARN.
+func iamARN(account, typ, name string) string {
+	return "arn:aws:iam::" + account + ":" + typ + "/" + name
+}
+
+// getReqAccountID returns the account ID for request q.
+func getReqAccountID(q *request.Request) string {
+	v, err := q.Config.Credentials.Get()
+	if err != nil {
+		panic(err)
 	}
+	if v.SessionToken != "" {
+		return AccountID(v.SessionToken)
+	}
+	return "000000000000"
 }
 
 // disableHandlerList prevents a HandlerList from executing any handlers.

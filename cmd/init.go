@@ -3,16 +3,18 @@ package cmd
 import (
 	"bufio"
 	"errors"
+
+	"github.com/LuminalHQ/oktapus/op"
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"init"},
-		summary: "Initialize account control information",
-		usage:   "[options] account-spec",
-		minArgs: 1,
-		maxArgs: 1,
-		new:     func() Cmd { return &initCmd{Name: "init"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"init"},
+		Summary: "Initialize account control information",
+		Usage:   "[options] account-spec",
+		MinArgs: 1,
+		MaxArgs: 1,
+		New:     func() op.Cmd { return &initCmd{Name: "init"} },
 	})
 }
 
@@ -23,7 +25,7 @@ type initCmd struct {
 }
 
 func (cmd *initCmd) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		Initialize account control information.
 
 		The account owner, description, and tags are stored within the account
@@ -31,10 +33,10 @@ func (cmd *initCmd) Help(w *bufio.Writer) {
 		that do not have this role are not managed by oktapus. This command
 		creates the role and initializes the account control structure.
 	`)
-	accountSpecHelp(w)
+	op.AccountSpecHelp(w)
 }
 
-func (cmd *initCmd) Run(ctx *Ctx, args []string) error {
+func (cmd *initCmd) Run(ctx *op.Ctx, args []string) error {
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
 	if err == nil {
@@ -43,16 +45,16 @@ func (cmd *initCmd) Run(ctx *Ctx, args []string) error {
 	return err
 }
 
-func (cmd *initCmd) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *initCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err
 	}
 	errInit := errors.New("already initialized")
-	acs.Apply(func(ac *Account) {
+	acs.Apply(func(ac *op.Account) {
 		if ac.Ctl == nil {
-			ac.Ctl = &Ctl{Tags: []string{"init"}}
-			ac.Err = ac.Ctl.init(ac.IAM)
+			ac.Ctl = &op.Ctl{Tags: []string{"init"}}
+			ac.Err = ac.Ctl.Init(ac.IAM())
 			// TODO: Use errInit if role exists
 		} else if ac.Err == nil {
 			ac.Err = errInit

@@ -84,7 +84,7 @@ func TestKeepalive(t *testing.T) {
 	}(callTimeout, keepaliveRate)
 
 	sleep := 80 * time.Millisecond
-	callTimeout = 20 * time.Millisecond
+	callTimeout = 40 * time.Millisecond
 	keepaliveRate = 10 * time.Millisecond
 	ctx := newTestCtx()
 	gob.Register(sleep)

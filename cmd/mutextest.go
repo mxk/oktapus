@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -21,14 +21,14 @@ import (
 )
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"mutex-test"},
-		summary: "Test account owner mutex",
-		usage:   "[options] num-workers",
-		minArgs: 1,
-		maxArgs: 1,
-		hidden:  true,
-		new:     func() Cmd { return &mutexTest{Name: "mutex-test"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"mutex-test"},
+		Summary: "Test account owner mutex",
+		Usage:   "[options] num-workers",
+		MinArgs: 1,
+		MaxArgs: 1,
+		Hidden:  true,
+		New:     func() op.Cmd { return &mutexTest{Name: "mutex-test"} },
 	})
 }
 
@@ -40,7 +40,10 @@ var (
 	freeDelay    = 10 * time.Second
 )
 
-type mutexTest struct{ Name }
+type mutexTest struct {
+	Name
+	noFlags
+}
 
 type delaySummary struct {
 	Workers  int
@@ -62,12 +65,10 @@ type testResult struct {
 	Pass         bool
 }
 
-func (cmd *mutexTest) FlagCfg(fs *flag.FlagSet) {}
-
-func (cmd *mutexTest) Run(_ *Ctx, args []string) error {
+func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if n < 1 || err != nil {
-		usageErr(cmd, "number of workers must be > 0")
+		op.UsageErr(cmd, "number of workers must be > 0")
 	}
 
 	// Create verification IAM client
@@ -77,8 +78,8 @@ func (cmd *mutexTest) Run(_ *Ctx, args []string) error {
 		panic(err)
 	}
 	c := iam.New(sess)
-	initCtl := new(Ctl)
-	if err := initCtl.get(c); err != nil {
+	initCtl := new(op.Ctl)
+	if err := initCtl.Get(c); err != nil {
 		panic(err)
 	} else if initCtl.Owner != "" {
 		return fmt.Errorf("account is currently owned by %q", initCtl.Owner)
@@ -158,7 +159,7 @@ func (cmd *mutexTest) Run(_ *Ctx, args []string) error {
 			fmt.Printf("Owner is %s, will verify in %v... ",
 				r.name, confirmDelay)
 			time.Sleep(confirmDelay)
-			if err := r.get(c); err != nil {
+			if err := r.Get(c); err != nil {
 				panic(err)
 			}
 			if t.FinalOwner = r.Owner; t.AssumedOwner == t.FinalOwner {
@@ -172,7 +173,7 @@ func (cmd *mutexTest) Run(_ *Ctx, args []string) error {
 		}
 
 		// Free account
-		if err := initCtl.set(c); err != nil {
+		if err := initCtl.Set(c); err != nil {
 			panic(err)
 		}
 		if freeDelay < verifyDelay {
@@ -221,7 +222,7 @@ const (
 )
 
 type workerResult struct {
-	Ctl
+	op.Ctl
 
 	name string
 	step string
@@ -237,21 +238,21 @@ func worker(name string, c *iam.IAM, run *sync.Cond, ch chan<- *workerResult) {
 		run.L.Unlock()
 
 		r.step = stepGet
-		if r.err = r.get(c); r.err != nil || r.Owner != "" {
+		if r.err = r.Get(c); r.err != nil || r.Owner != "" {
 			ch <- r
 			continue
 		}
 
 		r.step = stepSet
 		r.Owner = name
-		if r.err = r.set(c); r.err != nil {
+		if r.err = r.Set(c); r.err != nil {
 			ch <- r
 			continue
 		}
 
 		r.step = stepVerify
 		time.Sleep(verifyDelay)
-		r.err = r.get(c)
+		r.err = r.Get(c)
 		ch <- r
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 
+	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
@@ -11,12 +12,12 @@ import (
 // TODO: List role ARNs in output. How to use -tmp for oktapus users?
 
 func init() {
-	register(&cmdInfo{
-		names:   []string{"authz"},
-		summary: "Authorize account access",
-		usage:   "[options] account-spec role-name [role-name ...]",
-		minArgs: 2,
-		new:     func() Cmd { return &authz{Name: "authz"} },
+	op.Register(&op.CmdInfo{
+		Names:   []string{"authz"},
+		Summary: "Authorize account access",
+		Usage:   "[options] account-spec role-name [role-name ...]",
+		MinArgs: 2,
+		New:     func() op.Cmd { return &authz{Name: "authz"} },
 	})
 }
 
@@ -32,7 +33,7 @@ type authz struct {
 }
 
 func (cmd *authz) Help(w *bufio.Writer) {
-	writeHelp(w, `
+	op.WriteHelp(w, `
 		Authorize account access by creating a new IAM role.
 
 		By default, this command grants other users admin access to accounts
@@ -46,12 +47,12 @@ func (cmd *authz) Help(w *bufio.Writer) {
 		You can use -principal to specify another account ID that should be
 		allowed to assume the new role.
 	`)
-	accountSpecHelp(w)
+	op.AccountSpecHelp(w)
 }
 
 func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
-	StringPtrVar(fs, &cmd.Desc, "desc",
+	op.StringPtrVar(fs, &cmd.Desc, "desc",
 		"Set account description")
 	fs.StringVar(&cmd.Policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
@@ -62,7 +63,7 @@ func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
 		"Delete this role automatically when the account is freed")
 }
 
-func (cmd *authz) Run(ctx *Ctx, args []string) error {
+func (cmd *authz) Run(ctx *op.Ctx, args []string) error {
 	cmd.Spec = args[0]
 	cmd.Roles = args[1:]
 	out, err := ctx.Call(cmd)
@@ -72,41 +73,42 @@ func (cmd *authz) Run(ctx *Ctx, args []string) error {
 	return err
 }
 
-func (cmd *authz) Call(ctx *Ctx) (interface{}, error) {
+func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err
 	}
-	roles := newPathNames(cmd.Roles)
-	if cmd.Tmp {
-		for i := range roles {
-			roles[i].path = tmpIAMPath + roles[i].path[1:]
-		}
-	}
 	if cmd.Principal == "" {
 		cmd.Principal = ctx.AWS().Ident().AccountID
 	}
-	assumeRolePolicy := aws.String(newAssumeRolePolicy(cmd.Principal))
-	acs.Apply(func(ac *Account) {
+	assumeRolePolicy := op.NewAssumeRolePolicy(cmd.Principal).Doc()
+	roles := make([]*iam.CreateRoleInput, len(cmd.Roles))
+	for i, r := range cmd.Roles {
+		path, name := op.SplitPath(r)
+		if cmd.Tmp {
+			path = op.TmpIAMPath + path[1:]
+		}
+		roles[i] = &iam.CreateRoleInput{
+			AssumeRolePolicyDocument: assumeRolePolicy,
+			Description:              cmd.Desc,
+			Path:                     aws.String(path),
+			RoleName:                 aws.String(name),
+		}
+	}
+	acs.Apply(func(ac *op.Account) {
 		if ac.Err != nil {
 			return
 		}
 		for _, r := range roles {
-			in := iam.CreateRoleInput{
-				AssumeRolePolicyDocument: assumeRolePolicy,
-				Description:              cmd.Desc,
-				Path:                     aws.String(r.path),
-				RoleName:                 aws.String(r.name),
-			}
-			if _, ac.Err = ac.IAM.CreateRole(&in); ac.Err != nil {
+			if _, ac.Err = ac.IAM().CreateRole(r); ac.Err != nil {
 				break
 			}
 			if cmd.Policy != "" {
 				in := iam.AttachRolePolicyInput{
 					PolicyArn: aws.String(cmd.Policy),
-					RoleName:  aws.String(r.name),
+					RoleName:  r.RoleName,
 				}
-				if _, ac.Err = ac.IAM.AttachRolePolicy(&in); ac.Err != nil {
+				if _, ac.Err = ac.IAM().AttachRolePolicy(&in); ac.Err != nil {
 					break
 				}
 			}
