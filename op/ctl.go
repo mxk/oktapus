@@ -38,7 +38,7 @@ type Ctl struct {
 func (ctl *Ctl) Init(c iamiface.IAMAPI) error {
 	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
 		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: aws.String(NewAssumeRolePolicy("")),
+			AssumeRolePolicyDocument: NewAssumeRolePolicy("").Doc(),
 			Description:              aws.String(b64),
 			Path:                     aws.String(CtlPath),
 			RoleName:                 aws.String(CtlRole),

@@ -286,9 +286,9 @@ const adminPolicy = `{
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
 func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
-	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
+	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID).Doc()
 	role := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: aws.String(assumeRolePolicy),
+		AssumeRolePolicyDocument: assumeRolePolicy,
 		RoleName:                 aws.String("OrganizationAccountAccessRole"),
 	}
 	policy := iam.PutRolePolicyInput{

@@ -1,7 +1,6 @@
 package op
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,41 +13,19 @@ import (
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
-const assumeRolePolicyTpl = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "%s",
-		"Principal": {"AWS": "%s"},
-		"Action": "sts:AssumeRole"
-	}]
-}`
-
 // TmpIAMPath is a path for temporary users and roles.
 const TmpIAMPath = CtlPath + "tmp/"
 
-// PathName is a split representation of an IAM user/role/group path and name.
-type PathName struct{ Path, Name string }
-
-// NewPathName splits a string in the format "[[/]path/]name" into its
-// components. The path always begins and ends with a slash.
-func NewPathName(s string) PathName {
-	if i := strings.LastIndexByte(s, '/'); i != -1 {
-		path, name := s[:i+1], s[i+1:]
-		if path[0] != '/' {
-			path = "/" + path
-		}
-		return PathName{path, name}
+// SplitPath splits a string in the format "[[/]path/]name" into its components.
+// The path always begins and ends with a slash.
+func SplitPath(s string) (path, name string) {
+	i := strings.LastIndexByte(s, '/')
+	if path, name = s[:i+1], s[i+1:]; path == "" {
+		return "/", name
+	} else if path[0] != '/' {
+		path = "/" + path
 	}
-	return PathName{"/", s}
-}
-
-// NewPathNames splits all strings in v via NewPathName.
-func NewPathNames(v []string) []PathName {
-	var pn []PathName
-	for _, s := range v {
-		pn = append(pn, NewPathName(s))
-	}
-	return pn
+	return path, name
 }
 
 // CreateAccountResult contains the values returned by createAccount. If err is
@@ -58,7 +35,7 @@ type CreateAccountResult struct {
 	Err error
 }
 
-// createAccounts creates multiple accounts concurrently.
+// CreateAccounts creates multiple accounts concurrently.
 func CreateAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n int) <-chan CreateAccountResult {
 	workers := 5 // Only 5 accounts may be created at the same time
 	if workers > n {
@@ -119,19 +96,6 @@ func createAccount(c *orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Ac
 				"account creation failed", nil)
 		}
 	}
-}
-
-// NewAssumeRolePolicy returns an AssumeRole policy document that is used when
-// creating new roles.
-func NewAssumeRolePolicy(principal string) string {
-	if principal == "" {
-		return fmt.Sprintf(assumeRolePolicyTpl, "Deny", "*")
-	}
-	if isAWSAccountID(principal) {
-		return fmt.Sprintf(assumeRolePolicyTpl, "Allow",
-			"arn:aws:iam::"+principal+":root")
-	}
-	return fmt.Sprintf(assumeRolePolicyTpl, "Allow", principal)
 }
 
 // DelTmpUsers deletes all users under the temporary IAM path.

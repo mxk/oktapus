@@ -77,15 +77,15 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.User == "" {
 		return out, nil
 	}
-	user := op.NewPathName(cmd.User)
+	path, user := op.SplitPath(cmd.User)
 	if cmd.Tmp {
-		user.Path = op.TmpIAMPath + user.Path[1:]
+		path = op.TmpIAMPath + path[1:]
 	}
 	creds := make(map[string]*credsOutput, len(out))
 	for _, c := range out {
 		creds[c.AccountID] = c
 	}
-	km := newKeyMaker(user.Path, user.Name, cmd.Policy)
+	km := newKeyMaker(path, user, cmd.Policy)
 	acs.Apply(func(ac *op.Account) {
 		if ac.Err != nil {
 			return

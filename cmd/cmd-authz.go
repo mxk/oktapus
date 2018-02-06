@@ -78,34 +78,35 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	roles := op.NewPathNames(cmd.Roles)
-	if cmd.Tmp {
-		for i := range roles {
-			roles[i].Path = op.TmpIAMPath + roles[i].Path[1:]
-		}
-	}
 	if cmd.Principal == "" {
 		cmd.Principal = ctx.AWS().Ident().AccountID
 	}
-	assumeRolePolicy := aws.String(op.NewAssumeRolePolicy(cmd.Principal))
+	assumeRolePolicy := op.NewAssumeRolePolicy(cmd.Principal).Doc()
+	roles := make([]*iam.CreateRoleInput, len(cmd.Roles))
+	for i, r := range cmd.Roles {
+		path, name := op.SplitPath(r)
+		if cmd.Tmp {
+			path = op.TmpIAMPath + path[1:]
+		}
+		roles[i] = &iam.CreateRoleInput{
+			AssumeRolePolicyDocument: assumeRolePolicy,
+			Description:              cmd.Desc,
+			Path:                     aws.String(path),
+			RoleName:                 aws.String(name),
+		}
+	}
 	acs.Apply(func(ac *op.Account) {
 		if ac.Err != nil {
 			return
 		}
 		for _, r := range roles {
-			in := iam.CreateRoleInput{
-				AssumeRolePolicyDocument: assumeRolePolicy,
-				Description:              cmd.Desc,
-				Path:                     aws.String(r.Path),
-				RoleName:                 aws.String(r.Name),
-			}
-			if _, ac.Err = ac.IAM().CreateRole(&in); ac.Err != nil {
+			if _, ac.Err = ac.IAM().CreateRole(r); ac.Err != nil {
 				break
 			}
 			if cmd.Policy != "" {
 				in := iam.AttachRolePolicyInput{
 					PolicyArn: aws.String(cmd.Policy),
-					RoleName:  aws.String(r.Name),
+					RoleName:  r.RoleName,
 				}
 				if _, ac.Err = ac.IAM().AttachRolePolicy(&in); ac.Err != nil {
 					break
