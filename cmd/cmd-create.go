@@ -152,7 +152,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			emailCtr.n++
 		}
 	}()
-	out := op.CreateAccounts(c.OrgClient(), in, n)
+	out := op.CreateAccounts(c.OrgClient(), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup

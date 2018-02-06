@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
@@ -13,68 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
 // LogLevel is the log level for all mock sessions.
 var LogLevel = aws.LogOff
-
-// OrgRouter contains API responses for a mock AWS organization.
-var OrgRouter = NewDataTypeRouter(
-	&orgs.DescribeOrganizationOutput{
-		Organization: &orgs.Organization{
-			Arn:                aws.String("arn:aws:organizations::000000000000:organization/o-test"),
-			FeatureSet:         aws.String(orgs.OrganizationFeatureSetAll),
-			Id:                 aws.String("o-test"),
-			MasterAccountArn:   aws.String("arn:aws:organizations::000000000000:account/o-test/000000000000"),
-			MasterAccountEmail: aws.String("master@example.com"),
-			MasterAccountId:    aws.String("000000000000"),
-		},
-	},
-	&orgs.ListAccountsOutput{
-		Accounts: []*orgs.Account{{
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/000000000000"),
-			Email:           aws.String("master@example.com"),
-			Id:              aws.String("000000000000"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodInvited),
-			JoinedTimestamp: aws.Time(time.Unix(0, 0)),
-			Name:            aws.String("master"),
-			Status:          aws.String(orgs.AccountStatusActive),
-		}, {
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/000000000001"),
-			Email:           aws.String("test1@example.com"),
-			Id:              aws.String("000000000001"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodCreated),
-			JoinedTimestamp: aws.Time(time.Unix(1, 0)),
-			Name:            aws.String("test1"),
-			Status:          aws.String(orgs.AccountStatusActive),
-		}, {
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/000000000002"),
-			Email:           aws.String("test2@example.com"),
-			Id:              aws.String("000000000002"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodCreated),
-			JoinedTimestamp: aws.Time(time.Unix(2, 0)),
-			Name:            aws.String("test2"),
-			Status:          aws.String(orgs.AccountStatusSuspended),
-		}, {
-			Arn:             aws.String("arn:aws:organizations::000000000000:account/o-test/000000000003"),
-			Email:           aws.String("test3@example.com"),
-			Id:              aws.String("000000000003"),
-			JoinedMethod:    aws.String(orgs.AccountJoinedMethodCreated),
-			JoinedTimestamp: aws.Time(time.Unix(3, 0)),
-			Name:            aws.String("test3"),
-			Status:          aws.String(orgs.AccountStatusActive),
-		}},
-	},
-)
-
-// IAMRouter handles IAM requests for the mock organization.
-var IAMRouter = AccountRouter(map[string]*ChainRouter{
-	"000000000000": NewChainRouter(RoleRouter{}),
-	"000000000001": NewChainRouter(RoleRouter{}),
-	"000000000002": NewChainRouter(RoleRouter{}),
-	"000000000003": NewChainRouter(RoleRouter{}),
-})
 
 // Session is a client.ConfigProvider that uses routers and server functions to
 // simulate AWS responses.
@@ -116,19 +57,16 @@ func NewSession(dfltRouters bool) *Session {
 			defer sess.Unlock()
 			r.Retryable = aws.Bool(false)
 			api := r.ClientInfo.ServiceName + ":" + r.Operation.Name
-			server := sess.Route(sess, r, api)
-			if server == nil {
+			if !sess.Route(sess, r, api) {
 				panic("mock: " + api + " not implemented")
 			}
-			server(sess, r)
 		},
 	})
 
 	// Configure default routers
 	if dfltRouters {
-		sess.Add(OrgRouter)
 		sess.Add(NewSTSRouter())
-		sess.Add(IAMRouter)
+		sess.Add(NewOrgRouter())
 	}
 	return sess
 }
@@ -157,6 +95,38 @@ func AccountID(id string) string {
 		panic("mock: invalid arn: " + orig)
 	}
 	return id[:12]
+}
+
+// UserARN returns an IAM user ARN.
+func UserARN(account, name string) string {
+	return iamARN(account, "user", name)
+}
+
+// RoleARN returns an IAM role ARN.
+func RoleARN(account, name string) string {
+	return iamARN(account, "role", name)
+}
+
+// PolicyARN returns an IAM policy ARN.
+func PolicyARN(account, name string) string {
+	return iamARN(account, "policy", name)
+}
+
+// iamARN constructs an IAM ARN.
+func iamARN(account, typ, name string) string {
+	return "arn:aws:iam::" + account + ":" + typ + "/" + name
+}
+
+// getReqAccountID returns the account ID for request q.
+func getReqAccountID(q *request.Request) string {
+	v, err := q.Config.Credentials.Get()
+	if err != nil {
+		panic(err)
+	}
+	if v.SessionToken != "" {
+		return AccountID(v.SessionToken)
+	}
+	return "000000000000"
 }
 
 // disableHandlerList prevents a HandlerList from executing any handlers.

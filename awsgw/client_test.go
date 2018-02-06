@@ -8,7 +8,6 @@ import (
 	"github.com/LuminalHQ/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,15 +57,14 @@ func TestClientCommonRole(t *testing.T) {
 }
 
 func TestClientRefresh(t *testing.T) {
-	out := new(orgs.ListAccountsOutput)
-	mock.OrgRouter.Get(out)
-	want := make([]*Account, len(out.Accounts))
+	out := mock.NewOrgRouter().GetAccounts()
+	want := make([]*Account, len(out))
 	for i := range want {
-		want[i] = &Account{ID: aws.StringValue(out.Accounts[i].Id)}
-		want[i].set(out.Accounts[i])
+		want[i] = &Account{ID: aws.StringValue(out[i].Id)}
+		want[i].set(out[i])
 	}
 	assert.Panics(t, func() {
-		new(Account).set(out.Accounts[0])
+		new(Account).set(out[0])
 	})
 
 	c := NewClient(mock.NewSession(true))

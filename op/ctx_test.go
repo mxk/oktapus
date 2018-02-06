@@ -14,10 +14,7 @@ func TestCtxAWS(t *testing.T) {
 	os.Setenv("OKTAPUS_NO_DAEMON", "1")
 	ctx := NewCtx()
 
-	sess := mock.NewSession(true)
-	sess.ChainRouter.Add(mock.OrgRouter)
-	ctx.sess = sess
-
+	ctx.sess = mock.NewSession(true)
 	assert.False(t, ctx.UseOkta())
 	acs, err := ctx.Accounts("err")
 	require.NoError(t, err)

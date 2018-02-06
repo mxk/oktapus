@@ -2,31 +2,20 @@ package mock
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
-	"time"
 
-	"github.com/LuminalHQ/oktapus/internal"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-// Router returns the server function that should handle the given request or
-// nil if this request should be handled by another router.
+// Router populates request Data and Error fields, simulating an AWS response.
+// Route returns true if the request was handled or false if it should be given
+// to the next router. Routers replace Send and all Unmarshal handlers in the
+// session. Session serializes all requests, so routers are allowed to modify
+// router configuration.
 type Router interface {
-	Route(s *Session, r *request.Request, api string) ServerFunc
+	Route(s *Session, q *request.Request, api string) bool
 }
-
-// ServerFunc is a function that populates r.Data and r.Error, simulating an AWS
-// response. It replaces the Send and all Unmarshal handlers in the session.
-// Session serializes all requests, so ServerFuncs are allowed to modify router
-// configuration.
-type ServerFunc func(s *Session, r *request.Request)
 
 // ServerResult contains values that are assigned to request Data and Error
 // fields.
@@ -51,16 +40,32 @@ func (r *ChainRouter) Add(t Router) *ChainRouter {
 	return r
 }
 
-// Route implements the Router interface.
-func (r *ChainRouter) Route(sess *Session, req *request.Request, api string) ServerFunc {
-	if r != nil {
-		for i := len(r.chain) - 1; i >= 0; i-- {
-			if server := r.chain[i].Route(sess, req, api); server != nil {
-				return server
-			}
+// GetType assigns v the highest priority router of the matching type.
+func (r *ChainRouter) GetType(v interface{}) bool {
+	t := reflect.TypeOf(v)
+	if t.Kind() != reflect.Ptr {
+		panic("mock: v is not a pointer")
+	}
+	if t = t.Elem(); !t.Implements(reflect.TypeOf((*Router)(nil)).Elem()) {
+		panic("mock: *v is not a Router")
+	}
+	for i := len(r.chain) - 1; i >= 0; i-- {
+		if c := r.chain[i]; reflect.TypeOf(c) == t {
+			reflect.ValueOf(v).Elem().Set(reflect.ValueOf(c))
+			return true
 		}
 	}
-	return nil
+	return false
+}
+
+// Route implements the Router interface.
+func (r *ChainRouter) Route(s *Session, q *request.Request, api string) bool {
+	for i := len(r.chain) - 1; i >= 0; i-- {
+		if r.chain[i].Route(s, q, api) {
+			return true
+		}
+	}
+	return false
 }
 
 // DataTypeRouter handles requests based on the Data field type.
@@ -106,176 +111,12 @@ func (r *DataTypeRouter) Get(out interface{}) error {
 }
 
 // Route implements the Router interface.
-func (r *DataTypeRouter) Route(_ *Session, req *request.Request, _ string) ServerFunc {
-	if _, ok := r.m[reflect.TypeOf(req.Data)]; ok {
-		return r.serve
+func (r *DataTypeRouter) Route(_ *Session, q *request.Request, _ string) bool {
+	_, ok := r.m[reflect.TypeOf(q.Data)]
+	if ok {
+		if err := r.Get(q.Data); err != nil {
+			q.Error = err
+		}
 	}
-	return nil
-}
-
-// serve is a ServerFunc.
-func (r *DataTypeRouter) serve(_ *Session, req *request.Request) {
-	if err := r.Get(req.Data); err != nil {
-		req.Error = err
-	}
-}
-
-// STSRouter handles STS API calls. Key is SessionToken, which is the ARN of the
-// assumed role.
-type STSRouter map[string]*sts.GetCallerIdentityOutput
-
-// NewSTSRouter returns a router configured to handle permanent credentials.
-func NewSTSRouter() STSRouter {
-	return map[string]*sts.GetCallerIdentityOutput{"": {
-		Account: aws.String("000000000000"),
-		Arn:     aws.String("arn:aws:sts::000000000000:assumed-role/TestRole/TestSession"),
-		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE:user@example.com"),
-	}}
-}
-
-// Route implements the Router interface.
-func (r STSRouter) Route(_ *Session, req *request.Request, api string) ServerFunc {
-	switch api {
-	case "sts:AssumeRole":
-		return r.assumeRole
-	case "sts:GetCallerIdentity":
-		return r.getCallerIdentity
-	default:
-		return nil
-	}
-}
-
-// assumeRole handles sts:AssumeRole call.
-func (r STSRouter) assumeRole(_ *Session, req *request.Request) {
-	in := req.Params.(*sts.AssumeRoleInput)
-	token := aws.StringValue(in.RoleArn)
-	role, err := arn.Parse(token)
-	if err != nil {
-		panic(err)
-	}
-	i := strings.LastIndexByte(token, '/')
-	name := token[i+1:]
-	sess := aws.StringValue(in.RoleSessionName)
-	sessArn := fmt.Sprintf("arn:aws:sts::%s:assumed-role/%s/%s", role.AccountID, name, sess)
-	r[token] = &sts.GetCallerIdentityOutput{
-		Account: aws.String(role.AccountID),
-		Arn:     aws.String(sessArn),
-		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE:" + sess),
-	}
-	out := req.Data.(*sts.AssumeRoleOutput)
-	out.Credentials = &sts.Credentials{
-		AccessKeyId:     aws.String("AccessKeyId"),
-		Expiration:      aws.Time(internal.Time().Add(time.Hour)),
-		SecretAccessKey: aws.String("SecretAccessKey"),
-		SessionToken:    aws.String(token),
-	}
-}
-
-// getCallerIdentity handles sts:GetCallerIdentity call.
-func (r STSRouter) getCallerIdentity(_ *Session, req *request.Request) {
-	v, err := req.Config.Credentials.Get()
-	if err != nil {
-		req.Error = err
-		return
-	}
-	out := r[v.SessionToken]
-	if out == nil {
-		panic(fmt.Sprintf("mock: invalid session token %q", v.SessionToken))
-	}
-	*req.Data.(*sts.GetCallerIdentityOutput) = *out
-}
-
-// AccountRouter implements account-specific Router interface.
-type AccountRouter map[string]*ChainRouter
-
-// Get returns the ChainRouter for the given account id, creating a new one if
-// necessary.
-func (r AccountRouter) Get(id string) *ChainRouter {
-	id = AccountID(id)
-	cr := r[id]
-	if cr == nil {
-		cr = NewChainRouter()
-		r[id] = cr
-	}
-	return cr
-}
-
-// Route implements the Router interface.
-func (r AccountRouter) Route(s *Session, req *request.Request, api string) ServerFunc {
-	v, err := req.Config.Credentials.Get()
-	if err != nil {
-		panic(err)
-	}
-	id := "000000000000"
-	if v.SessionToken != "" {
-		id = AccountID(v.SessionToken)
-	}
-	return r[id].Route(s, req, api)
-}
-
-// RoleRouter implements IAM role API calls.
-type RoleRouter map[string]*iam.Role
-
-// Route implements the Router interface.
-func (r RoleRouter) Route(s *Session, req *request.Request, api string) ServerFunc {
-	switch api {
-	case "iam:CreateRole":
-		return r.createRole
-	case "iam:GetRole":
-		return r.getRole
-	case "iam:UpdateRoleDescription":
-		return r.updateRoleDescription
-	default:
-		return nil
-	}
-}
-
-// createRole handles iam:CreateRole call.
-func (r RoleRouter) createRole(_ *Session, req *request.Request) {
-	in := req.Params.(*iam.CreateRoleInput)
-	name := aws.StringValue(in.RoleName)
-	if _, ok := r[name]; ok {
-		panic("mock: role exists: " + name)
-	}
-	role := &iam.Role{
-		AssumeRolePolicyDocument: in.AssumeRolePolicyDocument,
-		Description:              in.Description,
-		Path:                     in.Path,
-		RoleName:                 in.RoleName,
-	}
-	r[name] = role
-	cpy := *role
-	cpy.Description = nil // Match AWS behavior
-	req.Data.(*iam.CreateRoleOutput).Role = &cpy
-}
-
-// getRole handles iam:GetRole call.
-func (r RoleRouter) getRole(_ *Session, req *request.Request) {
-	name := aws.StringValue(req.Params.(*iam.GetRoleInput).RoleName)
-	role := r[name]
-	if role == nil {
-		req.Error = invalidRole(name)
-		return
-	}
-	cpy := *role
-	req.Data.(*iam.GetRoleOutput).Role = &cpy
-}
-
-// updateRoleDescription handles iam:UpdateRoleDescription call.
-func (r RoleRouter) updateRoleDescription(_ *Session, req *request.Request) {
-	in := req.Params.(*iam.UpdateRoleDescriptionInput)
-	name := aws.StringValue(in.RoleName)
-	role := r[name]
-	if role == nil {
-		req.Error = invalidRole(name)
-		return
-	}
-	role.Description = in.Description
-	cpy := *role
-	req.Data.(*iam.UpdateRoleDescriptionOutput).Role = &cpy
-}
-
-func invalidRole(name string) error {
-	err := awserr.New(iam.ErrCodeNoSuchEntityException, "Unknown role: "+name, nil)
-	return awserr.NewRequestFailure(err, http.StatusNotFound, "")
+	return ok
 }

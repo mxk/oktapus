@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
+	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 )
 
 // TmpIAMPath is a path for temporary users and roles.
@@ -36,11 +37,8 @@ type CreateAccountResult struct {
 }
 
 // CreateAccounts creates multiple accounts concurrently.
-func CreateAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n int) <-chan CreateAccountResult {
+func CreateAccounts(c orgsiface.OrganizationsAPI, in <-chan *orgs.CreateAccountInput) <-chan CreateAccountResult {
 	workers := 5 // Only 5 accounts may be created at the same time
-	if workers > n {
-		workers = n
-	}
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	out := make(chan CreateAccountResult)
@@ -68,8 +66,10 @@ func CreateAccounts(c *orgs.Organizations, in <-chan *orgs.CreateAccountInput, n
 	return out
 }
 
+var sleep = time.Sleep
+
 // createAccount creates a new account in the organization.
-func createAccount(c *orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Account, error) {
+func createAccount(c orgsiface.OrganizationsAPI, in *orgs.CreateAccountInput) (*orgs.Account, error) {
 	out, err := c.CreateAccount(in)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func createAccount(c *orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Ac
 	for {
 		switch aws.StringValue(s.State) {
 		case orgs.CreateAccountStateInProgress:
-			time.Sleep(time.Second)
+			sleep(time.Second)
 			out, err := c.DescribeCreateAccountStatus(&reqID)
 			if err != nil {
 				return nil, err

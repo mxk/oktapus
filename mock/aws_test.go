@@ -38,5 +38,5 @@ func TestAccountID(t *testing.T) {
 	assert.Equal(t, "123456789012", AccountID("123456789012"))
 	assert.Equal(t, "000000000000", AccountID(""))
 	assert.Equal(t, "000000000123", AccountID("123"))
-	assert.Equal(t, "123456789012", AccountID("arn:aws:iam::123456789012:user/user"))
+	assert.Equal(t, "123456789012", AccountID(UserARN("123456789012", "user")))
 }
