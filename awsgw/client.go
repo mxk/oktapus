@@ -2,7 +2,10 @@ package awsgw
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha512"
 	"encoding/gob"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"sync"
@@ -14,13 +17,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-// Client provides access to multiple AWS accounts via one gateway account
-// (usually the organization's master account). It is not safe to use the client
-// concurrently from multiple goroutines.
+// Client provides access to multiple AWS accounts via one gateway account. It
+// is not safe to use the client concurrently from multiple goroutines.
 type Client struct {
-	MasterCreds CredsProvider
-	CommonRole  string
-	NoNegCache  bool // TODO: Implement
+	// GatewayCreds are the credentials used to access the gateway account.
+	GatewayCreds CredsProvider
+
+	// MasterRole is a master account role allowed to list org accounts.
+	MasterRole string
+
+	// CommonRole is the role to assume when accessing other accounts.
+	CommonRole string
 
 	sess    client.ConfigProvider
 	org     *orgs.Organizations
@@ -45,46 +52,49 @@ func (c *Client) ConfigProvider() client.ConfigProvider {
 	return c.sess
 }
 
-// Connect establishes a connection to AWS and gets client identity information.
+// Connect establishes a connection to AWS, and gets client identity and
+// organization information.
 func (c *Client) Connect() error {
 	if c.sts != nil {
 		return errors.New("awsgw: already connected")
 	}
 	var cfg aws.Config
-	if c.MasterCreds != nil {
-		cfg.Credentials = c.MasterCreds.Creds()
+	if c.GatewayCreds != nil {
+		cfg.Credentials = c.GatewayCreds.Creds()
 	}
-	var wg sync.WaitGroup
-	wg.Add(2)
 
-	// TODO: Set timeouts via aws.Context?
-	stsClient := sts.New(c.sess, &cfg)
-	var id *sts.GetCallerIdentityOutput
-	var idErr error
-	go func() {
-		defer wg.Done()
-		id, idErr = stsClient.GetCallerIdentity(nil)
-	}()
-
+	// Get organization info
 	orgClient := orgs.New(c.sess, &cfg)
 	var org *orgs.DescribeOrganizationOutput
 	var orgErr error
+	var mu sync.Mutex
+	mu.Lock()
 	go func() {
-		defer wg.Done()
+		defer mu.Unlock()
 		org, orgErr = orgClient.DescribeOrganization(nil)
 	}()
 
-	if wg.Wait(); idErr != nil {
-		return idErr
+	// Get caller info
+	stsClient := sts.New(c.sess, &cfg)
+	id, err := stsClient.GetCallerIdentity(nil)
+	if err != nil {
+		return err
+	} else if mu.Lock(); orgErr != nil {
+		return orgErr
 	}
+
 	c.sts, c.org = stsClient, orgClient
 	c.ident.set(id)
-	if orgErr == nil {
-		c.orgInfo.set(org)
-	}
+	c.orgInfo.set(org)
 	c.roleSessionName = getSessName(&c.ident)
 	c.CommonRole = c.roleSessionName
 
+	// If gateway account isn't master, change org client credentials
+	if !c.IsMaster() {
+		c.org.Config.Credentials = c.proxyCreds().Creds()
+	}
+
+	// Restore saved state
 	if c.saved != nil && len(c.saved.Accounts) > 0 {
 		acs := c.saved.Accounts
 		if c.cache == nil {
@@ -99,7 +109,7 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// Ident returns the identity of the master credentials.
+// Ident returns the identity of the gateway credentials.
 func (c *Client) Ident() Ident {
 	return c.ident
 }
@@ -109,9 +119,19 @@ func (c *Client) OrgInfo() Org {
 	return c.orgInfo
 }
 
-// OrgClient returns the organizations API client.
-func (c *Client) OrgClient() *orgs.Organizations {
-	return c.org
+// IsMaster returns true if the gateway account is organization master.
+func (c *Client) IsMaster() bool {
+	return c.ident.AccountID == c.orgInfo.MasterAccountID &&
+		c.ident.AccountID != ""
+}
+
+// OrgsClient returns the organizations API client. It returns nil if the
+// gateway account is not the organization master.
+func (c *Client) OrgsClient() *orgs.Organizations {
+	if c.IsMaster() {
+		return c.org
+	}
+	return nil
 }
 
 // Refresh updates information about all accounts in the organization.
@@ -169,8 +189,8 @@ func (c *Client) GobEncode() ([]byte, error) {
 		return nil, nil
 	}
 	var s clientState
-	if c.MasterCreds != nil {
-		s.MasterCreds = c.MasterCreds.Save()
+	if c.GatewayCreds != nil {
+		s.MasterCreds = c.GatewayCreds.Save()
 	}
 	if len(c.cache) > 0 {
 		acs := make([]accountState, 0, len(c.cache))
@@ -194,7 +214,7 @@ func (c *Client) GobDecode(b []byte) error {
 		return err
 	}
 	if s.MasterCreds != nil && s.MasterCreds.valid() {
-		c.MasterCreds = s.MasterCreds
+		c.GatewayCreds = s.MasterCreds
 	}
 	// TODO: Should expired master creds invalidate account creds?
 	// Accounts cannot be restored until the client is connected
@@ -204,7 +224,7 @@ func (c *Client) GobDecode(b []byte) error {
 
 // credsProvider returns a credentials provider for the specified account id.
 func (c *Client) credsProvider(id string) CredsProvider {
-	role := "arn:aws:iam::" + id + ":role/" + c.CommonRole
+	role := roleARN(id, c.CommonRole)
 	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
@@ -220,6 +240,28 @@ func (c *Client) getAccount(id string) *accountCtx {
 		c.cache[id] = ac
 	}
 	return ac
+}
+
+// proxyCreds returns credentials for the MasterRole.
+func (c *Client) proxyCreds() *AssumeRoleCreds {
+	if c.orgInfo.ID == "" {
+		panic("awsgw: unknown organization id")
+	}
+
+	// MasterRole requires an external id, which is derived from org info
+	var buf [64]byte
+	b := append(buf[:0], "oktapus:"...)
+	b = append(b, c.orgInfo.MasterAccountID...)
+	b = append(b, ':')
+	b = append(b, c.orgInfo.MasterAccountEmail...)
+	h := hmac.New(sha512.New512_256, []byte(c.orgInfo.ID))
+	h.Write(b)
+	b = h.Sum(b[:0])
+
+	role := roleARN(c.orgInfo.MasterAccountID, c.MasterRole)
+	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
+	cr.ExternalId = aws.String(hex.EncodeToString(b))
+	return cr
 }
 
 // Ident contains data from sts:GetCallerIdentity API call.
@@ -269,4 +311,9 @@ func getSessName(id *Ident) string {
 		return "OrganizationAccountAccessRole"
 	}
 	return id.UserID
+}
+
+// roleARN returns the IAM role ARN for the given account id and role name.
+func roleARN(account, role string) string {
+	return "arn:aws:iam::" + account + ":role/" + role
 }

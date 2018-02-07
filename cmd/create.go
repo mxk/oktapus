@@ -103,10 +103,9 @@ func (cmd *create) Run(ctx *op.Ctx, args []string) error {
 func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	// Only the organization's master account can create new accounts
 	c := ctx.AWS()
-	masterID := c.OrgInfo().MasterAccountID
-	if id := c.Ident(); id.AccountID == "" || id.AccountID != masterID {
-		return nil, fmt.Errorf("current account (%s) is not org master (%s)",
-			id.AccountID, masterID)
+	if !c.IsMaster() {
+		return nil, fmt.Errorf("gateway account (%s) is not org master (%s)",
+			c.Ident().AccountID, c.OrgInfo().MasterAccountID)
 	}
 
 	// Configure name/email counters
@@ -152,11 +151,12 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			emailCtr.n++
 		}
 	}()
-	out := op.CreateAccounts(c.OrgClient(), in)
+	out := op.CreateAccounts(c.OrgsClient(), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup
 	acs := make(op.Accounts, 0, n)
+	masterID := c.OrgInfo().MasterAccountID
 	for r := range out {
 		if r.Err != nil {
 			ac := op.NewAccount("", aws.StringValue(r.Name))

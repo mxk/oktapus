@@ -20,7 +20,7 @@ type Account struct {
 
 // set updates account information.
 func (ac *Account) set(src *orgs.Account) {
-	if id := aws.StringValue(src.Id); ac.ID != id {
+	if id := aws.StringValue(src.Id); id == "" || ac.ID != id {
 		panic("awsgw: account id mismatch: " + ac.ID + " != " + id)
 	}
 	ac.ARN = aws.StringValue(src.Arn)

@@ -106,8 +106,9 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	}
 	ctx.aws = awsgw.NewClient(ctx.sess)
 	if ctx.UseOkta() {
-		ctx.aws.MasterCreds = ctx.newOktaCreds(ctx.sess)
+		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.sess)
 	}
+	ctx.aws.MasterRole = "OktapusOrganizationsProxy"
 	if err := ctx.aws.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
 	}
@@ -119,6 +120,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	c := ctx.AWS()
 	if ctx.All == nil {
 		if err := c.Refresh(); err != nil {
+			log.E("Failed to list accounts")
 			return nil, err
 		}
 		info := c.Accounts()
