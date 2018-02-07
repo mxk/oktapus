@@ -12,16 +12,23 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-// STSRouter handles STS API calls. Key is SessionToken, which is the ARN of the
-// assumed role.
+const (
+	roleID       = "AKIAI44QH8DHBEXAMPLE"
+	roleSessName = "user@example.com"
+)
+
+// STSRouter handles STS API calls. Key is SessionToken, which is the assumed
+// role ARN, as returned by GetCallerIdentity.
 type STSRouter map[string]*sts.GetCallerIdentityOutput
 
 // NewSTSRouter returns a router configured to handle permanent credentials.
-func NewSTSRouter() STSRouter {
+func NewSTSRouter(gwAccountID string) STSRouter {
+	gwAccountID = AccountID(gwAccountID)
+	sessArn := AssumedRoleARN(gwAccountID, "GatewayRole", roleSessName)
 	return map[string]*sts.GetCallerIdentityOutput{"": {
-		Account: aws.String("000000000000"),
-		Arn:     aws.String("arn:aws:sts::000000000000:assumed-role/TestRole/TestSession"),
-		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE:user@example.com"),
+		Account: aws.String(gwAccountID),
+		Arn:     aws.String(sessArn),
+		UserId:  aws.String(roleID + ":" + roleSessName),
 	}}
 }
 
@@ -40,38 +47,34 @@ func (r STSRouter) Route(_ *Session, q *request.Request, api string) bool {
 
 func (r STSRouter) assumeRole(q *request.Request) {
 	in := q.Params.(*sts.AssumeRoleInput)
-	token := aws.StringValue(in.RoleArn)
-	role, err := arn.Parse(token)
+	role, err := arn.Parse(aws.StringValue(in.RoleArn))
 	if err != nil {
 		panic(err)
 	}
-	i := strings.LastIndexByte(token, '/')
-	name := token[i+1:]
-	sess := aws.StringValue(in.RoleSessionName)
-	sessArn := fmt.Sprintf("arn:aws:sts::%s:assumed-role/%s/%s", role.AccountID, name, sess)
-	r[token] = &sts.GetCallerIdentityOutput{
+	i := strings.LastIndexByte(role.Resource, '/')
+	roleSessName := aws.StringValue(in.RoleSessionName)
+	sessArn := AssumedRoleARN(role.AccountID, role.Resource[i+1:], roleSessName)
+	r[sessArn] = &sts.GetCallerIdentityOutput{
 		Account: aws.String(role.AccountID),
 		Arn:     aws.String(sessArn),
-		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE:" + sess),
+		UserId:  aws.String(roleID + ":" + roleSessName),
 	}
-	out := q.Data.(*sts.AssumeRoleOutput)
-	out.Credentials = &sts.Credentials{
-		AccessKeyId:     aws.String("AccessKeyId"),
+	q.Data.(*sts.AssumeRoleOutput).Credentials = &sts.Credentials{
+		AccessKeyId:     aws.String(AccessKeyID),
 		Expiration:      aws.Time(internal.Time().Add(time.Hour)),
-		SecretAccessKey: aws.String("SecretAccessKey"),
-		SessionToken:    aws.String(token),
+		SecretAccessKey: aws.String(SecretAccessKey),
+		SessionToken:    aws.String(sessArn),
 	}
 }
 
 func (r STSRouter) getCallerIdentity(q *request.Request) {
 	v, err := q.Config.Credentials.Get()
 	if err != nil {
-		q.Error = err
+		panic(err)
+	}
+	if out := r[v.SessionToken]; out != nil {
+		*q.Data.(*sts.GetCallerIdentityOutput) = *out
 		return
 	}
-	out := r[v.SessionToken]
-	if out == nil {
-		panic(fmt.Sprintf("mock: invalid session token %q", v.SessionToken))
-	}
-	*q.Data.(*sts.GetCallerIdentityOutput) = *out
+	panic(fmt.Sprintf("mock: invalid session token %q", v.SessionToken))
 }

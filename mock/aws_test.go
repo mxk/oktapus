@@ -12,26 +12,34 @@ import (
 )
 
 func TestOrg(t *testing.T) {
-	sess := NewSession()
-	out, err := organizations.New(sess).DescribeOrganization(nil)
+	out, err := organizations.New(NewSession()).DescribeOrganization(nil)
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
 }
 
 func TestSTS(t *testing.T) {
-	sess := NewSession()
-	out, err := sts.New(sess).GetCallerIdentity(nil)
+	out, err := sts.New(NewSession()).GetCallerIdentity(nil)
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
 }
 
 func TestIAM(t *testing.T) {
-	sess := NewSession()
-	out, err := iam.New(sess).CreateRole(new(iam.CreateRoleInput).
+	out, err := iam.New(NewSession()).CreateRole(new(iam.CreateRoleInput).
 		SetAssumeRolePolicyDocument("{}").
 		SetRoleName("testrole"))
 	require.NoError(t, err)
 	assert.Equal(t, "testrole", aws.StringValue(out.Role.RoleName))
+}
+
+func TestFind(t *testing.T) {
+	s := NewSession()
+	org := s.OrgsRouter()
+	require.NotNil(t, org)
+	require.NotNil(t, s.STSRouter())
+
+	ac := org.Account("")
+	require.NotNil(t, ac.RoleRouter())
+	require.NotNil(t, ac.UserRouter())
 }
 
 func TestAccountID(t *testing.T) {
