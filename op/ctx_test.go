@@ -14,7 +14,7 @@ func TestCtxAWS(t *testing.T) {
 	os.Setenv("OKTAPUS_NO_DAEMON", "1")
 	ctx := NewCtx()
 
-	ctx.sess = mock.NewSession(true)
+	ctx.sess = mock.NewSession()
 	assert.False(t, ctx.UseOkta())
 	acs, err := ctx.Accounts("err")
 	require.NoError(t, err)

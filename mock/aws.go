@@ -25,10 +25,9 @@ type Session struct {
 	ChainRouter
 }
 
-// NewSession returns a client.ConfigProvider that does not use any environment
-// variables or config files. If dfltRouters is true, the session's ChainRouter
-// will contain all default router implementations.
-func NewSession(dfltRouters bool) *Session {
+// NewSession returns a mock client.ConfigProvider configured with default
+// routers request routers.
+func NewSession() *Session {
 	cfg := &aws.Config{
 		Credentials:      credentials.NewStaticCredentials("akid", "secret", ""),
 		EndpointResolver: endpoints.DefaultResolver(),
@@ -36,39 +35,37 @@ func NewSession(dfltRouters bool) *Session {
 		Logger:           aws.NewDefaultLogger(),
 		MaxRetries:       aws.Int(0),
 	}
-	sess := &Session{
+	s := &Session{
 		Session: session.Session{Config: cfg, Handlers: defaults.Handlers()},
 	}
-	sess.Session = *sess.Session.Copy() // Run initHandlers
+	s.Session = *s.Session.Copy() // Run initHandlers
 
 	// Remove/disable all data-related handlers
-	sess.Handlers.Send.Remove(corehandlers.SendHandler)
-	sess.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)
-	sess.Handlers.ValidateResponse.Remove(corehandlers.ValidateResponseHandler)
-	disableHandlerList("Unmarshal", &sess.Handlers.Unmarshal)
-	disableHandlerList("UnmarshalMeta", &sess.Handlers.UnmarshalMeta)
-	disableHandlerList("UnmarshalError", &sess.Handlers.UnmarshalError)
+	s.Handlers.Send.Remove(corehandlers.SendHandler)
+	s.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)
+	s.Handlers.ValidateResponse.Remove(corehandlers.ValidateResponseHandler)
+	disableHandlerList("Unmarshal", &s.Handlers.Unmarshal)
+	disableHandlerList("UnmarshalMeta", &s.Handlers.UnmarshalMeta)
+	disableHandlerList("UnmarshalError", &s.Handlers.UnmarshalError)
 
 	// Install mock handler
-	sess.Handlers.Send.PushBackNamed(request.NamedHandler{
+	s.Handlers.Send.PushBackNamed(request.NamedHandler{
 		Name: "mock.SendHandler",
-		Fn: func(r *request.Request) {
-			sess.Lock()
-			defer sess.Unlock()
-			r.Retryable = aws.Bool(false)
-			api := r.ClientInfo.ServiceName + ":" + r.Operation.Name
-			if !sess.Route(sess, r, api) {
+		Fn: func(q *request.Request) {
+			s.Lock()
+			defer s.Unlock()
+			q.Retryable = aws.Bool(false)
+			api := q.ClientInfo.ServiceName + ":" + q.Operation.Name
+			if !s.Route(s, q, api) {
 				panic("mock: " + api + " not implemented")
 			}
 		},
 	})
 
 	// Configure default routers
-	if dfltRouters {
-		sess.Add(NewSTSRouter())
-		sess.Add(NewOrgRouter())
-	}
-	return sess
+	s.Add(NewSTSRouter())
+	s.Add(NewOrgRouter())
+	return s
 }
 
 // AccountID returns the 12-digit account ID from id, which may an account ID
@@ -117,8 +114,8 @@ func iamARN(account, typ, name string) string {
 	return "arn:aws:iam::" + account + ":" + typ + "/" + name
 }
 
-// getReqAccountID returns the account ID for request q.
-func getReqAccountID(q *request.Request) string {
+// reqAccountID returns the account ID for request q.
+func reqAccountID(q *request.Request) string {
 	v, err := q.Config.Credentials.Get()
 	if err != nil {
 		panic(err)

@@ -69,7 +69,7 @@ func TestCreateAccounts(t *testing.T) {
 }
 
 func TestDelTmpUsers(t *testing.T) {
-	sess := mock.NewSession(true)
+	sess := mock.NewSession()
 	c := iam.New(sess)
 	require.NoError(t, DelTmpUsers(c))
 
@@ -106,7 +106,7 @@ func TestDelTmpUsers(t *testing.T) {
 }
 
 func TestDelTmpRoles(t *testing.T) {
-	sess := mock.NewSession(true)
+	sess := mock.NewSession()
 	c := iam.New(sess)
 	require.NoError(t, DelTmpRoles(c))
 

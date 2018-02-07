@@ -14,7 +14,7 @@ import (
 )
 
 func TestClientConnect(t *testing.T) {
-	sess := mock.NewSession(true)
+	sess := mock.NewSession()
 	c := NewClient(sess)
 	assert.Equal(t, sess, c.ConfigProvider())
 	assert.Empty(t, c.Ident().AccountID)
@@ -29,7 +29,7 @@ func TestClientConnect(t *testing.T) {
 
 func TestClientCommonRole(t *testing.T) {
 	// Assumed role
-	sess := mock.NewSession(true)
+	sess := mock.NewSession()
 	c := NewClient(sess)
 	require.NoError(t, c.Connect())
 	assert.Equal(t, "user@example.com", c.CommonRole)
@@ -67,14 +67,14 @@ func TestClientRefresh(t *testing.T) {
 		new(Account).set(out[0])
 	})
 
-	c := NewClient(mock.NewSession(true))
+	c := NewClient(mock.NewSession())
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
 	assert.Equal(t, want, sortByID(c.Accounts()))
 }
 
 func TestClientEncodeDecode(t *testing.T) {
-	sess := mock.NewSession(true)
+	sess := mock.NewSession()
 	creds := &StaticCreds{
 		Value: credentials.Value{
 			AccessKeyID:     "ID",
@@ -98,7 +98,7 @@ func TestClientEncodeDecode(t *testing.T) {
 }
 
 func TestClientCreds(t *testing.T) {
-	c := NewClient(mock.NewSession(true))
+	c := NewClient(mock.NewSession())
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
 	cp := c.CredsProvider("111111111111").(*AssumeRoleCreds)

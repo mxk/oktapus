@@ -52,7 +52,7 @@ func (r UserRouter) createUser(q *request.Request) {
 		panic("mock: user exists: " + name)
 	}
 	user := &User{User: iam.User{
-		Arn:      aws.String(UserARN(getReqAccountID(q), name)),
+		Arn:      aws.String(UserARN(reqAccountID(q), name)),
 		Path:     in.Path,
 		UserName: in.UserName,
 	}}

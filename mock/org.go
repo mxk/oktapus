@@ -94,7 +94,7 @@ func (r OrgRouter) Route(s *Session, q *request.Request, api string) bool {
 	case "organizations:ListAccounts":
 		r.listAccounts(q)
 	default:
-		return r[getReqAccountID(q)].Route(s, q, api)
+		return r[reqAccountID(q)].Route(s, q, api)
 	}
 	return true
 }
@@ -111,5 +111,13 @@ func (r OrgRouter) describeOrganization(q *request.Request) {
 }
 
 func (r OrgRouter) listAccounts(q *request.Request) {
+	requireMaster(q)
 	q.Data.(*orgs.ListAccountsOutput).Accounts = r.GetAccounts()
+}
+
+func requireMaster(q *request.Request) {
+	if reqAccountID(q) != "000000000000" {
+		api := q.ClientInfo.ServiceName + ":" + q.Operation.Name
+		panic("mock: " + api + " must be called from the master account")
+	}
 }

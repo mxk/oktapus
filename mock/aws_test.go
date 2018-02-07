@@ -12,21 +12,21 @@ import (
 )
 
 func TestOrg(t *testing.T) {
-	sess := NewSession(true)
+	sess := NewSession()
 	out, err := organizations.New(sess).DescribeOrganization(nil)
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
 }
 
 func TestSTS(t *testing.T) {
-	sess := NewSession(true)
+	sess := NewSession()
 	out, err := sts.New(sess).GetCallerIdentity(nil)
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
 }
 
 func TestIAM(t *testing.T) {
-	sess := NewSession(true)
+	sess := NewSession()
 	out, err := iam.New(sess).CreateRole(new(iam.CreateRoleInput).
 		SetAssumeRolePolicyDocument("{}").
 		SetRoleName("testrole"))
