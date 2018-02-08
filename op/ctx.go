@@ -29,7 +29,7 @@ type Ctx struct {
 	OktaUser       string
 	OktaAWSAppLink string
 	AWSRoleARN     string
-	NoDaemon       bool
+	UseDaemon      bool
 
 	All Accounts
 
@@ -47,10 +47,11 @@ func NewCtx() *Ctx {
 		OktaUser:       os.Getenv("OKTA_USERNAME"),
 		OktaAWSAppLink: os.Getenv("OKTA_AWS_APP_URL"),
 		AWSRoleARN:     os.Getenv("OKTA_AWS_ROLE_TO_ASSUME"),
+		UseDaemon:      true,
 	}
 	if v, ok := os.LookupEnv("OKTAPUS_NO_DAEMON"); ok {
 		no, err := strconv.ParseBool(v)
-		ctx.NoDaemon = err != nil || no
+		ctx.UseDaemon = err == nil && !no
 	}
 	return ctx
 }
@@ -139,10 +140,10 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 
 // Call executes cmd locally or via a daemon process.
 func (ctx *Ctx) Call(cmd CallableCmd) (interface{}, error) {
-	if ctx.NoDaemon {
-		return cmd.Call(ctx)
+	if ctx.UseDaemon {
+		return daemon.Call(ctx, cmd)
 	}
-	return daemon.Call(ctx, cmd)
+	return cmd.Call(ctx)
 }
 
 // EnvMap returns an environment map for generating daemon signature.
