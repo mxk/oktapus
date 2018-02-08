@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -35,12 +36,19 @@ func NewAssumeRolePolicy(principal string) *Policy {
 }
 
 // ParsePolicy decodes an IAM policy document.
-func ParsePolicy(doc *string) (*Policy, error) {
-	if doc == nil {
+func ParsePolicy(s *string) (*Policy, error) {
+	if s == nil {
 		return nil, errors.New("policy: missing policy document")
 	}
+	doc := strings.TrimSpace(*s)
+	if strings.HasPrefix(doc, "%7B") {
+		var err error
+		if doc, err = url.QueryUnescape(doc); err != nil {
+			return nil, err
+		}
+	}
 	p := new(Policy)
-	err := json.Unmarshal([]byte(*doc), &p)
+	err := json.Unmarshal([]byte(doc), &p)
 	if err != nil {
 		p = nil
 	} else if p.Version != "" && p.Version != iamPolicyVersion {

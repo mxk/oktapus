@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -110,11 +111,16 @@ func TestParsePolicy(t *testing.T) {
 		}]
 	}`
 	p, err := ParsePolicy(&doc)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	var want, have bytes.Buffer
 	require.NoError(t, json.Indent(&want, []byte(doc), "", "  "))
 	require.NoError(t, json.Indent(&have, []byte(*p.Doc()), "", "  "))
 	assert.Equal(t, want.String(), have.String())
+
+	doc = url.QueryEscape(doc)
+	q, err := ParsePolicy(&doc)
+	require.NoError(t, err)
+	assert.Equal(t, p, q)
 }
 
 func TestPolicyPrincipal(t *testing.T) {
