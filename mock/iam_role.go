@@ -49,7 +49,7 @@ func (r RoleRouter) createRole(q *request.Request) {
 		panic("mock: role exists: " + name)
 	}
 	role := &Role{Role: iam.Role{
-		Arn: aws.String(RoleARN(getReqAccountID(q), name)),
+		Arn: aws.String(RoleARN(reqAccountID(q), name)),
 		AssumeRolePolicyDocument: in.AssumeRolePolicyDocument,
 		Description:              in.Description,
 		Path:                     in.Path,

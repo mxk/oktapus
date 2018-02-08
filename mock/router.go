@@ -11,8 +11,8 @@ import (
 // Router populates request Data and Error fields, simulating an AWS response.
 // Route returns true if the request was handled or false if it should be given
 // to the next router. Routers replace Send and all Unmarshal handlers in the
-// session. Session serializes all requests, so routers are allowed to modify
-// router configuration.
+// session. The Session mutex is acquired while processing a request, so routers
+// are allowed to modify the Session.
 type Router interface {
 	Route(s *Session, q *request.Request, api string) bool
 }
@@ -24,24 +24,43 @@ type ServerResult struct {
 	Err error
 }
 
-// ChainRouter maintains a router chain and gives each router the option to
-// handle each incoming request.
-type ChainRouter struct{ chain []Router }
+// ChainRouter maintains a router chain, passing requests to each router,
+// starting with the last one, until the request is handled.
+type ChainRouter []Router
 
-// NewChainRouter returns a router that will call the given routers in reverse
-// order (i.e. the first router has the lowest priority).
-func NewChainRouter(routers ...Router) *ChainRouter {
-	return &ChainRouter{routers}
+// DataTypeRouter returns the highest priority DataTypeRouter in the chain.
+func (r ChainRouter) DataTypeRouter() (t DataTypeRouter) {
+	r.Find(&t)
+	return
 }
 
-// Add inserts a new router into the chain, giving it highest priority.
-func (r *ChainRouter) Add(t Router) *ChainRouter {
-	r.chain = append(r.chain, t)
-	return r
+// OrgsRouter returns the highest priority OrgsRouter in the chain.
+func (r ChainRouter) OrgsRouter() (t OrgsRouter) {
+	r.Find(&t)
+	return
 }
 
-// GetType assigns v the highest priority router of the matching type.
-func (r *ChainRouter) GetType(v interface{}) bool {
+// RoleRouter returns the highest priority RoleRouter in the chain.
+func (r ChainRouter) RoleRouter() (t RoleRouter) {
+	r.Find(&t)
+	return
+}
+
+// STSRouter returns the highest priority STSRouter in the chain.
+func (r ChainRouter) STSRouter() (t STSRouter) {
+	r.Find(&t)
+	return
+}
+
+// UserRouter returns the highest priority UserRouter in the chain.
+func (r ChainRouter) UserRouter() (t UserRouter) {
+	r.Find(&t)
+	return
+}
+
+// Find assigns v, which must be a Router pointer, the highest priority router
+// of the matching type.
+func (r ChainRouter) Find(v interface{}) bool {
 	t := reflect.TypeOf(v)
 	if t.Kind() != reflect.Ptr {
 		panic("mock: v is not a pointer")
@@ -49,9 +68,9 @@ func (r *ChainRouter) GetType(v interface{}) bool {
 	if t = t.Elem(); !t.Implements(reflect.TypeOf((*Router)(nil)).Elem()) {
 		panic("mock: *v is not a Router")
 	}
-	for i := len(r.chain) - 1; i >= 0; i-- {
-		if c := r.chain[i]; reflect.TypeOf(c) == t {
-			reflect.ValueOf(v).Elem().Set(reflect.ValueOf(c))
+	for i := len(r) - 1; i >= 0; i-- {
+		if u := r[i]; reflect.TypeOf(u) == t {
+			reflect.ValueOf(v).Elem().Set(reflect.ValueOf(u))
 			return true
 		}
 	}
@@ -59,9 +78,9 @@ func (r *ChainRouter) GetType(v interface{}) bool {
 }
 
 // Route implements the Router interface.
-func (r *ChainRouter) Route(s *Session, q *request.Request, api string) bool {
-	for i := len(r.chain) - 1; i >= 0; i-- {
-		if r.chain[i].Route(s, q, api) {
+func (r ChainRouter) Route(s *Session, q *request.Request, api string) bool {
+	for i := len(r) - 1; i >= 0; i-- {
+		if r[i].Route(s, q, api) {
 			return true
 		}
 	}
@@ -69,15 +88,15 @@ func (r *ChainRouter) Route(s *Session, q *request.Request, api string) bool {
 }
 
 // DataTypeRouter handles requests based on the Data field type.
-type DataTypeRouter struct{ m map[reflect.Type]ServerResult }
+type DataTypeRouter map[reflect.Type]ServerResult
 
 // NewDataTypeRouter returns a router that will serve 'out' values to all
 // requests with a matching data output type. All out values should be pointers
-// to AWS SDK *Output structs.
-func NewDataTypeRouter(out ...interface{}) *DataTypeRouter {
-	r := &DataTypeRouter{make(map[reflect.Type]ServerResult, len(out))}
+// to AWS SDK XyzOutput structs.
+func NewDataTypeRouter(out ...interface{}) DataTypeRouter {
+	r := make(DataTypeRouter, len(out))
 	for _, v := range out {
-		if _, ok := r.m[reflect.TypeOf(v)]; ok {
+		if _, ok := r[reflect.TypeOf(v)]; ok {
 			panic(fmt.Sprintf("mock: %T already contains %T", r, out))
 		}
 		r.Set(v, nil)
@@ -87,7 +106,7 @@ func NewDataTypeRouter(out ...interface{}) *DataTypeRouter {
 
 // Set allows the router to handle API requests with the given output type. If
 // err is not nil, it will be used to set the request's Error field.
-func (r *DataTypeRouter) Set(out interface{}, err error) {
+func (r DataTypeRouter) Set(out interface{}, err error) {
 	t := reflect.TypeOf(out)
 	if t.Kind() != reflect.Ptr {
 		panic(fmt.Sprintf("mock: %T is not a pointer", out))
@@ -97,13 +116,13 @@ func (r *DataTypeRouter) Set(out interface{}, err error) {
 		!strings.HasSuffix(s.Name(), "Output") {
 		panic(fmt.Sprintf("mock: %T is not an AWS output struct", s))
 	}
-	r.m[t] = ServerResult{out, err}
+	r[t] = ServerResult{out, err}
 }
 
 // Get copies a response value of the matching type into out and returns the
 // associated error, if any.
-func (r *DataTypeRouter) Get(out interface{}) error {
-	if v, ok := r.m[reflect.TypeOf(out)]; ok {
+func (r DataTypeRouter) Get(out interface{}) error {
+	if v, ok := r[reflect.TypeOf(out)]; ok {
 		reflect.ValueOf(out).Elem().Set(reflect.ValueOf(v.Out).Elem())
 		return v.Err
 	}
@@ -111,8 +130,8 @@ func (r *DataTypeRouter) Get(out interface{}) error {
 }
 
 // Route implements the Router interface.
-func (r *DataTypeRouter) Route(_ *Session, q *request.Request, _ string) bool {
-	_, ok := r.m[reflect.TypeOf(q.Data)]
+func (r DataTypeRouter) Route(_ *Session, q *request.Request, _ string) bool {
+	_, ok := r[reflect.TypeOf(q.Data)]
 	if ok {
 		if err := r.Get(q.Data); err != nil {
 			q.Error = err

@@ -69,15 +69,11 @@ func TestCreateAccounts(t *testing.T) {
 }
 
 func TestDelTmpUsers(t *testing.T) {
-	sess := mock.NewSession(true)
-	c := iam.New(sess)
+	s := mock.NewSession()
+	c := iam.New(s)
 	require.NoError(t, DelTmpUsers(c))
 
-	var org mock.OrgRouter
-	sess.ChainRouter.GetType(&org)
-	var r mock.UserRouter
-	org.GetRouter("").GetType(&r)
-
+	r := s.OrgsRouter().Account("").UserRouter()
 	r["a"] = &mock.User{User: iam.User{
 		Arn:      aws.String(mock.UserARN("", "a")),
 		Path:     aws.String("/"),
@@ -94,7 +90,7 @@ func TestDelTmpUsers(t *testing.T) {
 			PolicyName: aws.String("TestPolicy"),
 		}},
 		AccessKeys: []*iam.AccessKeyMetadata{{
-			AccessKeyId: aws.String("AKIAIOSFODNN7EXAMPLE"),
+			AccessKeyId: aws.String(mock.AccessKeyID),
 			Status:      aws.String(iam.StatusTypeActive),
 			UserName:    aws.String("b"),
 		}},
@@ -106,15 +102,11 @@ func TestDelTmpUsers(t *testing.T) {
 }
 
 func TestDelTmpRoles(t *testing.T) {
-	sess := mock.NewSession(true)
-	c := iam.New(sess)
+	s := mock.NewSession()
+	c := iam.New(s)
 	require.NoError(t, DelTmpRoles(c))
 
-	var org mock.OrgRouter
-	sess.ChainRouter.GetType(&org)
-	var r mock.RoleRouter
-	org.GetRouter("").GetType(&r)
-
+	r := s.OrgsRouter().Account("").RoleRouter()
 	r["a"] = &mock.Role{Role: iam.Role{
 		Arn:      aws.String(mock.RoleARN("", "a")),
 		Path:     aws.String("/"),
