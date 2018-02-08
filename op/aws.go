@@ -227,8 +227,8 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 	})
 }
 
-// isAWSAccountID tests whether id is a valid AWS account ID.
-func isAWSAccountID(id string) bool {
+// IsAWSAccountID tests whether id is a valid AWS account ID.
+func IsAWSAccountID(id string) bool {
 	if len(id) != 12 {
 		return false
 	}

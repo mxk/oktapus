@@ -76,7 +76,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 			if s.idx[name] = uint(i); !neg {
 				s.tagMask |= uint64(1) << uint(i)
 			}
-			if s.typ == stUnknown && isAWSAccountID(name) {
+			if s.typ == stUnknown && IsAWSAccountID(name) {
 				s.typ = stIds
 			}
 		}

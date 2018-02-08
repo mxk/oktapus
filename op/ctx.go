@@ -31,9 +31,9 @@ type Ctx struct {
 	AWSRoleARN     string
 	UseDaemon      bool
 
-	All Accounts
+	All  Accounts
+	Sess client.ConfigProvider
 
-	sess client.ConfigProvider
 	okta *okta.Client
 	aws  *awsgw.Client
 }
@@ -88,7 +88,7 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	if ctx.aws != nil {
 		return ctx.aws
 	}
-	if ctx.sess == nil {
+	if ctx.Sess == nil {
 		var err error
 		if ctx.UseOkta() {
 			// With Okta, all credentials must be explicit
@@ -97,17 +97,17 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 				ProviderName: "ErrorProvider",
 			}
 			cfg := aws.Config{Credentials: credentials.NewCredentials(cp)}
-			ctx.sess, err = newSession(&cfg)
+			ctx.Sess, err = newSession(&cfg)
 		} else {
-			ctx.sess, err = newSession(nil)
+			ctx.Sess, err = newSession(nil)
 		}
 		if err != nil {
 			log.F("Failed to create AWS session: %v", err)
 		}
 	}
-	ctx.aws = awsgw.NewClient(ctx.sess)
+	ctx.aws = awsgw.NewClient(ctx.Sess)
 	if ctx.UseOkta() {
-		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.sess)
+		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.Sess)
 	}
 	ctx.aws.MasterRole = "OktapusOrganizationsProxy"
 	if err := ctx.aws.Connect(); err != nil {
