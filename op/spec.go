@@ -76,7 +76,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 			if s.idx[name] = uint(i); !neg {
 				s.tagMask |= uint64(1) << uint(i)
 			}
-			if s.typ == stUnknown && isAWSAccountID(name) {
+			if s.typ == stUnknown && IsAWSAccountID(name) {
 				s.typ = stIds
 			}
 		}
@@ -135,19 +135,23 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 		if i, ok := s.idx[key]; ok {
 			if _, _, neg := parseSpec(s.spec[i]); !neg {
 				result = append(result, ac)
+				matched[key] = struct{}{}
 			}
-			matched[key] = struct{}{}
 		}
 	}
 	if len(matched) != len(s.idx) {
 		for key, i := range s.idx {
 			_, _, neg := parseSpec(s.spec[i])
-			if _, ok := matched[key]; !(ok || neg) {
+			if _, ok := matched[key]; !ok || neg {
 				what := "name"
 				if s.typ == stIds {
 					what = "id"
 				}
-				return nil, fmt.Errorf("account %s %q not found", what, key)
+				msg := "account %s %q not found"
+				if neg {
+					msg = "account %s %q cannot be negated"
+				}
+				return nil, fmt.Errorf(msg, what, key)
 			}
 		}
 	}

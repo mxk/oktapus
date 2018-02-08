@@ -22,6 +22,8 @@ type RoleRouter map[string]*Role
 // Route implements the Router interface.
 func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 	switch api {
+	case "iam:AttachRolePolicy":
+		r.attachRolePolicy(q)
 	case "iam:CreateRole":
 		r.createRole(q)
 	case "iam:DeleteRole":
@@ -34,12 +36,26 @@ func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 		r.listAttachedRolePolicies(q)
 	case "iam:ListRoles":
 		r.listRoles(q)
+	case "iam:UpdateAssumeRolePolicy":
+		r.updateAssumeRolePolicy(q)
 	case "iam:UpdateRoleDescription":
 		r.updateRoleDescription(q)
 	default:
 		return false
 	}
 	return true
+}
+
+func (r RoleRouter) attachRolePolicy(q *request.Request) {
+	in := q.Params.(*iam.AttachRolePolicyInput)
+	if role := r.get(in.RoleName, q); role != nil {
+		arn := aws.StringValue(in.PolicyArn)
+		name := arn[strings.LastIndexByte(arn, '/')+1:]
+		role.AttachedPolicies = append(role.AttachedPolicies, &iam.AttachedPolicy{
+			PolicyArn:  aws.String(arn),
+			PolicyName: aws.String(name),
+		})
+	}
 }
 
 func (r RoleRouter) createRole(q *request.Request) {
@@ -117,6 +133,13 @@ func (r RoleRouter) listRoles(q *request.Request) {
 		roles = append(roles, &cpy)
 	}
 	q.Data.(*iam.ListRolesOutput).Roles = roles
+}
+
+func (r RoleRouter) updateAssumeRolePolicy(q *request.Request) {
+	in := q.Params.(*iam.UpdateAssumeRolePolicyInput)
+	if role := r.get(in.RoleName, q); role != nil {
+		role.AssumeRolePolicyDocument = in.PolicyDocument
+	}
 }
 
 func (r RoleRouter) updateRoleDescription(q *request.Request) {

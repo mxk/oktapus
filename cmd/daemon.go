@@ -35,7 +35,7 @@ func (daemonCmd) Run(ctx *op.Ctx, args []string) error {
 	const daemonTimeout = 36 * time.Hour
 	timeout := time.NewTimer(daemonTimeout)
 	ticker := time.NewTicker(10 * time.Minute)
-	ctx.NoDaemon = true
+	ctx.UseDaemon = false
 	first := true
 	for {
 		select {
