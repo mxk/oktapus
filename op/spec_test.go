@@ -48,6 +48,9 @@ func TestStatic(t *testing.T) {
 
 	_, err = ParseAccountSpec("x"+strings.Repeat(",x", 64), "").Filter(all)
 	assert.EqualError(t, err, `account name "x" not found`)
+
+	_, err = ParseAccountSpec("!c", "").Filter(all)
+	assert.EqualError(t, err, `account name "c" cannot be negated`)
 }
 
 func TestDynamic(t *testing.T) {
