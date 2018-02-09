@@ -24,14 +24,13 @@ type Policy struct {
 func NewAssumeRolePolicy(principal string) *Policy {
 	s := &Statement{
 		Effect:    "Allow",
-		Principal: new(Principal),
+		Principal: NewAWSPrincipal(principal),
 		Action:    PolicyMultiVal{"sts:AssumeRole"},
 	}
 	if principal == "" {
 		s.Effect = "Deny"
-		principal = "*"
+		s.Principal.AWS[0] = "*"
 	}
-	s.Principal.AWS = append(s.Principal.AWS, principal)
 	return &Policy{Version: iamPolicyVersion, Statement: []*Statement{s}}
 }
 

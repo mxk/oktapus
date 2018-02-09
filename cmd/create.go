@@ -273,26 +273,22 @@ func waitForCreds(ac *op.Account) error {
 	}
 }
 
-const adminPolicy = `{
-	"Version": "2012-10-17",
-	"Statement": [{
-		"Effect": "Allow",
-		"Action": "*",
-		"Resource": "*"
-	}]
-}`
-
 // createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
 func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
-	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID).Doc()
+	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
+	accessPolicy := op.Policy{Statement: []*op.Statement{{
+		Effect:   "Allow",
+		Action:   op.PolicyMultiVal{"*"},
+		Resource: op.PolicyMultiVal{"*"},
+	}}}
 	role := iam.CreateRoleInput{
-		AssumeRolePolicyDocument: assumeRolePolicy,
+		AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
 		RoleName:                 aws.String("OrganizationAccountAccessRole"),
 	}
 	policy := iam.PutRolePolicyInput{
-		PolicyDocument: aws.String(adminPolicy),
+		PolicyDocument: accessPolicy.Doc(),
 		PolicyName:     aws.String("AdministratorAccess"),
 		RoleName:       role.RoleName,
 	}
