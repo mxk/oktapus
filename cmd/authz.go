@@ -107,6 +107,8 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 		path, name := op.SplitPath(r)
 		if cmd.Tmp {
 			path = op.TmpIAMPath + path[1:]
+		} else if strings.IndexByte(r, '/') == -1 {
+			path = op.IAMPath
 		}
 		roleName := aws.String(name)
 		roles[i] = &role{
@@ -151,6 +153,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 			out := &roleOutput{
 				AccountID: ac.ID,
 				Name:      ac.Name,
+				Path:      *r.create.Path,
 				Role:      *r.create.RoleName,
 			}
 			if err != nil {
@@ -172,7 +175,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	return out, nil
 }
 
-type roleOutput struct{ AccountID, Name, Role, Result string }
+type roleOutput struct{ AccountID, Name, Path, Role, Result string }
 
 type role struct {
 	get    iam.GetRoleInput
