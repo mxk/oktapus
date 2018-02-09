@@ -181,6 +181,8 @@ func (ctx *Ctx) EnvMap() map[string]string {
 		"OKTA_USERNAME":           ctx.OktaUser,
 		"OKTA_AWS_APP_URL":        ctx.OktaAWSAppLink,
 		"OKTA_AWS_ROLE_TO_ASSUME": ctx.AWSRoleARN,
+		"OKTAPUS_MASTER_ROLE":     ctx.MasterRole,
+		"OKTAPUS_COMMON_ROLE":     ctx.CommonRole,
 	}
 }
 
