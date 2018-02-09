@@ -121,6 +121,8 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	}
 	if ctx.CommonRole != "" {
 		ctx.aws.CommonRole = ctx.CommonRole
+	} else {
+		ctx.aws.CommonRole = IAMPath[1:] + ctx.aws.CommonRole
 	}
 	return ctx.aws
 }
