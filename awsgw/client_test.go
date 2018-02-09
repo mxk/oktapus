@@ -18,7 +18,7 @@ import (
 
 func TestClientConnect(t *testing.T) {
 	s := mock.NewSession()
-	c := NewClient(s)
+	c := NewClient(s, "")
 	assert.Equal(t, s, c.ConfigProvider())
 	assert.Empty(t, c.Ident().AccountID)
 	assert.Empty(t, c.OrgInfo().MasterAccountID)
@@ -33,7 +33,7 @@ func TestClientConnect(t *testing.T) {
 func TestClientCommonRole(t *testing.T) {
 	// Assumed role
 	s := mock.NewSession()
-	c := NewClient(s)
+	c := NewClient(s, "")
 	require.NoError(t, c.Connect())
 	assert.Equal(t, "user@example.com", c.CommonRole)
 
@@ -44,7 +44,7 @@ func TestClientCommonRole(t *testing.T) {
 		UserId:  aws.String("AKIAI44QH8DHBEXAMPLE"),
 	})
 	s.ChainRouter = append(s.ChainRouter, rtr)
-	c = NewClient(s)
+	c = NewClient(s, "")
 	require.NoError(t, c.Connect())
 	assert.Equal(t, "TestUser", c.CommonRole)
 
@@ -54,7 +54,7 @@ func TestClientCommonRole(t *testing.T) {
 		Arn:     aws.String("arn:aws:iam::000000000000:root"),
 		UserId:  aws.String("000000000000"),
 	}, nil)
-	c = NewClient(s)
+	c = NewClient(s, "")
 	require.NoError(t, c.Connect())
 	assert.Equal(t, "OrganizationAccountAccessRole", c.CommonRole)
 }
@@ -70,7 +70,7 @@ func TestClientRefresh(t *testing.T) {
 	assert.Panics(t, func() {
 		new(Account).set(acs[0])
 	})
-	c := NewClient(s)
+	c := NewClient(s, "")
 	require.NoError(t, c.Connect())
 	assert.True(t, c.IsMaster())
 	require.NoError(t, c.Refresh())
@@ -80,7 +80,7 @@ func TestClientRefresh(t *testing.T) {
 func TestClientRefreshProxy(t *testing.T) {
 	s := mock.NewSession()
 	s.STSRouter()[""] = mock.NewSTSRouter("1")[""]
-	c := NewClient(s)
+	c := NewClient(s, "MasterRole")
 	require.NoError(t, c.Connect())
 	assert.False(t, c.IsMaster())
 	assert.Equal(t, "000000000001", c.Ident().AccountID)
@@ -104,7 +104,7 @@ func TestClientEncodeDecode(t *testing.T) {
 		},
 		Exp: time.Now().Add(time.Minute).Truncate(time.Second),
 	}
-	c := NewClient(s)
+	c := NewClient(s, "")
 	c.GatewayCreds = creds
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
@@ -112,7 +112,7 @@ func TestClientEncodeDecode(t *testing.T) {
 	state, err := c.GobEncode()
 	require.NoError(t, err)
 
-	c = NewClient(s)
+	c = NewClient(s, "")
 	require.NoError(t, c.GobDecode(state))
 	assert.Equal(t, creds.Save(), c.GatewayCreds.Save())
 	require.NoError(t, c.Connect())
@@ -120,7 +120,7 @@ func TestClientEncodeDecode(t *testing.T) {
 }
 
 func TestClientCreds(t *testing.T) {
-	c := NewClient(mock.NewSession())
+	c := NewClient(mock.NewSession(), "")
 	require.NoError(t, c.Connect())
 	require.NoError(t, c.Refresh())
 	cp := c.CredsProvider("111111111111").(*AssumeRoleCreds)

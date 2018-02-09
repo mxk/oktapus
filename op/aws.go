@@ -15,7 +15,7 @@ import (
 )
 
 // TmpIAMPath is a path for temporary users and roles.
-const TmpIAMPath = CtlPath + "tmp/"
+const TmpIAMPath = IAMPath + "tmp/"
 
 // SplitPath splits a string in the format "[[/]path/]name" into its components.
 // The path always begins and ends with a slash.

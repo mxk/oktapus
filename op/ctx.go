@@ -29,6 +29,8 @@ type Ctx struct {
 	OktaUser       string
 	OktaAWSAppLink string
 	AWSRoleARN     string
+	MasterRole     string
+	CommonRole     string
 	UseDaemon      bool
 
 	All  Accounts
@@ -47,6 +49,8 @@ func NewCtx() *Ctx {
 		OktaUser:       os.Getenv("OKTA_USERNAME"),
 		OktaAWSAppLink: os.Getenv("OKTA_AWS_APP_URL"),
 		AWSRoleARN:     os.Getenv("OKTA_AWS_ROLE_TO_ASSUME"),
+		MasterRole:     os.Getenv("OKTAPUS_MASTER_ROLE"),
+		CommonRole:     os.Getenv("OKTAPUS_COMMON_ROLE"),
 		UseDaemon:      true,
 	}
 	if v, ok := os.LookupEnv("OKTAPUS_NO_DAEMON"); ok {
@@ -105,13 +109,18 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 			log.F("Failed to create AWS session: %v", err)
 		}
 	}
-	ctx.aws = awsgw.NewClient(ctx.Sess)
+	if ctx.MasterRole == "" {
+		ctx.MasterRole = IAMPath[1:] + "OktapusOrganizationsProxy"
+	}
+	ctx.aws = awsgw.NewClient(ctx.Sess, ctx.MasterRole)
 	if ctx.UseOkta() {
 		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.Sess)
 	}
-	ctx.aws.MasterRole = "OktapusOrganizationsProxy"
 	if err := ctx.aws.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
+	}
+	if ctx.CommonRole != "" {
+		ctx.aws.CommonRole = ctx.CommonRole
 	}
 	return ctx.aws
 }

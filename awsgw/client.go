@@ -43,8 +43,8 @@ type Client struct {
 
 // NewClient creates a new AWS gateway client. The client is not usable until
 // Connect() is called, which should be done after restoring any saved state.
-func NewClient(sess client.ConfigProvider) *Client {
-	return &Client{sess: sess}
+func NewClient(sess client.ConfigProvider, masterRole string) *Client {
+	return &Client{MasterRole: masterRole, sess: sess}
 }
 
 // ConfigProvider returns the ConfigProvider that was passed to NewClient.
@@ -244,24 +244,30 @@ func (c *Client) getAccount(id string) *accountCtx {
 
 // proxyCreds returns credentials for the MasterRole.
 func (c *Client) proxyCreds() *AssumeRoleCreds {
-	if c.orgInfo.ID == "" {
-		panic("awsgw: unknown organization id")
+	if c.MasterRole == "" {
+		panic("awsgw: master role not set")
 	}
-
-	// MasterRole requires an external id, which is derived from org info
-	var buf [64]byte
-	b := append(buf[:0], "oktapus:"...)
-	b = append(b, c.orgInfo.MasterAccountID...)
-	b = append(b, ':')
-	b = append(b, c.orgInfo.MasterAccountEmail...)
-	h := hmac.New(sha512.New512_256, []byte(c.orgInfo.ID))
-	h.Write(b)
-	b = h.Sum(b[:0])
-
 	role := roleARN(c.orgInfo.MasterAccountID, c.MasterRole)
 	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
-	cr.ExternalId = aws.String(hex.EncodeToString(b))
+	cr.ExternalId = aws.String(ProxyExternalID(&c.orgInfo))
 	return cr
+}
+
+// ProxyExternalID returns the external id for the MasterRole in the current
+// organization.
+func ProxyExternalID(org *Org) string {
+	if org.ID == "" {
+		panic("awsgw: unknown organization id")
+	}
+	var buf [64]byte
+	b := append(buf[:0], "oktapus:"...)
+	b = append(b, org.MasterAccountID...)
+	b = append(b, ':')
+	b = append(b, org.MasterAccountEmail...)
+	h := hmac.New(sha512.New512_256, []byte(org.ID))
+	h.Write(b)
+	b = h.Sum(b[:0])
+	return hex.EncodeToString(b)
 }
 
 // Ident contains data from sts:GetCallerIdentity API call.
@@ -315,5 +321,5 @@ func getSessName(id *Ident) string {
 
 // roleARN returns the IAM role ARN for the given account id and role name.
 func roleARN(account, role string) string {
-	return "arn:aws:iam::" + account + ":role/" + role
+	return "arn:aws:iam::" + account + ":role/" + strings.TrimPrefix(role, "/")
 }
