@@ -75,15 +75,15 @@ func (p *Policy) Doc() *string {
 
 // Statement is an IAM policy statement.
 type Statement struct {
-	SID          string                               `json:"Sid,omitempty"`
-	Effect       string                               `json:""`
-	Principal    *Principal                           `json:",omitempty"`
-	NotPrincipal *Principal                           `json:",omitempty"`
-	Action       PolicyMultiVal                       `json:",omitempty"`
-	NotAction    PolicyMultiVal                       `json:",omitempty"`
-	Resource     PolicyMultiVal                       `json:",omitempty"`
-	NotResource  PolicyMultiVal                       `json:",omitempty"`
-	Condition    map[string]map[string]PolicyMultiVal `json:",omitempty"`
+	SID          string         `json:"Sid,omitempty"`
+	Effect       string         `json:""`
+	Principal    *Principal     `json:",omitempty"`
+	NotPrincipal *Principal     `json:",omitempty"`
+	Action       PolicyMultiVal `json:",omitempty"`
+	NotAction    PolicyMultiVal `json:",omitempty"`
+	Resource     PolicyMultiVal `json:",omitempty"`
+	NotResource  PolicyMultiVal `json:",omitempty"`
+	Condition    ConditionMap   `json:",omitempty"`
 }
 
 // Principal specifies the entity to which a statement applies.
@@ -165,3 +165,9 @@ func (v *PolicyMultiVal) UnmarshalJSON(b []byte) error {
 	}
 	return err
 }
+
+// ConditionMap associates policy condition type with a set of conditions.
+type ConditionMap map[string]Conditions
+
+// Conditions contains one or more policy conditions of the same type.
+type Conditions map[string]PolicyMultiVal
