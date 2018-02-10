@@ -37,18 +37,21 @@ func TestExec(t *testing.T) {
 	require.NoError(t, err)
 
 	var runErr error
+	done := make(chan struct{})
 	go func() {
 		defer func(stdout, stderr *os.File) {
 			os.Stdout, os.Stderr = stdout, stderr
 			w.Close()
+			close(done)
 		}(os.Stdout, os.Stderr)
 		cmd := newCmd("exec").(*execCmd)
 		args := []string{"test1,test2,test3", os.Args[0], "-test.run=TestExec"}
 		os.Stdout, os.Stderr = w, w
 		runErr = cmd.Run(ctx, args)
 	}()
-
 	out, err := ioutil.ReadAll(r)
+	<-done
+
 	require.NoError(t, err)
 	require.EqualError(t, runErr, "2 commands failed (1 due to invalid credentials)")
 	want := internal.Dedent(`
