@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,41 @@ func init() {
 type masterSetup struct {
 	Name
 	Exec bool
+}
+
+func (cmd *masterSetup) Help(w *bufio.Writer) {
+	op.WriteHelp(w, `
+		Configure master account policies and roles for oktapus access.
+
+		Most of the 'organizations' API calls can only be issued from the master
+		account. The ones most relevant to oktapus are CreateAccount and
+		ListAccounts. This command creates two new IAM policies and one new role
+		in the master account that simplify oktapus provisioning.
+
+		Two new policies are created:
+
+		  OktapusGatewayAccess contains the minimum necessary privileges to use
+		  the master account as oktapus gateway. This policy should be applied
+		  to IAM users or a SAML-federated role in the master account.
+
+		  OktapusCreateAccountAccess allows creating new accounts in the
+		  organization. It can be applied in addition to OktapusGatewayAccess
+		  for those users/roles who should be able to create accounts.
+
+		One new role is created:
+
+		  OktapusOrganizationsProxy allows any other account in the organization
+		  to call ListAccounts. This API call can only be issued from the master
+		  account, so when oktapus is using a non-master gateway, it assumes
+		  this role to get the list of all accounts in the organization. The
+		  role requires an External ID, which is derived from information
+		  returned by the DescribeOrganization API.
+
+		Without the -exec option, a dry-run is performed that shows all steps of
+		the setup process. It outputs role and policy names, descriptions, and
+		all JSON policy documents, making it possible to perform the entire
+		setup procedure manually.
+	`)
 }
 
 func (cmd *masterSetup) FlagCfg(fs *flag.FlagSet) {
