@@ -119,8 +119,8 @@ type credsOutput struct {
 }
 
 func listCreds(acs op.Accounts, renew bool) []*credsOutput {
-	out := make([]*credsOutput, 0, len(acs))
-	for _, ac := range acs {
+	out := make([]*credsOutput, len(acs))
+	acs.Apply(func(i int, ac *op.Account) {
 		var cr *awsgw.StaticCreds
 		err := ac.Err
 		// Credentials do not require account control information
@@ -140,8 +140,8 @@ func listCreds(acs op.Accounts, renew bool) []*credsOutput {
 			co.SecretAccessKey = cr.SecretAccessKey
 			co.SessionToken = cr.SessionToken
 		}
-		out = append(out, co)
-	}
+		out[i] = co
+	})
 	return out
 }
 

@@ -138,7 +138,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 			out = append(out, r)
 		}
 	}()
-	acs.Apply(func(ac *op.Account) {
+	acs.Apply(func(_ int, ac *op.Account) {
 		if ac.Err != nil {
 			ch <- &roleOutput{
 				AccountID: ac.ID,

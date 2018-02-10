@@ -81,16 +81,12 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Tmp {
 		path = op.TmpIAMPath + path[1:]
 	}
-	creds := make(map[string]*credsOutput, len(out))
-	for _, c := range out {
-		creds[c.AccountID] = c
-	}
 	km := newKeyMaker(path, user, cmd.Policy)
-	acs.Apply(func(ac *op.Account) {
+	acs.Apply(func(i int, ac *op.Account) {
 		if ac.Err != nil {
 			return
 		}
-		c := creds[ac.ID]
+		c := out[i]
 		*c = credsOutput{
 			AccountID: c.AccountID,
 			Name:      c.Name,

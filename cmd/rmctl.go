@@ -49,7 +49,7 @@ func (cmd *rmCtl) Call(ctx *op.Ctx) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	acs.Apply(func(ac *op.Account) {
+	acs.Apply(func(_ int, ac *op.Account) {
 		if ac.Err == nil {
 			in := iam.DeleteRoleInput{RoleName: aws.String(op.CtlRole)}
 			_, ac.Err = ac.IAM().DeleteRole(&in)

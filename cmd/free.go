@@ -63,7 +63,7 @@ func (cmd *free) Call(ctx *op.Ctx) (interface{}, error) {
 	})
 
 	// Clear owner and delete temporary users/roles
-	acs.Apply(func(ac *op.Account) {
+	acs.Apply(func(_ int, ac *op.Account) {
 		ac.Owner = ""
 		ch := make(chan error, 1)
 		go func() { ch <- op.DelTmpRoles(ac.IAM()) }()

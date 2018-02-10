@@ -132,7 +132,7 @@ func (s Accounts) RequireCtl() Accounts {
 
 // RefreshCtl retrieves current control information for all accounts.
 func (s Accounts) RefreshCtl() Accounts {
-	return s.Apply(func(ac *Account) {
+	return s.Apply(func(_ int, ac *Account) {
 		if ac.Err = ac.ref.Get(ac.iam); ac.Err != nil {
 			ac.Ctl = nil
 		} else {
@@ -148,7 +148,7 @@ func (s Accounts) RefreshCtl() Accounts {
 // the caller must refresh account control information after a delay to confirm
 // owner status.
 func (s Accounts) Save() Accounts {
-	return s.Apply(func(ac *Account) {
+	return s.Apply(func(_ int, ac *Account) {
 		if ac.Ctl == nil {
 			if ac.Err == nil {
 				ac.Err = ErrNoCtl
@@ -179,28 +179,35 @@ func (s Accounts) Save() Accounts {
 }
 
 // Apply executes fn on each account concurrently.
-func (s Accounts) Apply(fn func(ac *Account)) Accounts {
+func (s Accounts) Apply(fn func(i int, ac *Account)) Accounts {
 	// The number of goroutines is fixed because the work is IO-bound. It simply
 	// sets the number of API requests that can be in-flight at any given time.
 	n := 50
 	if len(s) < n {
-		if n = len(s); n == 0 {
+		if n = len(s); n <= 1 {
+			if n == 1 {
+				fn(0, s[0])
+			}
 			return s
 		}
 	}
+	type account struct {
+		i int
+		a *Account
+	}
 	var wg sync.WaitGroup
-	ch := make(chan *Account, n)
+	wg.Add(n)
+	ch := make(chan account, n)
 	for i := n; i > 0; i-- {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for ac := range ch {
-				fn(ac)
+				fn(ac.i, ac.a)
 			}
 		}()
 	}
-	for _, ac := range s {
-		ch <- ac
+	for i, ac := range s {
+		ch <- account{i, ac}
 	}
 	close(ch)
 	wg.Wait()

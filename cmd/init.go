@@ -51,7 +51,7 @@ func (cmd *initCmd) Call(ctx *op.Ctx) (interface{}, error) {
 		return nil, err
 	}
 	errInit := errors.New("already initialized")
-	acs.Apply(func(ac *op.Account) {
+	acs.Apply(func(_ int, ac *op.Account) {
 		if ac.Ctl == nil {
 			ac.Ctl = &op.Ctl{Tags: []string{"init"}}
 			ac.Err = ac.Ctl.Init(ac.IAM())
