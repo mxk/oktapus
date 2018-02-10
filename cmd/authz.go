@@ -63,7 +63,7 @@ func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"Set attached role policy `ARN`")
 	fs.StringVar(&cmd.Principal, "principal", "",
-		"Override default principal `ARN` for AssumeRole policy")
+		"Set principal `ARN` for AssumeRole policy (default is current gateway account)")
 	fs.BoolVar(&cmd.Tmp, "tmp", false,
 		"Delete this role automatically when the account is freed")
 }
@@ -86,6 +86,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 
 	// Create AssumeRole policy document
 	if cmd.Principal == "" {
+		// TODO: This is too permissive if the gateway account is not master
 		cmd.Principal = ctx.AWS().Ident().AccountID
 	} else if !op.IsAWSAccountID(cmd.Principal) &&
 		!strings.HasPrefix(cmd.Principal, "arn:") {

@@ -10,6 +10,18 @@ import (
 	"github.com/LuminalHQ/oktapus/op"
 )
 
+// testCtx returns a Ctx for testing commands, optionally initializing account
+// control information for the specified account IDs.
+func testCtx(init ...string) *op.Ctx {
+	ctx := &op.Ctx{Sess: mock.NewSession()}
+	if len(init) > 0 {
+		if err := initCtl(ctx, nil, init...); err != nil {
+			panic(err)
+		}
+	}
+	return ctx
+}
+
 // newCmd creates a new command instance and parses flag arguments.
 func newCmd(name string, args ...string) op.Cmd {
 	cmd := op.GetCmdInfo(name).New()
