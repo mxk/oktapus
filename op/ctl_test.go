@@ -1,10 +1,10 @@
 package op
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	"github.com/stretchr/testify/assert"
@@ -31,9 +31,9 @@ func TestCtl(t *testing.T) {
 	require.NoError(t, get.Get(c))
 	assert.Equal(t, set, get)
 
-	err := errors.New("get error")
-	c.err = err
-	require.EqualError(t, get.Get(c), err.Error())
+	c.err = awserr.New(iam.ErrCodeNoSuchEntityException, "", nil)
+	require.Error(t, ErrNoCtl, get.Get(c))
+	require.Error(t, ErrNoCtl, set.Set(c))
 	assert.Equal(t, Ctl{}, get)
 
 	set = Ctl{Owner: "owner"}

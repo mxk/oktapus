@@ -15,14 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
-// IAMPath is a common path for managed IAM users and roles.
-const IAMPath = "/oktapus/"
-
 // CtlRole is the role that stores account control information.
 const CtlRole = "OktapusControl"
 
 // ErrNoCtl indicates missing account control information.
-var ErrNoCtl = errors.New("account control information not available")
+var ErrNoCtl = errors.New("account control not initialized")
 
 // errCtlUpdate indicates that new account control information was not saved.
 var errCtlUpdate = errors.New("account control information update interrupted")
@@ -59,7 +56,9 @@ func (ctl *Ctl) Get(c iamiface.IAMAPI) error {
 	if err == nil {
 		return ctl.decode(out.Role.Description)
 	}
-	*ctl = Ctl{}
+	if *ctl = (Ctl{}); AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
+		err = ErrNoCtl
+	}
 	return err
 }
 
@@ -71,6 +70,9 @@ func (ctl *Ctl) Set(c iamiface.IAMAPI) error {
 			RoleName:    aws.String(CtlRole),
 		}
 		out, err := c.UpdateRoleDescription(&in)
+		if AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
+			err = ErrNoCtl
+		}
 		return out.Role, err
 	})
 }

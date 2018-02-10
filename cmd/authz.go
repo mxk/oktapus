@@ -187,7 +187,7 @@ type role struct {
 func (r *role) createOrUpdate(c iamiface.IAMAPI) (create bool, err error) {
 	out, err := c.GetRole(&r.get)
 	if err != nil {
-		if !awsErrCode(err, iam.ErrCodeNoSuchEntityException) {
+		if !op.AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
 			return false, err
 		}
 		attachPol := aws.StringValue(r.attach.PolicyArn) != ""

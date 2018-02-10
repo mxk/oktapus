@@ -133,7 +133,7 @@ func newKeyMaker(path, user, policy string) *keyMaker {
 
 func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUser(&m.user); err != nil &&
-		!awsErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+		!op.AWSErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 		return nil, err
 	}
 	if _, err := c.AttachUserPolicy(&m.pol); err != nil {

@@ -122,15 +122,19 @@ func listCreds(acs op.Accounts, renew bool) []*credsOutput {
 	out := make([]*credsOutput, 0, len(acs))
 	for _, ac := range acs {
 		var cr *awsgw.StaticCreds
-		if ac.Err == nil {
-			cr, ac.Err = ac.Creds(renew)
+		err := ac.Err
+		// Credentials do not require account control information
+		if err == nil || err == op.ErrNoCtl {
+			if cr, err = ac.Creds(renew); err != nil {
+				ac.Err = err
+			}
 		}
 		co := &credsOutput{
 			AccountID: ac.ID,
 			Name:      ac.Name,
-			Error:     explainError(ac.Err),
+			Error:     explainError(err),
 		}
-		if ac.Err == nil {
+		if err == nil {
 			co.Expires = expTime{cr.Exp}
 			co.AccessKeyID = cr.AccessKeyID
 			co.SecretAccessKey = cr.SecretAccessKey
@@ -229,14 +233,10 @@ func padArgs(cmd op.Cmd, args *[]string) {
 func explainError(err error) string {
 	switch err := err.(type) {
 	case awserr.RequestFailure:
-		switch err.StatusCode() {
-		case http.StatusForbidden:
+		if err.StatusCode() == http.StatusForbidden {
 			return "account access denied"
-		case http.StatusNotFound:
-			return "account control not initialized"
-		default:
-			return err.Code() + ": " + err.Message()
 		}
+		return err.Code() + ": " + err.Message()
 	case awserr.Error:
 		if err.Code() == "NoCredentialProviders" {
 			errs := err.(awserr.BatchedErrors).OrigErrs()
@@ -249,10 +249,4 @@ func explainError(err error) string {
 		return err.Error()
 	}
 	return ""
-}
-
-// awsErrCode returns true if err is an awserr.Error with the given code.
-func awsErrCode(err error, code string) bool {
-	e, ok := err.(awserr.Error)
-	return ok && e.Code() == code
 }

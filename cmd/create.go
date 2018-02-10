@@ -301,7 +301,7 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 			_, err = c.PutRolePolicy(&policy)
 			return err
 		}
-		if !awsErrCode(err, "InvalidClientTokenId") ||
+		if !op.AWSErrCode(err, "InvalidClientTokenId") ||
 			!internal.Time().Before(timeout) {
 			return err
 		}

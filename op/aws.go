@@ -14,8 +14,17 @@ import (
 	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 )
 
+// IAMPath is a common path for managed IAM users and roles.
+const IAMPath = "/oktapus/"
+
 // TmpIAMPath is a path for temporary users and roles.
 const TmpIAMPath = IAMPath + "tmp/"
+
+// AWSErrCode returns true if err is an awserr.Error with the given code.
+func AWSErrCode(err error, code string) bool {
+	e, ok := err.(awserr.Error)
+	return ok && e.Code() == code
+}
 
 // SplitPath splits a string in the format "[[/]path/]name" into its components.
 // The path always begins and ends with a slash.

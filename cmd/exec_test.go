@@ -45,7 +45,7 @@ func TestExec(t *testing.T) {
 			close(done)
 		}(os.Stdout, os.Stderr)
 		cmd := newCmd("exec").(*execCmd)
-		args := []string{"test1,test2,test3", os.Args[0], "-test.run=TestExec"}
+		args := []string{"test1,test2", os.Args[0], "-test.run=TestExec"}
 		os.Stdout, os.Stderr = w, w
 		runErr = cmd.Run(ctx, args)
 	}()
@@ -53,7 +53,7 @@ func TestExec(t *testing.T) {
 	<-done
 
 	require.NoError(t, err)
-	require.EqualError(t, runErr, "2 commands failed (1 due to invalid credentials)")
+	require.EqualError(t, runErr, "1 command failed (0 due to invalid credentials)")
 	want := internal.Dedent(`
 		===> Account 000000000001 (test1)
 		AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
@@ -68,8 +68,6 @@ func TestExec(t *testing.T) {
 		AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 		AWS_SESSION_TOKEN=arn:aws:sts::000000000002:assumed-role/user@example.com/user@example.com
 		===> ERROR: exit status 1
-		===> Account 000000000003 (test3)
-		===> ERROR: account control not initialized
 	`)[1:]
 	assert.Equal(t, want, string(out))
 }
