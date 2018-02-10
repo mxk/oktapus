@@ -11,7 +11,6 @@ import (
 
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
@@ -188,8 +187,7 @@ type role struct {
 func (r *role) createOrUpdate(c iamiface.IAMAPI) (create bool, err error) {
 	out, err := c.GetRole(&r.get)
 	if err != nil {
-		e, ok := err.(awserr.Error)
-		if !ok || e.Code() != iam.ErrCodeNoSuchEntityException {
+		if !awsErrCode(err, iam.ErrCodeNoSuchEntityException) {
 			return false, err
 		}
 		attachPol := aws.StringValue(r.attach.PolicyArn) != ""

@@ -206,9 +206,8 @@ func indentDoc(doc *string) []byte {
 }
 
 func ignoreExists(what string, err error) error {
-	e, ok := err.(awserr.Error)
-	if ok && e.Code() == iam.ErrCodeEntityAlreadyExistsException {
-		log.W("%s already exists: %s", what, e.Message())
+	if awsErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+		log.W("%s already exists: %s", what, err.(awserr.Error).Message())
 		err = nil
 	}
 	return err
