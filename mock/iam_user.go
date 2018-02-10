@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -23,6 +24,10 @@ type UserRouter map[string]*User
 // Route implements the Router interface.
 func (r UserRouter) Route(s *Session, q *request.Request, api string) bool {
 	switch api {
+	case "iam:AttachUserPolicy":
+		r.attachUserPolicy(q)
+	case "iam:CreateAccessKey":
+		r.createAccessKey(q)
 	case "iam:CreateUser":
 		r.createUser(q)
 	case "iam:DeleteAccessKey":
@@ -45,11 +50,45 @@ func (r UserRouter) Route(s *Session, q *request.Request, api string) bool {
 	return true
 }
 
+func (r UserRouter) attachUserPolicy(q *request.Request) {
+	in := q.Params.(*iam.AttachUserPolicyInput)
+	if user := r.get(in.UserName, q); user != nil {
+		arn := aws.StringValue(in.PolicyArn)
+		name := arn[strings.LastIndexByte(arn, '/')+1:]
+		user.AttachedPolicies = append(user.AttachedPolicies, &iam.AttachedPolicy{
+			PolicyArn:  aws.String(arn),
+			PolicyName: aws.String(name),
+		})
+	}
+}
+
+func (r UserRouter) createAccessKey(q *request.Request) {
+	in := q.Params.(*iam.CreateAccessKeyInput)
+	if user := r.get(in.UserName, q); user != nil {
+		ak := &iam.AccessKey{
+			AccessKeyId:     aws.String(AccessKeyID),
+			CreateDate:      aws.Time(internal.Time()),
+			SecretAccessKey: aws.String(SecretAccessKey),
+			Status:          aws.String(iam.StatusTypeActive),
+			UserName:        in.UserName,
+		}
+		user.AccessKeys = append(user.AccessKeys, &iam.AccessKeyMetadata{
+			AccessKeyId: ak.AccessKeyId,
+			CreateDate:  ak.CreateDate,
+			Status:      ak.Status,
+			UserName:    ak.Status,
+		})
+		q.Data.(*iam.CreateAccessKeyOutput).AccessKey = ak
+	}
+}
+
 func (r UserRouter) createUser(q *request.Request) {
 	in := q.Params.(*iam.CreateUserInput)
 	name := aws.StringValue(in.UserName)
 	if _, ok := r[name]; ok {
-		panic("mock: user exists: " + name)
+		q.Error = awserr.New(iam.ErrCodeEntityAlreadyExistsException,
+			"user exists: "+name, nil)
+		return
 	}
 	user := &User{User: iam.User{
 		Arn:      aws.String(UserARN(reqAccountID(q), name)),

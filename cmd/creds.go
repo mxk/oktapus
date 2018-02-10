@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 
 	"github.com/LuminalHQ/oktapus/op"
@@ -83,7 +84,7 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 	km := newKeyMaker(path, user, cmd.Policy)
 	acs.Apply(func(i int, ac *op.Account) {
-		if ac.Err != nil {
+		if ac.Err != nil && ac.Err != op.ErrNoCtl {
 			return
 		}
 		c := out[i]
@@ -128,9 +129,19 @@ func newKeyMaker(path, user, policy string) *keyMaker {
 }
 
 func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error) {
-	if _, err := c.CreateUser(&m.user); err != nil &&
-		!op.AWSErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
-		return nil, err
+	if _, err := c.CreateUser(&m.user); err != nil {
+		if !op.AWSErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+			return nil, err
+		}
+		// Existing user path must match to create a new access key
+		in := iam.GetUserInput{UserName: m.user.UserName}
+		u, err := c.GetUser(&in)
+		if err != nil {
+			return nil, err
+		}
+		if aws.StringValue(u.User.Path) != aws.StringValue(m.user.Path) {
+			return nil, errors.New("user already exists under a different path")
+		}
 	}
 	if _, err := c.AttachUserPolicy(&m.pol); err != nil {
 		return nil, err

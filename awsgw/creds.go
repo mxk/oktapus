@@ -265,12 +265,12 @@ func (c *stsCreds) stsRetrieve(name string, fn func() (*sts.Credentials, error))
 			ProviderName:    name,
 		}
 		c.s.Err = nil
-		c.s.Exp = creds.Expiration.Add(-45 * time.Second).Truncate(time.Minute)
+		c.s.Exp = creds.Expiration.Add(-time.Minute).Truncate(time.Second)
 	} else {
 		// TODO: Error expiration time should be reduced for temporary errors
 		c.s.Value = credentials.Value{ProviderName: name}
 		c.s.Err = err
-		c.s.Exp = internal.Time().Add(2 * time.Hour).Truncate(time.Minute)
+		c.s.Exp = internal.Time().Add(2 * time.Hour).Truncate(time.Second)
 	}
 	return c.s.Value, c.s.Err
 }
