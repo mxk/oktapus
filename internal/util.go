@@ -125,3 +125,78 @@ func Dedent(s string) string {
 	}
 	return string(append(b, s...))
 }
+
+// GoForEach executes n tasks using at most batch goroutines. If batch is <= 0,
+// 64 goroutines are used. Function fn is called for each task with i in the
+// range [0,n). If fn returns an error, all pending tasks are canceled and the
+// error is returned. It is undefined which error is returned if multiple
+// concurrently running tasks return an error.
+func GoForEach(n, batch int, fn func(i int) error) error {
+	if n <= 1 || batch == 1 {
+		for i := 0; i < n; i++ {
+			if err := fn(i); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Adjust batch, ich is needed only when batch < n
+	var ich chan int
+	if batch <= 0 {
+		if n < 96 {
+			batch = n
+		} else {
+			batch = 64
+			ich = make(chan int)
+		}
+	} else if batch < n {
+		ich = make(chan int)
+	} else {
+		batch = n
+	}
+
+	// Start waiter goroutine
+	ech := make(chan error)
+	var wg sync.WaitGroup
+	wg.Add(batch)
+	go func() {
+		defer close(ech)
+		wg.Wait()
+	}()
+
+	// Start batch goroutines
+	for i := 0; i < batch; i++ {
+		go func(i int) {
+			defer wg.Done()
+			if err := fn(i); err != nil {
+				ech <- err
+			} else if ich != nil {
+				for i = range ich {
+					if err = fn(i); err != nil {
+						ech <- err
+						break
+					}
+				}
+			}
+		}(i)
+	}
+
+	// Send any remaining tasks while waiting for error
+	var err error
+	if ich != nil {
+		for i := batch; i < n; i++ {
+			select {
+			case ich <- i:
+			case err = <-ech:
+				i = n - 1
+			}
+		}
+		close(ich)
+	}
+
+	// Wait for completion of all tasks
+	for err = range ech {
+	}
+	return err
+}

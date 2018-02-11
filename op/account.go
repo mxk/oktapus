@@ -5,9 +5,9 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-	"sync"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -180,37 +180,10 @@ func (s Accounts) Save() Accounts {
 
 // Apply executes fn on each account concurrently.
 func (s Accounts) Apply(fn func(i int, ac *Account)) Accounts {
-	// The number of goroutines is fixed because the work is IO-bound. It simply
-	// sets the number of API requests that can be in-flight at any given time.
-	n := 50
-	if len(s) < n {
-		if n = len(s); n <= 1 {
-			if n == 1 {
-				fn(0, s[0])
-			}
-			return s
-		}
-	}
-	type account struct {
-		i int
-		a *Account
-	}
-	var wg sync.WaitGroup
-	wg.Add(n)
-	ch := make(chan account, n)
-	for i := n; i > 0; i-- {
-		go func() {
-			defer wg.Done()
-			for ac := range ch {
-				fn(ac.i, ac.a)
-			}
-		}()
-	}
-	for i, ac := range s {
-		ch <- account{i, ac}
-	}
-	close(ch)
-	wg.Wait()
+	internal.GoForEach(len(s), 0, func(i int) error {
+		fn(i, s[i])
+		return nil
+	})
 	return s
 }
 

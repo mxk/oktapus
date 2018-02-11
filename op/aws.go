@@ -1,11 +1,11 @@
 package op
 
 import (
-	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -120,8 +120,8 @@ func DelTmpUsers(c iamiface.IAMAPI) error {
 	if err := c.ListUsersPages(&in, pager); err != nil {
 		return err
 	}
-	return goForEach(users, func(user interface{}) error {
-		return delUser(c, user.(string))
+	return internal.GoForEach(len(users), 0, func(i int) error {
+		return delUser(c, users[i])
 	})
 }
 
@@ -151,9 +151,9 @@ func delAccessKeys(c iamiface.IAMAPI, user string) error {
 	if err := c.ListAccessKeysPages(&in, pager); err != nil {
 		return err
 	}
-	return goForEach(ids, func(id interface{}) error {
+	return internal.GoForEach(len(ids), 0, func(i int) error {
 		in := iam.DeleteAccessKeyInput{
-			AccessKeyId: aws.String(id.(string)),
+			AccessKeyId: aws.String(ids[i]),
 			UserName:    aws.String(user),
 		}
 		_, err := c.DeleteAccessKey(&in)
@@ -174,9 +174,9 @@ func detachUserPolicies(c iamiface.IAMAPI, user string) error {
 	if err := c.ListAttachedUserPoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	return goForEach(arns, func(arn interface{}) error {
+	return internal.GoForEach(len(arns), 0, func(i int) error {
 		in := iam.DetachUserPolicyInput{
-			PolicyArn: aws.String(arn.(string)),
+			PolicyArn: aws.String(arns[i]),
 			UserName:  aws.String(user),
 		}
 		_, err := c.DetachUserPolicy(&in)
@@ -197,8 +197,8 @@ func DelTmpRoles(c iamiface.IAMAPI) error {
 	if err := c.ListRolesPages(&in, pager); err != nil {
 		return err
 	}
-	return goForEach(roles, func(role interface{}) error {
-		return delRole(c, role.(string))
+	return internal.GoForEach(len(roles), 0, func(i int) error {
+		return delRole(c, roles[i])
 	})
 }
 
@@ -226,9 +226,9 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 	if err := c.ListAttachedRolePoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	return goForEach(arns, func(arn interface{}) error {
+	return internal.GoForEach(len(arns), 0, func(i int) error {
 		in := iam.DetachRolePolicyInput{
-			PolicyArn: aws.String(arn.(string)),
+			PolicyArn: aws.String(arns[i]),
 			RoleName:  aws.String(role),
 		}
 		_, err := c.DetachRolePolicy(&in)
@@ -247,39 +247,4 @@ func IsAWSAccountID(id string) bool {
 		}
 	}
 	return true
-}
-
-// goForEach takes a slice of input values and calls fn on each one in a
-// separate goroutine. Only one non-nil error is returned.
-func goForEach(in interface{}, fn func(v interface{}) error) error {
-	inv := reflect.ValueOf(in)
-	n := inv.Len()
-	if n <= 1 {
-		if n == 0 {
-			return nil
-		}
-		return fn(inv.Index(0).Interface())
-	}
-	ch := make(chan error)
-	var err error
-	for i, j := 0, 0; i < n; {
-		if j += 100; j > n {
-			j = n
-		}
-		running := j - i
-		for ; i < j; i++ {
-			go func(v interface{}) {
-				ch <- fn(v)
-			}(inv.Index(i).Interface())
-		}
-		for e := range ch {
-			if e != nil {
-				err = e
-			}
-			if running--; running == 0 {
-				break
-			}
-		}
-	}
-	return err
 }
