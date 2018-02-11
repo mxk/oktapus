@@ -115,6 +115,11 @@ func TestClientError(t *testing.T) {
 	}
 	assert.Equal(t, err, c.RefreshSession(""))
 	assert.NotEmpty(t, err.Error())
+
+	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusTooManyRequests)
+	}
+	assert.Equal(t, ErrRateLimit, c.RefreshSession(""))
 }
 
 func TestClientOpenAWS(t *testing.T) {
@@ -135,6 +140,12 @@ func TestClientOpenAWS(t *testing.T) {
 	have, err := c.AppLinks()
 	require.NoError(t, err)
 	require.Equal(t, links, have)
+
+	s.Response[path] = func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusTooManyRequests)
+	}
+	_, err = c.OpenAWS(links[0].LinkURL, "")
+	assert.Equal(t, ErrRateLimit, err)
 
 	s.Response[path] = func(w http.ResponseWriter, r *http.Request) {
 		w.Write(samlResponse(assertion).Bytes())

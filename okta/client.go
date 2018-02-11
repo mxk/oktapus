@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,9 @@ import (
 
 	"github.com/LuminalHQ/oktapus/internal"
 )
+
+// ErrRateLimit is returned when too many requests are sent.
+var ErrRateLimit = errors.New("okta: request rate limit exceeded")
 
 // Client provides access to Okta API.
 type Client struct {
@@ -131,6 +135,9 @@ func (c *Client) OpenAWS(appLink, roleARN string) (*AWSAuth, error) {
 	}
 	defer internal.CloseBody(rsp.Body)
 	if rsp.StatusCode != http.StatusOK {
+		if rsp.StatusCode == http.StatusTooManyRequests {
+			return nil, ErrRateLimit
+		}
 		return nil, fmt.Errorf("okta: AWS app error (%s)", rsp.Status)
 	}
 	sa, err := samlAssertionFromHTML(rsp.Body)
@@ -260,6 +267,8 @@ func readResponse(rsp *http.Response, out interface{}) error {
 	defer internal.CloseBody(rsp.Body)
 	if rsp.StatusCode == http.StatusNoContent {
 		return nil
+	} else if rsp.StatusCode == http.StatusTooManyRequests {
+		return ErrRateLimit
 	}
 	ct, p, err := mime.ParseMediaType(rsp.Header.Get("Content-Type"))
 	if err != nil {
