@@ -61,9 +61,9 @@ func newAWSAuth(sa samlAssertion, roleARN string) (*AWSAuth, error) {
 	return auth, err
 }
 
-// GetCreds returns credentials that derive from the SAML assertion and the
+// Creds returns credentials that derive from the SAML assertion and the
 // specified role.
-func (a *AWSAuth) GetCreds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) awsgw.CredsProvider {
+func (a *AWSAuth) Creds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) *awsgw.SAMLCreds {
 	saml := base64.StdEncoding.EncodeToString(a.SAML)
 	return awsgw.NewSAMLCreds(fn, r.Principal, r.Role, saml)
 }

@@ -159,7 +159,7 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 }
 
 // filterDynamic filters accounts by tags.
-func (s AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
+func (s *AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
 	var result Accounts
 	for _, ac := range all {
 		if ac.Ctl == nil {

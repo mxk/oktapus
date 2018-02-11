@@ -101,9 +101,9 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 				ProviderName: "ErrorProvider",
 			}
 			cfg := aws.Config{Credentials: credentials.NewCredentials(cp)}
-			ctx.Sess, err = newSession(&cfg)
+			ctx.Sess, err = NewSession(&cfg)
 		} else {
-			ctx.Sess, err = newSession(nil)
+			ctx.Sess, err = NewSession(nil)
 		}
 		if err != nil {
 			log.F("Failed to create AWS session: %v", err)
@@ -238,8 +238,8 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsgw.CredsProvider {
 	return c
 }
 
-// newSession returns a new AWS session with the given config.
-func newSession(cfg *aws.Config) (client.ConfigProvider, error) {
+// NewSession returns a new AWS session with the given config.
+func NewSession(cfg *aws.Config) (client.ConfigProvider, error) {
 	sess, err := session.NewSession(cfg)
 	if err == nil {
 		// Remove useless handler that writes messages to stdout

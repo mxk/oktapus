@@ -21,7 +21,7 @@ func TestNewAWSAuth(t *testing.T) {
 		SessionDuration: 43200 * time.Second,
 	}
 	assert.Equal(t, want, auth)
-	assert.NotNil(t, auth.GetCreds(nil, auth.Roles[0]))
+	assert.NotNil(t, auth.Creds(nil, auth.Roles[0]))
 
 	_, err = newAWSAuth(samlAssertion(assertion), "InvalidRole")
 	assert.Equal(t, ErrInvalidAWSRole, err)
