@@ -1,7 +1,6 @@
 package op
 
 import (
-	"strings"
 	"sync"
 	"time"
 
@@ -24,18 +23,6 @@ const TmpIAMPath = IAMPath + "tmp/"
 func AWSErrCode(err error, code string) bool {
 	e, ok := err.(awserr.Error)
 	return ok && e.Code() == code
-}
-
-// SplitPath splits a string in the format "[[/]path/]name" into its components.
-// The path always begins and ends with a slash.
-func SplitPath(s string) (path, name string) {
-	i := strings.LastIndexByte(s, '/')
-	if path, name = s[:i+1], s[i+1:]; path == "" {
-		return "/", name
-	} else if path[0] != '/' {
-		path = "/" + path
-	}
-	return path, name
 }
 
 // CreateAccountResult contains the values returned by createAccount. If err is

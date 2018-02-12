@@ -21,6 +21,8 @@ import (
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
+// TODO: Initial role can't have a path component
+
 func init() {
 	op.Register(&op.CmdInfo{
 		Names:   []string{"create"},
@@ -136,10 +138,11 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 		defer close(in)
 		for ; n > 0; n-- {
 			if cmd.Exec {
+				_, name := c.CommonRole()
 				in <- &orgs.CreateAccountInput{
 					AccountName: aws.String(nameCtr.String()),
 					Email:       aws.String(emailCtr.String()),
-					RoleName:    aws.String(c.CommonRole),
+					RoleName:    aws.String(name),
 				}
 			} else {
 				ls = append(ls, &newAccountsOutput{

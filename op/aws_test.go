@@ -13,24 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSplitPath(t *testing.T) {
-	tests := []*struct{ in, path, name string }{
-		{in: "", path: "/", name: ""},
-		{in: "a", path: "/", name: "a"},
-		{in: "/", path: "/", name: ""},
-		{in: "a/", path: "/a/", name: ""},
-		{in: "/a", path: "/", name: "a"},
-		{in: "/a/", path: "/a/", name: ""},
-		{in: "a/b", path: "/a/", name: "b"},
-		{in: "/a/b", path: "/a/", name: "b"},
-	}
-	for _, test := range tests {
-		path, name := SplitPath(test.in)
-		assert.Equal(t, test.path, path, "in=%q", test.in)
-		assert.Equal(t, test.name, name, "in=%q", test.in)
-	}
-}
-
 func TestCreateAccounts(t *testing.T) {
 	sleep = func(d time.Duration) {}
 	ch := make(chan *orgs.CreateAccountInput)

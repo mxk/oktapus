@@ -35,7 +35,7 @@ func TestClientCommonRole(t *testing.T) {
 	s := mock.NewSession()
 	c := NewClient(s, "")
 	require.NoError(t, c.Connect())
-	assert.Equal(t, "user@example.com", c.CommonRole)
+	assert.Equal(t, "user@example.com", c.commonRoleName)
 
 	// IAM user
 	rtr := mock.NewDataTypeRouter(&sts.GetCallerIdentityOutput{
@@ -46,7 +46,7 @@ func TestClientCommonRole(t *testing.T) {
 	s.ChainRouter = append(s.ChainRouter, rtr)
 	c = NewClient(s, "")
 	require.NoError(t, c.Connect())
-	assert.Equal(t, "TestUser", c.CommonRole)
+	assert.Equal(t, "TestUser", c.commonRoleName)
 
 	// Root (shouldn't be used, but test anyway)
 	rtr.Set(&sts.GetCallerIdentityOutput{
@@ -56,7 +56,7 @@ func TestClientCommonRole(t *testing.T) {
 	}, nil)
 	c = NewClient(s, "")
 	require.NoError(t, c.Connect())
-	assert.Equal(t, "OrganizationAccountAccessRole", c.CommonRole)
+	assert.Equal(t, "OrganizationAccountAccessRole", c.commonRoleName)
 }
 
 func TestClientRefresh(t *testing.T) {

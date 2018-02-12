@@ -75,6 +75,42 @@ func TestDedent(t *testing.T) {
 	}
 }
 
+func TestSplitResource(t *testing.T) {
+	tests := []*struct{ in, path, name string }{
+		{in: "", path: "/", name: ""},
+		{in: "a", path: "/", name: "a"},
+		{in: "/", path: "/", name: ""},
+		{in: "a/", path: "/a/", name: ""},
+		{in: "/a", path: "/", name: "a"},
+		{in: "/a/", path: "/a/", name: ""},
+		{in: "a/b", path: "/a/", name: "b"},
+		{in: "/a/b", path: "/a/", name: "b"},
+	}
+	for _, test := range tests {
+		path, name := SplitResource(test.in)
+		assert.Equal(t, test.path, path, "in=%q", test.in)
+		assert.Equal(t, test.name, name, "in=%q", test.in)
+	}
+}
+
+func TestCleanResourcePath(t *testing.T) {
+	tests := []*struct{ in, out string }{
+		{in: "", out: "/"},
+		{in: "a", out: "/a/"},
+		{in: "/", out: "/"},
+		{in: "a/", out: "/a/"},
+		{in: "/a", out: "/a/"},
+		{in: "/a/", out: "/a/"},
+		{in: "a/b", out: "/a/b/"},
+		{in: "//a/b", out: "/a/b/"},
+		{in: "a/./b//c/", out: "/a/b/c/"},
+	}
+	for _, test := range tests {
+		path := CleanResourcePath(test.in)
+		assert.Equal(t, test.out, path, "in=%q", test.in)
+	}
+}
+
 func TestGoForEach(t *testing.T) {
 	for n := 0; n <= 256; {
 		b, c := bytes.Repeat([]byte{'0'}, n), byte('1')

@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -124,6 +125,32 @@ func Dedent(s string) string {
 		i = strings.IndexByte(s, '\n')
 	}
 	return string(append(b, s...))
+}
+
+// SplitResource splits an AWS resource string in the format "[[/]path/]name"
+// into its components. The path always begins and ends with a slash.
+func SplitResource(s string) (path, name string) {
+	i := strings.LastIndexByte(s, '/')
+	if path, name = s[:i+1], s[i+1:]; path == "" {
+		return "/", name
+	} else if path[0] != '/' {
+		path = "/" + path
+	}
+	return path, name
+}
+
+// CleanResourcePath normalizes an AWS resource path, ensuring that it begins
+// and ends with a slash.
+func CleanResourcePath(s string) string {
+	if s == "" || s == "/" {
+		return "/"
+	} else if s[0] != '/' {
+		s = "/" + s
+	}
+	if s = path.Clean(s); s != "/" {
+		s += "/"
+	}
+	return s
 }
 
 // GoForEach executes n tasks using at most batch goroutines. If batch is <= 0,

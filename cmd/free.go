@@ -57,9 +57,9 @@ func (cmd *free) Call(ctx *op.Ctx) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	commonRole := ctx.AWS().CommonRole
+	_, name := ctx.AWS().CommonRole()
 	acs = acs.Filter(func(ac *op.Account) bool {
-		return ac.Err == nil && (cmd.Force || ac.Owner == commonRole)
+		return ac.Err == nil && (cmd.Force || ac.Owner == name)
 	})
 
 	// Clear owner and delete temporary users/roles

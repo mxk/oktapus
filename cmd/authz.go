@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -104,7 +105,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	// Create API call inputs
 	roles := make([]*role, len(cmd.Roles))
 	for i, r := range cmd.Roles {
-		path, name := op.SplitPath(r)
+		path, name := internal.SplitResource(r)
 		if cmd.Tmp {
 			path = op.TmpIAMPath + path[1:]
 		} else if strings.IndexByte(r, '/') == -1 {

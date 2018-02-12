@@ -108,7 +108,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, _ []string) error {
 	// Create proxy role
 	proxyAssumeRole.Statement[0].
 		Condition["StringEquals"]["sts:ExternalId"][0] = awsgw.ProxyExternalID(&org)
-	path, name := op.SplitPath(c.MasterRole)
+	path, name := c.MasterRole()
 	err = createRole(ic, path, name, proxyRoleDesc, &proxyAssumeRole)
 	if err != nil {
 		return err

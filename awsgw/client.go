@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -23,17 +24,19 @@ type Client struct {
 	// GatewayCreds are the credentials used to access the gateway account.
 	GatewayCreds CredsProvider
 
-	// MasterRole is a master account role allowed to list org accounts.
-	MasterRole string
-
-	// CommonRole is the role to assume when accessing other accounts.
-	CommonRole string
-
 	sess    client.ConfigProvider
 	org     *orgs.Organizations
 	sts     *sts.STS
 	ident   Ident
 	orgInfo Org
+
+	// Master role is a master account role allowed to list org accounts
+	masterRolePath string
+	masterRoleName string
+
+	// Common role is the role to assume when accessing other accounts
+	commonRolePath string
+	commonRoleName string
 
 	roleSessionName string
 
@@ -44,7 +47,13 @@ type Client struct {
 // NewClient creates a new AWS gateway client. The client is not usable until
 // Connect() is called, which should be done after restoring any saved state.
 func NewClient(sess client.ConfigProvider, masterRole string) *Client {
-	return &Client{MasterRole: masterRole, sess: sess}
+	path, name := internal.SplitResource(masterRole)
+	return &Client{
+		sess:           sess,
+		masterRolePath: internal.CleanResourcePath(path),
+		masterRoleName: name,
+		commonRolePath: "/",
+	}
 }
 
 // ConfigProvider returns the ConfigProvider that was passed to NewClient.
@@ -87,7 +96,7 @@ func (c *Client) Connect() error {
 	c.ident.set(id)
 	c.orgInfo.set(org)
 	c.roleSessionName = getSessName(&c.ident)
-	c.CommonRole = c.roleSessionName
+	c.commonRoleName = c.roleSessionName
 
 	// If gateway account isn't master, change org client credentials
 	if !c.IsMaster() {
@@ -123,6 +132,26 @@ func (c *Client) OrgInfo() Org {
 func (c *Client) IsMaster() bool {
 	return c.ident.AccountID == c.orgInfo.MasterAccountID &&
 		c.ident.AccountID != ""
+}
+
+// MasterRole returns the master role path and name.
+func (c *Client) MasterRole() (path, name string) {
+	return c.masterRolePath, c.masterRoleName
+}
+
+// CommonRole returns the common role path and name.
+func (c *Client) CommonRole() (path, name string) {
+	return c.commonRolePath, c.commonRoleName
+}
+
+// SetCommonRole sets the path and name of the common role, which is used to
+// access all non-gateway accounts.
+func (c *Client) SetCommonRole(path, name string) {
+	if strings.IndexByte(name, '/') != -1 {
+		panic("awsgw: common role name has a path component: " + name)
+	}
+	c.commonRolePath = internal.CleanResourcePath(path)
+	c.commonRoleName = name
 }
 
 // OrgsClient returns the organizations API client. It returns nil if the
@@ -224,7 +253,7 @@ func (c *Client) GobDecode(b []byte) error {
 
 // credsProvider returns a credentials provider for the specified account id.
 func (c *Client) credsProvider(id string) CredsProvider {
-	role := roleARN(id, c.CommonRole)
+	role := roleARN(id, c.commonRolePath, c.commonRoleName)
 	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
@@ -244,10 +273,10 @@ func (c *Client) getAccount(id string) *accountCtx {
 
 // proxyCreds returns credentials for the MasterRole.
 func (c *Client) proxyCreds() *AssumeRoleCreds {
-	if c.MasterRole == "" {
+	if c.masterRoleName == "" {
 		panic("awsgw: master role not set")
 	}
-	role := roleARN(c.orgInfo.MasterAccountID, c.MasterRole)
+	role := roleARN(c.orgInfo.MasterAccountID, c.masterRolePath, c.masterRoleName)
 	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 	cr.ExternalId = aws.String(ProxyExternalID(&c.orgInfo))
 	return cr
@@ -320,6 +349,6 @@ func getSessName(id *Ident) string {
 }
 
 // roleARN returns the IAM role ARN for the given account id and role name.
-func roleARN(account, role string) string {
-	return "arn:aws:iam::" + account + ":role/" + strings.TrimPrefix(role, "/")
+func roleARN(account, path, name string) string {
+	return "arn:aws:iam::" + account + ":role" + path + name
 }

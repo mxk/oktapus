@@ -120,9 +120,10 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 		log.F("AWS connection failed: %v", err)
 	}
 	if ctx.CommonRole != "" {
-		ctx.aws.CommonRole = ctx.CommonRole
+		ctx.aws.SetCommonRole(internal.SplitResource(ctx.CommonRole))
 	} else {
-		ctx.aws.CommonRole = IAMPath[1:] + ctx.aws.CommonRole
+		_, name := ctx.aws.CommonRole()
+		ctx.aws.SetCommonRole(IAMPath, name)
 	}
 	return ctx.aws
 }
@@ -144,7 +145,8 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 		}
 	}
 	ctx.All.RequireCtl()
-	acs, err := ParseAccountSpec(spec, c.CommonRole).Filter(ctx.All)
+	_, name := c.CommonRole()
+	acs, err := ParseAccountSpec(spec, name).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err
 }

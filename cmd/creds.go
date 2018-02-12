@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -78,7 +79,7 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.User == "" {
 		return out, nil
 	}
-	path, user := op.SplitPath(cmd.User)
+	path, user := internal.SplitResource(cmd.User)
 	if cmd.Tmp {
 		path = op.TmpIAMPath + path[1:]
 	}
