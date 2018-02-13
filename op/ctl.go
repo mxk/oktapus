@@ -15,8 +15,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
-// CtlRole is the role that stores account control information.
-const CtlRole = "OktapusControl"
+// CtlRole is the IAM role that stores account control information in its
+// description.
+const CtlRole = "OktapusAccountControl"
 
 // ErrNoCtl indicates missing account control information.
 var ErrNoCtl = errors.New("account control not initialized")
