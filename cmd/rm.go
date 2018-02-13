@@ -14,7 +14,7 @@ func init() {
 	op.Register(&op.CmdInfo{
 		Names:   []string{"rm"},
 		Summary: "Remove IAM users/roles",
-		Usage:   "{role|user} account-spec name [name ...]",
+		Usage:   "account-spec {role|user} name [name ...]",
 		MinArgs: 3,
 		New:     func() op.Cmd { return &rm{Name: "rm"} },
 	})
@@ -24,18 +24,18 @@ func init() {
 type rm struct {
 	Name
 	PrintFmt
-	Type  string
 	Spec  string
+	Type  string
 	Names []string
 }
 
 func (cmd *rm) Run(ctx *op.Ctx, args []string) error {
-	switch cmd.Type = args[0]; cmd.Type {
+	cmd.Spec, cmd.Type, cmd.Names = args[0], args[1], args[2:]
+	switch cmd.Type {
 	case "role", "user":
 	default:
 		op.UsageErr(cmd, "invalid resource type %q", cmd.Type)
 	}
-	cmd.Spec, cmd.Names = args[1], args[2:]
 	out, err := ctx.Call(cmd)
 	if err == nil {
 		err = cmd.Print(out)

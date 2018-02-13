@@ -18,14 +18,14 @@ func TestRmFilter(t *testing.T) {
 	dt.Set(new(sts.AssumeRoleOutput), errors.New("access denied"))
 	ctx.Sess.(*mock.Session).OrgsRouter().Account("").Add(dt)
 
+	cmd.Spec = "test1"
 	cmd.Type = "role"
-	cmd.Spec = "test2"
-	cmd.Names = []string{"a", "b"}
+	cmd.Names = []string{"a"}
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []*rmOutput{{
-		AccountID: "000000000002",
-		Name:      "test2",
+		AccountID: "000000000001",
+		Name:      "test1",
 		Result:    "ERROR: access denied",
 	}}, out)
 }
@@ -38,8 +38,8 @@ func TestRmRole(t *testing.T) {
 	r["a"] = &mock.Role{}
 	r["b"] = &mock.Role{}
 
-	cmd.Type = "role"
 	cmd.Spec = "test1"
+	cmd.Type = "role"
 	cmd.Names = []string{"a", "b", "c"}
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
@@ -66,18 +66,18 @@ func TestRmUser(t *testing.T) {
 	ctx := newCtx()
 	cmd := newCmd("rm").(*rm)
 
-	r := ctx.Sess.(*mock.Session).OrgsRouter().Account("1").UserRouter()
+	r := ctx.Sess.(*mock.Session).OrgsRouter().Account("2").UserRouter()
 	r["a"] = &mock.User{}
 
+	cmd.Spec = "test2"
 	cmd.Type = "user"
-	cmd.Spec = "test1"
 	cmd.Names = []string{"a"}
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, r)
 	assert.Equal(t, []*rmOutput{{
-		AccountID: "000000000001",
-		Name:      "test1",
+		AccountID: "000000000002",
+		Name:      "test2",
 		Resource:  "a",
 		Result:    "OK",
 	}}, out)
