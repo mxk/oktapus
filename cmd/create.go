@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
@@ -174,7 +174,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 		ac := op.NewAccount(info.ID, info.Name)
 		acs = append(acs, ac)
 		wg.Add(1)
-		go func(ac *op.Account, setupCreds, commonCreds awsgw.CredsProvider) {
+		go func(ac *op.Account, setupCreds, commonCreds awsx.CredsProvider) {
 			defer wg.Done()
 
 			// Wait for setup credentials to become valid
@@ -266,7 +266,7 @@ func (c *counter) String() string {
 
 // setCounters sets initial values for name and email counters based on existing
 // account names, but only if explicit starting values were not specified.
-func setCounters(acs []*awsgw.Account, name, email *counter) {
+func setCounters(acs []*awsx.Account, name, email *counter) {
 	if name.n == 0 {
 		for _, ac := range acs {
 			if n, ok := name.scan(ac.Name); ok && name.n < n {

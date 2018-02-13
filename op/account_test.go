@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -25,20 +25,20 @@ func TestAccountCreds(t *testing.T) {
 		SessionToken:    "token",
 	}
 	exp := internal.Time().Add(time.Minute)
-	ac.Init(mock.NewSession(), &awsgw.StaticCreds{Value: v, Exp: exp})
+	ac.Init(mock.NewSession(), &awsx.StaticCreds{Value: v, Exp: exp})
 	assert.NotNil(t, ac.IAM())
 
 	cr, err := ac.Creds(true)
 	require.NoError(t, err)
 	assert.Equal(t, v, cr.Value)
 
-	ac.cp = awsgw.NewSavedCreds(cr, ac.cp)
+	ac.cp = awsx.NewSavedCreds(cr, ac.cp)
 	cr, err = ac.Creds(false)
 	require.NoError(t, err)
 	assert.Equal(t, v, cr.Value)
 
 	cr, err = ac.Creds(true)
-	require.Equal(t, err, awsgw.ErrCredsExpired)
+	require.Equal(t, err, awsx.ErrCredsExpired)
 }
 
 func TestAccountShuffle(t *testing.T) {

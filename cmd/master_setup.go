@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -119,7 +119,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 
 	// Create proxy role
 	proxyAssumeRole.Statement[0].
-		Condition["StringEquals"]["sts:ExternalId"][0] = awsgw.ProxyExternalID(&org)
+		Condition["StringEquals"]["sts:ExternalId"][0] = awsx.ProxyExternalID(&org)
 	path, name := c.MasterRole()
 	err = createRole(ic, path, name, proxyRoleDesc, &proxyAssumeRole)
 	if err != nil {

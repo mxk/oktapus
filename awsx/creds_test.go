@@ -1,4 +1,4 @@
-package awsgw
+package awsx
 
 import (
 	"errors"

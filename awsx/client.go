@@ -1,4 +1,4 @@
-package awsgw
+package awsx
 
 import (
 	"bytes"
@@ -66,7 +66,7 @@ func (c *Client) ConfigProvider() client.ConfigProvider {
 // organization information.
 func (c *Client) Connect() error {
 	if c.sts != nil {
-		return errors.New("awsgw: already connected")
+		return errors.New("awsx: already connected")
 	}
 	var cfg aws.Config
 	if c.GatewayCreds != nil {
@@ -149,7 +149,7 @@ func (c *Client) CommonRole() (path, name string) {
 // access all non-gateway accounts.
 func (c *Client) SetCommonRole(path, name string) {
 	if strings.IndexByte(name, '/') != -1 {
-		panic("awsgw: common role name has a path component: " + name)
+		panic("awsx: common role name has a path component: " + name)
 	}
 	c.commonRolePath = internal.CleanResourcePath(path)
 	c.commonRoleName = name
@@ -282,7 +282,7 @@ func (c *Client) getAccount(id string) *accountCtx {
 // proxyCreds returns credentials for the MasterRole.
 func (c *Client) proxyCreds() *AssumeRoleCreds {
 	if c.masterRoleName == "" {
-		panic("awsgw: master role not set")
+		panic("awsx: master role not set")
 	}
 	role := roleARN(c.orgInfo.MasterAccountID, c.masterRolePath, c.masterRoleName)
 	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
@@ -294,7 +294,7 @@ func (c *Client) proxyCreds() *AssumeRoleCreds {
 // organization.
 func ProxyExternalID(org *Org) string {
 	if org.ID == "" {
-		panic("awsgw: unknown organization id")
+		panic("awsx: unknown organization id")
 	}
 	var buf [64]byte
 	b := append(buf[:0], "oktapus:"...)

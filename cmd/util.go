@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -121,7 +121,7 @@ type credsOutput struct {
 func listCreds(acs op.Accounts, renew bool) []*credsOutput {
 	out := make([]*credsOutput, len(acs))
 	acs.Apply(func(i int, ac *op.Account) {
-		var cr *awsgw.StaticCreds
+		var cr *awsx.StaticCreds
 		err := ac.Err
 		// Credentials do not require account control information
 		if err == nil || err == op.ErrNoCtl {

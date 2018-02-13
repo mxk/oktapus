@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/daemon"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/okta"
@@ -37,7 +37,7 @@ type Ctx struct {
 	Sess client.ConfigProvider
 
 	okta *okta.Client
-	aws  *awsgw.Client
+	aws  *awsx.Client
 }
 
 // NewCtx populates a new context from the environment variables.
@@ -88,7 +88,7 @@ func (ctx *Ctx) Okta() *okta.Client {
 }
 
 // AWS returns an AWS gateway client.
-func (ctx *Ctx) AWS() *awsgw.Client {
+func (ctx *Ctx) AWS() *awsx.Client {
 	if ctx.aws != nil {
 		return ctx.aws
 	}
@@ -112,7 +112,7 @@ func (ctx *Ctx) AWS() *awsgw.Client {
 	if ctx.MasterRole == "" {
 		ctx.MasterRole = IAMPath[1:] + "OktapusOrganizationsProxy"
 	}
-	ctx.aws = awsgw.NewClient(ctx.Sess, ctx.MasterRole)
+	ctx.aws = awsx.NewClient(ctx.Sess, ctx.MasterRole)
 	if ctx.UseOkta() {
 		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.Sess)
 	}
@@ -199,9 +199,9 @@ func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 
 // newOktaCreds returns a CredsProvider that obtains a SAML assertion from Okta
 // and exchanges it for temporary security credentials.
-func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsgw.CredsProvider {
+func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
-	c := awsgw.NewSAMLCreds(sts.New(sess, &cfg).AssumeRoleWithSAML, "", "", "")
+	c := awsx.NewSAMLCreds(sts.New(sess, &cfg).AssumeRoleWithSAML, "", "", "")
 	c.Renew = func(in *sts.AssumeRoleWithSAMLInput) error {
 		c := ctx.Okta()
 		if ctx.OktaAWSAppLink == "" {

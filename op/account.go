@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -22,7 +22,7 @@ type Account struct {
 	Err  error
 
 	iam iamiface.IAMAPI
-	cp  awsgw.CredsProvider
+	cp  awsx.CredsProvider
 	ref Ctl
 }
 
@@ -32,7 +32,7 @@ func NewAccount(id, name string) *Account {
 }
 
 // Init initializes the account IAM client.
-func (ac *Account) Init(sess client.ConfigProvider, cp awsgw.CredsProvider) {
+func (ac *Account) Init(sess client.ConfigProvider, cp awsx.CredsProvider) {
 	cfg := aws.Config{Credentials: cp.Creds()}
 	ac.iam = iam.New(sess, &cfg)
 	ac.cp = cp
@@ -44,11 +44,11 @@ func (ac *Account) IAM() iamiface.IAMAPI {
 }
 
 // Creds returns temporary account credentials.
-func (ac *Account) Creds(renew bool) (*awsgw.StaticCreds, error) {
+func (ac *Account) Creds(renew bool) (*awsx.StaticCreds, error) {
 	if ac.cp == nil {
 		return nil, errors.New("account not initialized")
 	} else if renew {
-		if _, static := ac.cp.(*awsgw.StaticCreds); !static {
+		if _, static := ac.cp.(*awsx.StaticCreds); !static {
 			ac.cp.Reset()
 		}
 	}

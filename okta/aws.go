@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsgw"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
@@ -63,9 +63,9 @@ func newAWSAuth(sa samlAssertion, roleARN string) (*AWSAuth, error) {
 
 // Creds returns credentials that derive from the SAML assertion and the
 // specified role.
-func (a *AWSAuth) Creds(fn awsgw.AssumeRoleWithSAMLFunc, r awsRole) *awsgw.SAMLCreds {
+func (a *AWSAuth) Creds(fn awsx.AssumeRoleWithSAMLFunc, r awsRole) *awsx.SAMLCreds {
 	saml := base64.StdEncoding.EncodeToString(a.SAML)
-	return awsgw.NewSAMLCreds(fn, r.Principal, r.Role, saml)
+	return awsx.NewSAMLCreds(fn, r.Principal, r.Role, saml)
 }
 
 // Use configures in to use the SAML assertion and the specified role.

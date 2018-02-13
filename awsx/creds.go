@@ -1,4 +1,4 @@
-package awsgw
+package awsx
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 )
 
 // ErrCredsExpired indicates that static credentials are no longer valid.
-var ErrCredsExpired = errors.New("awsgw: credentials have expired")
+var ErrCredsExpired = errors.New("awsx: credentials have expired")
 
 // AssumeRoleWithSAMLFunc is the signature of sts:AssumeRoleWithSAML API call.
 type AssumeRoleWithSAMLFunc func(*sts.AssumeRoleWithSAMLInput) (*sts.AssumeRoleWithSAMLOutput, error)
