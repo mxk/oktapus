@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
+	"runtime"
+	"strings"
 
 	"github.com/LuminalHQ/oktapus/awsgw"
 	"github.com/LuminalHQ/oktapus/op"
@@ -19,7 +22,8 @@ func init() {
 	op.Register(&op.CmdInfo{
 		Names:   []string{"master-setup"},
 		Summary: "Configure master account for oktapus access",
-		Usage:   "[-exec]",
+		Usage:   "[options]",
+		MaxArgs: -1,
 		Hidden:  true,
 		New:     func() op.Cmd { return &masterSetup{Name: "master-setup"} },
 	})
@@ -28,6 +32,7 @@ func init() {
 type masterSetup struct {
 	Name
 	Exec bool
+	CLI  bool
 }
 
 func (cmd *masterSetup) Help(w *bufio.Writer) {
@@ -66,11 +71,13 @@ func (cmd *masterSetup) Help(w *bufio.Writer) {
 }
 
 func (cmd *masterSetup) FlagCfg(fs *flag.FlagSet) {
+	fs.BoolVar(&cmd.CLI, "cli", false,
+		"Write AWS CLI commands to stdout without executing them")
 	fs.BoolVar(&cmd.Exec, "exec", false,
 		"Execute operation (dry-run otherwise)")
 }
 
-func (cmd *masterSetup) Run(ctx *op.Ctx, _ []string) error {
+func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Verify that current account is master
 	c := ctx.AWS()
 	org := c.OrgInfo()
@@ -89,7 +96,12 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, _ []string) error {
 
 	// Create policies
 	var ic iamiface.IAMAPI
-	if cmd.Exec {
+	if cmd.CLI {
+		if cmd.Exec {
+			return errors.New("-cli and -exec are mutually exclusive")
+		}
+		ic = newCLIWriter(args...)
+	} else if cmd.Exec {
 		var cfg aws.Config
 		if c.GatewayCreds != nil {
 			cfg.Credentials = c.GatewayCreds.Creds()
@@ -128,20 +140,19 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, _ []string) error {
 
 const (
 	gatewayAccessName = "OktapusGatewayAccess"
-	gatewayAccessDesc = "Provides minimum necessary privileges for using this account as a gateway."
+	gatewayAccessDesc = "Provides minimum privileges for using this account as a gateway."
 
 	createAccountAccessName = "OktapusCreateAccountAccess"
 	createAccountAccessDesc = "Allows creating new accounts in the organization."
 
 	proxyAccessName = "ListAccountsAccess"
-	proxyRoleDesc   = "Allows Oktapus to list accounts in the organization."
+	proxyRoleDesc   = "Allows oktapus to list accounts in the organization."
 )
 
 var (
 	gatewayAccess = op.Policy{Statement: []*op.Statement{{
 		Effect: "Allow",
 		Action: op.PolicyMultiVal{
-			"organizations:DescribeAccount",
 			"organizations:DescribeOrganization",
 			"organizations:ListAccounts",
 		},
@@ -251,4 +262,44 @@ func ignoreExists(what string, err error) error {
 		err = nil
 	}
 	return err
+}
+
+type cliWriter struct {
+	iamiface.IAMAPI
+	cmd string
+}
+
+func newCLIWriter(opts ...string) *cliWriter {
+	cmd := "aws"
+	if len(opts) > 0 {
+		cmd += " " + strings.Join(opts, " ")
+	}
+	return &cliWriter{cmd: cmd}
+}
+
+func (w *cliWriter) CreatePolicy(in *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
+	return nil, w.write("iam", "create-policy", in)
+}
+
+func (w *cliWriter) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
+	return nil, w.write("iam", "create-role", in)
+}
+
+func (w *cliWriter) PutRolePolicy(in *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error) {
+	return nil, w.write("iam", "put-role-policy", in)
+}
+
+func (w *cliWriter) write(service, api string, in interface{}) error {
+	if runtime.GOOS == "windows" {
+		// On Windows arguments must use double quotes with non-trivial escape
+		// rules, so leaving this for another day.
+		panic("windows not supported for generating cli commands")
+	}
+	s, err := json.MarshalIndent(in, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s %s %s --cli-input-json '%s'\n",
+		w.cmd, service, api, bytes.Replace(s, []byte(`'`), []byte(`\'`), -1))
+	return nil
 }
