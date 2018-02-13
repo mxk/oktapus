@@ -59,6 +59,7 @@ func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
 	op.StringPtrVar(fs, &cmd.Desc, "desc",
 		"Set role description")
+	// TODO: Change default for GovCloud
 	fs.StringVar(&cmd.Policy, "policy",
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"Set attached role policy `ARN`")
