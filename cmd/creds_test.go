@@ -16,7 +16,7 @@ func TestCreds(t *testing.T) {
 	internal.SetTime(now)
 	defer internal.SetTime(time.Time{})
 
-	ctx := testCtx()
+	ctx := newCtx()
 	cmd := newCmd("creds").(*creds)
 	cmd.Spec = "test1,test2"
 

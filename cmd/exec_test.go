@@ -32,7 +32,7 @@ func TestExec(t *testing.T) {
 		os.Exit(0)
 	}
 
-	ctx := testCtx("1", "2")
+	ctx := newCtx("1", "2")
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
 

@@ -28,6 +28,11 @@ type ServerResult struct {
 // starting with the last one, until the request is handled.
 type ChainRouter []Router
 
+// Add appends router t to the chain, giving it highest priority.
+func (r *ChainRouter) Add(t Router) {
+	*r = append(*r, t)
+}
+
 // DataTypeRouter returns the highest priority DataTypeRouter in the chain.
 func (r ChainRouter) DataTypeRouter() (t DataTypeRouter) {
 	r.Find(&t)

@@ -11,7 +11,7 @@ import (
 )
 
 func TestMasterSetup(t *testing.T) {
-	ctx := testCtx()
+	ctx := newCtx()
 	s := ctx.Sess.(*mock.Session)
 	s.ChainRouter = append(s.ChainRouter, mock.NewDataTypeRouter(
 		&iam.CreatePolicyOutput{},

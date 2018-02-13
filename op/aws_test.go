@@ -67,10 +67,9 @@ func TestDelTmpUsers(t *testing.T) {
 			Path:     aws.String(TmpIAMPath),
 			UserName: aws.String("b"),
 		},
-		AttachedPolicies: []*iam.AttachedPolicy{{
-			PolicyArn:  aws.String(mock.PolicyARN("", "TestPolicy")),
-			PolicyName: aws.String("TestPolicy"),
-		}},
+		AttachedPolicies: map[string]string{
+			mock.PolicyARN("", "TestPolicy"): "TestPolicy",
+		},
 		AccessKeys: []*iam.AccessKeyMetadata{{
 			AccessKeyId: aws.String(mock.AccessKeyID),
 			Status:      aws.String(iam.StatusTypeActive),
@@ -100,13 +99,14 @@ func TestDelTmpRoles(t *testing.T) {
 			Path:     aws.String(TmpIAMPath),
 			RoleName: aws.String("b"),
 		},
-		AttachedPolicies: []*iam.AttachedPolicy{{
-			PolicyArn:  aws.String(mock.PolicyARN("", "TestPolicy1")),
-			PolicyName: aws.String("TestPolicy1"),
-		}, {
-			PolicyArn:  aws.String(mock.PolicyARN("", "TestPolicy2")),
-			PolicyName: aws.String("TestPolicy2"),
-		}},
+		AttachedPolicies: map[string]string{
+			mock.PolicyARN("", "AttachedPolicy1"): "AttachedPolicy1",
+			mock.PolicyARN("", "AttachedPolicy2"): "AttachedPolicy2",
+		},
+		InlinePolicies: map[string]string{
+			"InlinePolicy1": "{}",
+			"InlinePolicy2": "{}",
+		},
 	}
 
 	require.NoError(t, DelTmpRoles(c))

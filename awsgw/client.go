@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
+	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
@@ -156,7 +157,7 @@ func (c *Client) SetCommonRole(path, name string) {
 
 // OrgsClient returns the organizations API client. It returns nil if the
 // gateway account is not the organization master.
-func (c *Client) OrgsClient() *orgs.Organizations {
+func (c *Client) OrgsClient() orgsiface.OrganizationsAPI {
 	if c.IsMaster() {
 		return c.org
 	}
@@ -203,6 +204,13 @@ func (c *Client) Update(src *orgs.Account) *Account {
 // CredsProvider returns a credentials provider for the specified account.
 func (c *Client) CredsProvider(accountID string) CredsProvider {
 	return c.getAccount(accountID).cp
+}
+
+// AssumeRole returns new AssumeRole credentials for the specified account ID
+// and role name.
+func (c *Client) AssumeRole(accountID, roleName string) *AssumeRoleCreds {
+	role := roleARN(accountID, "/", roleName)
+	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
 // clientState contains saved Client state.
@@ -350,5 +358,6 @@ func getSessName(id *Ident) string {
 
 // roleARN returns the IAM role ARN for the given account id and role name.
 func roleARN(account, path, name string) string {
+	// TODO: Need to handle client-specific partition
 	return "arn:aws:iam::" + account + ":role" + path + name
 }

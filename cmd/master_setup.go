@@ -165,6 +165,10 @@ var (
 			"organizations:ListCreateAccountStatus",
 		},
 		Resource: op.PolicyMultiVal{"*"},
+	}, {
+		Effect:   "Allow",
+		Action:   op.PolicyMultiVal{"sts:AssumeRole"},
+		Resource: op.PolicyMultiVal{"arn:aws:iam::*:role/" + accountSetupRole},
 	}}}
 
 	proxyAssumeRole = op.Policy{Statement: []*op.Statement{{

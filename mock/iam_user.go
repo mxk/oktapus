@@ -15,7 +15,7 @@ import (
 type User struct {
 	iam.User
 	AccessKeys       []*iam.AccessKeyMetadata
-	AttachedPolicies []*iam.AttachedPolicy
+	AttachedPolicies map[string]string
 }
 
 // UserRouter handles IAM user API calls.
@@ -55,10 +55,11 @@ func (r UserRouter) attachUserPolicy(q *request.Request) {
 	if user := r.get(in.UserName, q); user != nil {
 		arn := aws.StringValue(in.PolicyArn)
 		name := arn[strings.LastIndexByte(arn, '/')+1:]
-		user.AttachedPolicies = append(user.AttachedPolicies, &iam.AttachedPolicy{
-			PolicyArn:  aws.String(arn),
-			PolicyName: aws.String(name),
-		})
+		if user.AttachedPolicies == nil {
+			user.AttachedPolicies = map[string]string{arn: name}
+		} else {
+			user.AttachedPolicies[arn] = name
+		}
 	}
 }
 
@@ -132,14 +133,10 @@ func (r UserRouter) detachUserPolicy(q *request.Request) {
 	in := q.Params.(*iam.DetachUserPolicyInput)
 	if user := r.get(in.UserName, q); user != nil {
 		arn := aws.StringValue(in.PolicyArn)
-		for i, pol := range user.AttachedPolicies {
-			if aws.StringValue(pol.PolicyArn) == arn {
-				user.AttachedPolicies = append(user.AttachedPolicies[:i],
-					user.AttachedPolicies[i+1:]...)
-				return
-			}
+		if _, ok := user.AttachedPolicies[arn]; !ok {
+			panic("mock: invalid attached policy: " + arn)
 		}
-		panic("mock: invalid policy: " + arn)
+		delete(user.AttachedPolicies, arn)
 	}
 }
 
@@ -167,9 +164,11 @@ func (r UserRouter) listAttachedUserPolicies(q *request.Request) {
 	in := q.Params.(*iam.ListAttachedUserPoliciesInput)
 	if user := r.get(in.UserName, q); user != nil {
 		pols := make([]*iam.AttachedPolicy, 0, len(r))
-		for _, pol := range user.AttachedPolicies {
-			cpy := *pol
-			pols = append(pols, &cpy)
+		for arn, name := range user.AttachedPolicies {
+			pols = append(pols, &iam.AttachedPolicy{
+				PolicyArn:  aws.String(arn),
+				PolicyName: aws.String(name),
+			})
 		}
 		q.Data.(*iam.ListAttachedUserPoliciesOutput).AttachedPolicies = pols
 	}

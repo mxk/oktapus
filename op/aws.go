@@ -108,20 +108,24 @@ func DelTmpUsers(c iamiface.IAMAPI) error {
 		return err
 	}
 	return internal.GoForEach(len(users), 0, func(i int) error {
-		return delUser(c, users[i])
+		return DelUser(c, users[i])
 	})
 }
 
-// delUser deletes the specified user, ensuring that all prerequisites for
+// DelUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
-func delUser(c iamiface.IAMAPI, user string) error {
-	if err := detachUserPolicies(c, user); err != nil {
-		return err
-	} else if err = delAccessKeys(c, user); err != nil {
-		return err
+func DelUser(c iamiface.IAMAPI, user string) error {
+	err := internal.GoForEach(2, 2, func(i int) error {
+		if i == 0 {
+			return detachUserPolicies(c, user)
+		} else {
+			return delAccessKeys(c, user)
+		}
+	})
+	if err == nil {
+		in := iam.DeleteUserInput{UserName: aws.String(user)}
+		_, err = c.DeleteUser(&in)
 	}
-	in := iam.DeleteUserInput{UserName: aws.String(user)}
-	_, err := c.DeleteUser(&in)
 	return err
 }
 
@@ -185,18 +189,24 @@ func DelTmpRoles(c iamiface.IAMAPI) error {
 		return err
 	}
 	return internal.GoForEach(len(roles), 0, func(i int) error {
-		return delRole(c, roles[i])
+		return DelRole(c, roles[i])
 	})
 }
 
-// delRole deletes the specified role, ensuring that all prerequisites for
+// DelRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
-func delRole(c iamiface.IAMAPI, role string) error {
-	if err := detachRolePolicies(c, role); err != nil {
-		return err
+func DelRole(c iamiface.IAMAPI, role string) error {
+	err := internal.GoForEach(2, 2, func(i int) error {
+		if i == 0 {
+			return detachRolePolicies(c, role)
+		} else {
+			return delRolePolicies(c, role)
+		}
+	})
+	if err == nil {
+		in := iam.DeleteRoleInput{RoleName: aws.String(role)}
+		_, err = c.DeleteRole(&in)
 	}
-	in := iam.DeleteRoleInput{RoleName: aws.String(role)}
-	_, err := c.DeleteRole(&in)
 	return err
 }
 
@@ -219,6 +229,29 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 			RoleName:  aws.String(role),
 		}
 		_, err := c.DetachRolePolicy(&in)
+		return err
+	})
+}
+
+// delRolePolicies deletes all inline role policies.
+func delRolePolicies(c iamiface.IAMAPI, role string) error {
+	var names []string
+	in := iam.ListRolePoliciesInput{RoleName: aws.String(role)}
+	pager := func(out *iam.ListRolePoliciesOutput, lastPage bool) bool {
+		for _, name := range out.PolicyNames {
+			names = append(names, aws.StringValue(name))
+		}
+		return true
+	}
+	if err := c.ListRolePoliciesPages(&in, pager); err != nil {
+		return err
+	}
+	return internal.GoForEach(len(names), 0, func(i int) error {
+		in := iam.DeleteRolePolicyInput{
+			PolicyName: aws.String(names[i]),
+			RoleName:   aws.String(role),
+		}
+		_, err := c.DeleteRolePolicy(&in)
 		return err
 	})
 }

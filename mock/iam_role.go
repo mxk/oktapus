@@ -13,7 +13,8 @@ import (
 // Role is a mock IAM role.
 type Role struct {
 	iam.Role
-	AttachedPolicies []*iam.AttachedPolicy
+	AttachedPolicies map[string]string
+	InlinePolicies   map[string]string
 }
 
 // RoleRouter handles IAM role API calls.
@@ -28,12 +29,16 @@ func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 		r.createRole(q)
 	case "iam:DeleteRole":
 		r.deleteRole(q)
+	case "iam:DeleteRolePolicy":
+		r.deleteRolePolicy(q)
 	case "iam:DetachRolePolicy":
 		r.detachRolePolicy(q)
 	case "iam:GetRole":
 		r.getRole(q)
 	case "iam:ListAttachedRolePolicies":
 		r.listAttachedRolePolicies(q)
+	case "iam:ListRolePolicies":
+		r.listRolePolicies(q)
 	case "iam:ListRoles":
 		r.listRoles(q)
 	case "iam:UpdateAssumeRolePolicy":
@@ -51,10 +56,11 @@ func (r RoleRouter) attachRolePolicy(q *request.Request) {
 	if role := r.get(in.RoleName, q); role != nil {
 		arn := aws.StringValue(in.PolicyArn)
 		name := arn[strings.LastIndexByte(arn, '/')+1:]
-		role.AttachedPolicies = append(role.AttachedPolicies, &iam.AttachedPolicy{
-			PolicyArn:  aws.String(arn),
-			PolicyName: aws.String(name),
-		})
+		if role.AttachedPolicies == nil {
+			role.AttachedPolicies = map[string]string{arn: name}
+		} else {
+			role.AttachedPolicies[arn] = name
+		}
 	}
 }
 
@@ -83,7 +89,21 @@ func (r RoleRouter) deleteRole(q *request.Request) {
 		if len(role.AttachedPolicies) != 0 {
 			panic("mock: role has attached policies")
 		}
+		if len(role.InlinePolicies) != 0 {
+			panic("mock: role has inline policies")
+		}
 		delete(r, *in.RoleName)
+	}
+}
+
+func (r RoleRouter) deleteRolePolicy(q *request.Request) {
+	in := q.Params.(*iam.DeleteRolePolicyInput)
+	if role := r.get(in.RoleName, q); role != nil {
+		name := aws.StringValue(in.PolicyName)
+		if _, ok := role.InlinePolicies[name]; !ok {
+			panic("mock: invalid inline policy: " + name)
+		}
+		delete(role.InlinePolicies, name)
 	}
 }
 
@@ -91,14 +111,10 @@ func (r RoleRouter) detachRolePolicy(q *request.Request) {
 	in := q.Params.(*iam.DetachRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		arn := aws.StringValue(in.PolicyArn)
-		for i, pol := range role.AttachedPolicies {
-			if aws.StringValue(pol.PolicyArn) == arn {
-				role.AttachedPolicies = append(role.AttachedPolicies[:i],
-					role.AttachedPolicies[i+1:]...)
-				return
-			}
+		if _, ok := role.AttachedPolicies[arn]; !ok {
+			panic("mock: invalid attached policy: " + arn)
 		}
-		panic("mock: invalid policy: " + arn)
+		delete(role.AttachedPolicies, arn)
 	}
 }
 
@@ -114,11 +130,24 @@ func (r RoleRouter) listAttachedRolePolicies(q *request.Request) {
 	in := q.Params.(*iam.ListAttachedRolePoliciesInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		pols := make([]*iam.AttachedPolicy, 0, len(r))
-		for _, pol := range role.AttachedPolicies {
-			cpy := *pol
-			pols = append(pols, &cpy)
+		for arn, name := range role.AttachedPolicies {
+			pols = append(pols, &iam.AttachedPolicy{
+				PolicyArn:  aws.String(arn),
+				PolicyName: aws.String(name),
+			})
 		}
 		q.Data.(*iam.ListAttachedRolePoliciesOutput).AttachedPolicies = pols
+	}
+}
+
+func (r RoleRouter) listRolePolicies(q *request.Request) {
+	in := q.Params.(*iam.ListRolePoliciesInput)
+	if role := r.get(in.RoleName, q); role != nil {
+		names := make([]*string, 0, len(r))
+		for name := range role.InlinePolicies {
+			names = append(names, aws.String(name))
+		}
+		q.Data.(*iam.ListRolePoliciesOutput).PolicyNames = names
 	}
 }
 

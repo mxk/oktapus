@@ -21,7 +21,11 @@ import (
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
-// TODO: Initial role can't have a path component
+// accountSetupRole is the name of a temporary role created by CreateAccount.
+// This role is deleted after initial account configuration. The common role is
+// not used for this purpose because CreateAccount cannot create roles with a
+// path component.
+const accountSetupRole = "OktapusAccountSetup"
 
 func init() {
 	op.Register(&op.CmdInfo{
@@ -138,11 +142,10 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 		defer close(in)
 		for ; n > 0; n-- {
 			if cmd.Exec {
-				_, name := c.CommonRole()
 				in <- &orgs.CreateAccountInput{
 					AccountName: aws.String(nameCtr.String()),
 					Email:       aws.String(emailCtr.String()),
-					RoleName:    aws.String(name),
+					RoleName:    aws.String(accountSetupRole),
 				}
 			} else {
 				ls = append(ls, &newAccountsOutput{
@@ -169,29 +172,44 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 		}
 		info := c.Update(r.Account)
 		ac := op.NewAccount(info.ID, info.Name)
-		ac.Init(c.ConfigProvider(), c.CredsProvider(ac.ID))
 		acs = append(acs, ac)
 		wg.Add(1)
-		go func(ac *op.Account) {
+		go func(ac *op.Account, setupCreds, commonCreds awsgw.CredsProvider) {
 			defer wg.Done()
 
-			// Wait for credentials to become valid
+			// Wait for setup credentials to become valid
+			ac.Init(c.ConfigProvider(), setupCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
 
-			// Create OrganizationAccountAccessRole
-			if ac.Err = createOrgAccessRole(ac.IAM(), masterID); ac.Err != nil {
+			// Create admin and common roles
+			orgRoleErr := createOrgAccessRole(ac.IAM(), masterID)
+			crPath, crName := c.CommonRole()
+			ac.Err = createCommonRole(ac.IAM(), masterID, crPath, crName)
+			if ac.Err != nil {
+				return
+			} else if orgRoleErr != nil {
+				ac.Err = orgRoleErr
 				return
 			}
 
-			// TODO: Replace inline AdministratorAccess policy with attached one
-			// for the initial role.
+			// Switch to common role credentials
+			ac.Init(c.ConfigProvider(), commonCreds)
+			if ac.Err = waitForCreds(ac); ac.Err != nil {
+				return
+			}
+
+			// Delete setup role
+			if err := op.DelRole(ac.IAM(), accountSetupRole); err != nil {
+				log.W("Failed to delete %s role in account %s: %v",
+					accountSetupRole, ac.ID, err)
+			}
 
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
 			ac.Err = ac.Ctl.Init(ac.IAM())
-		}(ac)
+		}(ac, c.AssumeRole(ac.ID, accountSetupRole), c.CredsProvider(ac.ID))
 	}
 	wg.Wait()
 	if !cmd.Exec {
@@ -310,4 +328,23 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// createCommonRole creates the common role that replaces accountSetupRole.
+func createCommonRole(c iamiface.IAMAPI, masterAccountID, path, name string) error {
+	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
+	role := iam.CreateRoleInput{
+		AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
+		Path:     aws.String(path),
+		RoleName: aws.String(name),
+	}
+	policy := iam.AttachRolePolicyInput{
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+		RoleName:  role.RoleName,
+	}
+	_, err := c.CreateRole(&role)
+	if err == nil {
+		_, err = c.AttachRolePolicy(&policy)
+	}
+	return err
 }
