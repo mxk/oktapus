@@ -213,7 +213,7 @@ func serve(cn net.Conn, ch chan<- *Request) {
 			ch = nil
 		case rsp := <-out:
 			if rsp != nil {
-				rsp.Err = internal.EncodableError(rsp.Err)
+				rsp.Err = internal.RegisteredError(rsp.Err)
 				if err := enc.Encode(msg{Rsp: rsp}); err != nil {
 					log.E("Response encode error: %v", err)
 				}

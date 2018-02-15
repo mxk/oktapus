@@ -18,8 +18,8 @@ type GobRegistered interface {
 	GobRegistered()
 }
 
-// EncodableError returns a representation of err that can be encoded by gob.
-func EncodableError(err error) error {
+// RegisteredError returns a gob-registered error implementation.
+func RegisteredError(err error) error {
 	switch err := err.(type) {
 	case nil, GobRegistered:
 		return err
@@ -31,20 +31,19 @@ func EncodableError(err error) error {
 			orig = []error{e}
 		}
 		for i := range orig {
-			orig[i] = EncodableError(orig[i])
+			orig[i] = RegisteredError(orig[i])
 		}
-		// Casting here only to confirm interface implementation
-		e := awserr.Error(&awsErr{
-			Code_:     err.Code(),
-			Message_:  err.Message(),
-			OrigErrs_: orig,
-		})
+		e := &awsErr{
+			Err:  err.Code(),
+			Msg:  err.Message(),
+			Orig: orig,
+		}
 		if r, ok := err.(awserr.RequestFailure); ok {
-			return awserr.RequestFailure(&awsReqErr{
-				Error_:      e,
-				StatusCode_: r.StatusCode(),
-				RequestID_:  r.RequestID(),
-			})
+			return &awsReqErr{
+				Err:    e,
+				Status: r.StatusCode(),
+				ReqID:  r.RequestID(),
+			}
 		}
 		return e
 	default:
@@ -57,12 +56,11 @@ type strErr struct{ Err string }
 func (e *strErr) Error() string  { return e.Err }
 func (e *strErr) GobRegistered() {}
 
-//noinspection GoSnakeCaseUsage
 type awsErr struct {
-	Code_     string
-	Message_  string
-	OrigErrs_ []error
-	err       awserr.BatchedErrors
+	Err  string
+	Msg  string
+	Orig []error
+	err  awserr.BatchedErrors
 }
 
 func (e *awsErr) Error() string     { return e.getErr().Error() }
@@ -74,17 +72,16 @@ func (e *awsErr) GobRegistered()    {}
 
 func (e *awsErr) getErr() awserr.BatchedErrors {
 	if e.err == nil {
-		e.err = awserr.NewBatchError(e.Code_, e.Message_, e.OrigErrs_)
+		e.err = awserr.NewBatchError(e.Err, e.Msg, e.Orig)
 	}
 	return e.err
 }
 
-//noinspection GoSnakeCaseUsage
 type awsReqErr struct {
-	Error_      awserr.Error
-	StatusCode_ int
-	RequestID_  string
-	err         requestFailure
+	Err    awserr.Error
+	Status int
+	ReqID  string
+	err    requestFailure
 }
 
 func (e *awsReqErr) Error() string     { return e.getErr().Error() }
@@ -98,8 +95,7 @@ func (e *awsReqErr) GobRegistered()    {}
 
 func (e *awsReqErr) getErr() requestFailure {
 	if e.err == nil {
-		e.err = awserr.NewRequestFailure(e.Error_, e.StatusCode_,
-			e.RequestID_).(requestFailure)
+		e.err = awserr.NewRequestFailure(e.Err, e.Status, e.ReqID).(requestFailure)
 	}
 	return e.err
 }
