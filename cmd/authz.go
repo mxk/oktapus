@@ -88,7 +88,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	// Create AssumeRole policy document
 	if cmd.Principal == "" {
 		// TODO: This is too permissive if the gateway account is not master
-		cmd.Principal = ctx.AWS().Ident().AccountID
+		cmd.Principal = ctx.Gateway().Ident().AccountID
 	} else if !awsx.IsAccountID(cmd.Principal) &&
 		!strings.HasPrefix(cmd.Principal, "arn:") {
 		for _, ac := range ctx.All {

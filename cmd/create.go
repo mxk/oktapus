@@ -107,10 +107,10 @@ func (cmd *create) Run(ctx *op.Ctx, args []string) error {
 
 func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	// Only the organization's master account can create new accounts
-	c := ctx.AWS()
-	if !c.IsMaster() {
+	gw := ctx.Gateway()
+	if !gw.IsMaster() {
 		return nil, fmt.Errorf("gateway account (%s) is not org master (%s)",
-			c.Ident().AccountID, c.OrgInfo().MasterID)
+			gw.Ident().AccountID, gw.OrgInfo().MasterID)
 	}
 
 	// Configure name/email counters
@@ -124,10 +124,10 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	} else if (nameCtr == nil) != (emailCtr == nil) {
 		op.UsageErr(cmd, "account name/email format mismatch")
 	} else if nameCtr != nil {
-		if err := c.Refresh(); err != nil {
+		if err := gw.Refresh(); err != nil {
 			return nil, err
 		}
-		setCounters(c.Accounts(), nameCtr, emailCtr)
+		setCounters(gw.Accounts(), nameCtr, emailCtr)
 	} else if n > 1 {
 		op.UsageErr(cmd, "account name/email must be dynamic templates")
 	} else {
@@ -152,13 +152,13 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 		}
 		return out, nil
 	}
-	out := awsx.CreateAccounts(c.OrgsClient(), in)
+	out := awsx.CreateAccounts(gw.OrgsClient(), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup
 	acs := make(op.Accounts, 0, n)
-	masterID := c.OrgInfo().MasterID
-	setupRoleARN := c.CommonRole.WithPathName(accountSetupRole)
+	masterID := gw.OrgInfo().MasterID
+	setupRoleARN := gw.CommonRole.WithPathName(accountSetupRole)
 	for r := range out {
 		if r.Err != nil {
 			ac := op.NewAccount("", aws.StringValue(r.Name))
@@ -166,7 +166,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			acs = append(acs, ac)
 			continue
 		}
-		info := c.Update(r.Account)
+		info := gw.Update(r.Account)
 		ac := op.NewAccount(info.ID, info.Name)
 		acs = append(acs, ac)
 		wg.Add(1)
@@ -174,14 +174,14 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			defer wg.Done()
 
 			// Wait for setup credentials to become valid
-			ac.Init(c.ConfigProvider(), setupCreds)
+			ac.Init(gw.ConfigProvider(), setupCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
 
 			// Create admin and common roles
 			orgRoleErr := createOrgAccessRole(ac.IAM(), masterID)
-			crPath, crName := c.CommonRole.Path(), c.CommonRole.Name()
+			crPath, crName := gw.CommonRole.Path(), gw.CommonRole.Name()
 			ac.Err = createCommonRole(ac.IAM(), masterID, crPath, crName)
 			if ac.Err != nil {
 				return
@@ -191,7 +191,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Switch to common role credentials
-			ac.Init(c.ConfigProvider(), commonCreds)
+			ac.Init(gw.ConfigProvider(), commonCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
@@ -205,7 +205,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
 			ac.Err = ac.Ctl.Init(ac.IAM())
-		}(ac, c.AssumeRole(setupRoleARN.WithAccount(ac.ID)), c.CredsProvider(ac.ID))
+		}(ac, gw.AssumeRole(setupRoleARN.WithAccount(ac.ID)), gw.CredsProvider(ac.ID))
 	}
 	wg.Wait()
 	return listResults(acs.Sort()), nil

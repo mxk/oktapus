@@ -79,11 +79,11 @@ func (cmd *masterSetup) FlagCfg(fs *flag.FlagSet) {
 
 func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Verify that current account is master
-	c := ctx.AWS()
-	org := c.OrgInfo()
+	gw := ctx.Gateway()
+	org := gw.OrgInfo()
 	log.I("Master account is: %s", org.MasterID)
-	log.I("Authenticated as: %s", c.Ident().UserARN)
-	if !c.IsMaster() {
+	log.I("Authenticated as: %s", gw.Ident().UserARN)
+	if !gw.IsMaster() {
 		ignore := ""
 		if !cmd.Exec {
 			ignore = " (ignored for dry-run)"
@@ -103,10 +103,10 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 		ic = newCLIWriter(args...)
 	} else if cmd.Exec {
 		var cfg aws.Config
-		if c.Creds != nil {
-			cfg.Credentials = c.Creds.Creds()
+		if gw.Creds != nil {
+			cfg.Credentials = gw.Creds.Creds()
 		}
-		ic = iam.New(c.ConfigProvider(), &cfg)
+		ic = iam.New(gw.ConfigProvider(), &cfg)
 	}
 	err := createPolicy(ic, op.IAMPath, gatewayAccessName, gatewayAccessDesc, &gatewayAccess)
 	if err != nil {
@@ -120,7 +120,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Create proxy role
 	proxyAssumeRole.Statement[0].
 		Condition["StringEquals"]["sts:ExternalId"][0] = awsx.ProxyExternalID(&org)
-	path, name := c.MasterRole.Path(), c.MasterRole.Name()
+	path, name := gw.MasterRole.Path(), gw.MasterRole.Name()
 	err = createRole(ic, path, name, proxyRoleDesc, &proxyAssumeRole)
 	if err != nil {
 		return err

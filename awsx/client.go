@@ -13,14 +13,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
-	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
+	orgsif "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
-// Client provides access to multiple AWS accounts via one gateway account. It
+// Gateway provides access to multiple AWS accounts via one gateway account. It
 // is not safe to use the client concurrently from multiple goroutines.
-type Client struct {
-	Creds CredsProvider // Client account credentials
+type Gateway struct {
+	Creds CredsProvider // Gateway account credentials
 
 	MasterRole ARN // Master account role with ListAccounts permission
 	CommonRole ARN // Role to assume when accessing other accounts
@@ -37,30 +37,30 @@ type Client struct {
 	saved *clientState
 }
 
-// NewClient creates a new AWS gateway client. The client is not usable until
+// NewGateway creates a new AWS gateway client. The client is not usable until
 // Connect() is called, which should be done after restoring any saved state.
-func NewClient(sess client.ConfigProvider) *Client {
-	return &Client{sess: sess}
+func NewGateway(sess client.ConfigProvider) *Gateway {
+	return &Gateway{sess: sess}
 }
 
-// ConfigProvider returns the ConfigProvider that was passed to NewClient.
-func (c *Client) ConfigProvider() client.ConfigProvider {
-	return c.sess
+// ConfigProvider returns the ConfigProvider that was passed to NewGateway.
+func (gw *Gateway) ConfigProvider() client.ConfigProvider {
+	return gw.sess
 }
 
 // Connect establishes a connection to AWS, and gets client identity and
 // organization information.
-func (c *Client) Connect() error {
-	if c.sts != nil {
+func (gw *Gateway) Connect() error {
+	if gw.sts != nil {
 		return errors.New("awsx: already connected")
 	}
 	var cfg aws.Config
-	if c.Creds != nil {
-		cfg.Credentials = c.Creds.Creds()
+	if gw.Creds != nil {
+		cfg.Credentials = gw.Creds.Creds()
 	}
 
 	// Get organization info
-	orgClient := orgs.New(c.sess, &cfg)
+	orgClient := orgs.New(gw.sess, &cfg)
 	var org *orgs.DescribeOrganizationOutput
 	var orgErr error
 	var mu sync.Mutex
@@ -71,7 +71,7 @@ func (c *Client) Connect() error {
 	}()
 
 	// Get caller info
-	stsClient := sts.New(c.sess, &cfg)
+	stsClient := sts.New(gw.sess, &cfg)
 	id, err := stsClient.GetCallerIdentity(nil)
 	if err != nil {
 		return err
@@ -79,73 +79,73 @@ func (c *Client) Connect() error {
 		return orgErr
 	}
 
-	c.sts, c.org = stsClient, orgClient
-	c.ident.set(id)
-	c.orgInfo.set(org)
-	c.roleSessionName = getSessName(&c.ident)
-	c.CommonRole = NewARN(c.ident.UserARN.Partition(), "iam", "", "",
-		"role/", c.roleSessionName)
+	gw.sts, gw.org = stsClient, orgClient
+	gw.ident.set(id)
+	gw.orgInfo.set(org)
+	gw.roleSessionName = getSessName(&gw.ident)
+	gw.CommonRole = NewARN(gw.ident.UserARN.Partition(), "iam", "", "",
+		"role/", gw.roleSessionName)
 
 	// If gateway account isn't master, change org client credentials
-	if !c.IsMaster() {
-		c.org.Config.Credentials = c.proxyCreds().Creds()
+	if !gw.IsMaster() {
+		gw.org.Config.Credentials = gw.proxyCreds().Creds()
 	}
 
 	// Restore saved state
-	if c.saved != nil && len(c.saved.Accounts) > 0 {
-		acs := c.saved.Accounts
-		if c.cache == nil {
-			c.cache = make(map[string]*accountCtx, len(acs))
+	if gw.saved != nil && len(gw.saved.Accounts) > 0 {
+		acs := gw.saved.Accounts
+		if gw.cache == nil {
+			gw.cache = make(map[string]*accountCtx, len(acs))
 		}
 		for i := range acs {
 			id := acs[i].Account.ID
-			c.cache[id] = acs[i].restore(c.credsProvider(id))
+			gw.cache[id] = acs[i].restore(gw.credsProvider(id))
 		}
 	}
-	c.saved = nil
+	gw.saved = nil
 	return nil
 }
 
 // Ident returns the identity of the gateway credentials.
-func (c *Client) Ident() Ident {
-	return c.ident
+func (gw *Gateway) Ident() Ident {
+	return gw.ident
 }
 
 // OrgInfo returns information about the organization.
-func (c *Client) OrgInfo() Org {
-	return c.orgInfo
+func (gw *Gateway) OrgInfo() Org {
+	return gw.orgInfo
 }
 
 // IsMaster returns true if the gateway account is organization master.
-func (c *Client) IsMaster() bool {
-	return c.ident.AccountID == c.orgInfo.MasterID &&
-		c.ident.AccountID != ""
+func (gw *Gateway) IsMaster() bool {
+	return gw.ident.AccountID == gw.orgInfo.MasterID &&
+		gw.ident.AccountID != ""
 }
 
 // OrgsClient returns the organizations API client. It returns nil if the
 // gateway account is not the organization master.
-func (c *Client) OrgsClient() orgsiface.OrganizationsAPI {
-	if c.IsMaster() {
-		return c.org
+func (gw *Gateway) OrgsClient() orgsif.OrganizationsAPI {
+	if gw.IsMaster() {
+		return gw.org
 	}
 	return nil
 }
 
 // Refresh updates information about all accounts in the organization.
-func (c *Client) Refresh() error {
-	valid := make(map[string]struct{}, len(c.cache))
+func (gw *Gateway) Refresh() error {
+	valid := make(map[string]struct{}, len(gw.cache))
 	pager := func(out *orgs.ListAccountsOutput, lastPage bool) bool {
 		for _, src := range out.Accounts {
-			valid[c.Update(src).ID] = struct{}{}
+			valid[gw.Update(src).ID] = struct{}{}
 		}
 		return true
 	}
-	if err := c.org.ListAccountsPages(nil, pager); err != nil {
+	if err := gw.org.ListAccountsPages(nil, pager); err != nil {
 		return err
 	}
-	for id := range c.cache {
+	for id := range gw.cache {
 		if _, ok := valid[id]; !ok {
-			delete(c.cache, id)
+			delete(gw.cache, id)
 		}
 	}
 	return nil
@@ -153,51 +153,51 @@ func (c *Client) Refresh() error {
 
 // Accounts returns cached information about all accounts in the organization.
 // The accounts are returned in random order.
-func (c *Client) Accounts() []*Account {
-	all := make([]*Account, 0, len(c.cache))
-	for _, ac := range c.cache {
+func (gw *Gateway) Accounts() []*Account {
+	all := make([]*Account, 0, len(gw.cache))
+	for _, ac := range gw.cache {
 		all = append(all, &ac.Account)
 	}
 	return all
 }
 
 // Update updates account information from a more recent description.
-func (c *Client) Update(src *orgs.Account) *Account {
-	ac := c.getAccount(aws.StringValue(src.Id))
+func (gw *Gateway) Update(src *orgs.Account) *Account {
+	ac := gw.getAccount(aws.StringValue(src.Id))
 	ac.set(src)
 	return &ac.Account
 }
 
 // CredsProvider returns a credentials provider for the specified account.
-func (c *Client) CredsProvider(accountID string) CredsProvider {
-	return c.getAccount(accountID).cp
+func (gw *Gateway) CredsProvider(accountID string) CredsProvider {
+	return gw.getAccount(accountID).cp
 }
 
 // AssumeRole returns new AssumeRole credentials for the specified account ID
 // and role name.
-func (c *Client) AssumeRole(role ARN) *AssumeRoleCreds {
-	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
+func (gw *Gateway) AssumeRole(role ARN) *AssumeRoleCreds {
+	return NewAssumeRoleCreds(gw.sts.AssumeRole, role, gw.roleSessionName)
 }
 
-// clientState contains saved Client state.
+// clientState contains saved Gateway state.
 type clientState struct {
 	MasterCreds *StaticCreds
 	Accounts    []accountState
 }
 
 // GobEncode implements gob.GobEncoder interface.
-func (c *Client) GobEncode() ([]byte, error) {
-	if c.sts == nil {
+func (gw *Gateway) GobEncode() ([]byte, error) {
+	if gw.sts == nil {
 		// If the client never connected, the old state (if any) hasn't changed
 		return nil, nil
 	}
 	var s clientState
-	if c.Creds != nil {
-		s.MasterCreds = c.Creds.Save()
+	if gw.Creds != nil {
+		s.MasterCreds = gw.Creds.Save()
 	}
-	if len(c.cache) > 0 {
-		acs := make([]accountState, 0, len(c.cache))
-		for _, ac := range c.cache {
+	if len(gw.cache) > 0 {
+		acs := make([]accountState, 0, len(gw.cache))
+		for _, ac := range gw.cache {
 			acs = append(acs, accountState{&ac.Account, ac.cp.Save()})
 		}
 		s.Accounts = acs
@@ -208,7 +208,7 @@ func (c *Client) GobEncode() ([]byte, error) {
 }
 
 // GobDecode implements gob.GobDecoder interface.
-func (c *Client) GobDecode(b []byte) error {
+func (gw *Gateway) GobDecode(b []byte) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -217,42 +217,42 @@ func (c *Client) GobDecode(b []byte) error {
 		return err
 	}
 	if s.MasterCreds != nil && s.MasterCreds.valid() {
-		c.Creds = s.MasterCreds
+		gw.Creds = s.MasterCreds
 	}
 	// TODO: Should expired master creds invalidate account creds?
 	// Accounts cannot be restored until the client is connected
-	c.saved = &s
+	gw.saved = &s
 	return nil
 }
 
 // credsProvider returns a credentials provider for the specified account id.
-func (c *Client) credsProvider(id string) CredsProvider {
-	role := c.CommonRole.WithAccount(id)
-	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
+func (gw *Gateway) credsProvider(id string) CredsProvider {
+	role := gw.CommonRole.WithAccount(id)
+	return NewAssumeRoleCreds(gw.sts.AssumeRole, role, gw.roleSessionName)
 }
 
 // getAccount returns an existing or new account context for the specified id.
 // The caller must hold a lock on c.mu.
-func (c *Client) getAccount(id string) *accountCtx {
-	ac := c.cache[id]
+func (gw *Gateway) getAccount(id string) *accountCtx {
+	ac := gw.cache[id]
 	if ac == nil {
-		ac = &accountCtx{Account{ID: id}, c.credsProvider(id)}
-		if c.cache == nil {
-			c.cache = make(map[string]*accountCtx)
+		ac = &accountCtx{Account{ID: id}, gw.credsProvider(id)}
+		if gw.cache == nil {
+			gw.cache = make(map[string]*accountCtx)
 		}
-		c.cache[id] = ac
+		gw.cache[id] = ac
 	}
 	return ac
 }
 
 // proxyCreds returns credentials for the MasterRole.
-func (c *Client) proxyCreds() *AssumeRoleCreds {
-	if c.MasterRole == "" {
+func (gw *Gateway) proxyCreds() *AssumeRoleCreds {
+	if gw.MasterRole == "" {
 		panic("awsx: master role not set")
 	}
-	role := c.MasterRole.WithAccount(c.orgInfo.MasterID)
-	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
-	cr.ExternalId = aws.String(ProxyExternalID(&c.orgInfo))
+	role := gw.MasterRole.WithAccount(gw.orgInfo.MasterID)
+	cr := NewAssumeRoleCreds(gw.sts.AssumeRole, role, gw.roleSessionName)
+	cr.ExternalId = aws.String(ProxyExternalID(&gw.orgInfo))
 	return cr
 }
 

@@ -43,7 +43,7 @@ type Ctx struct {
 	Sess client.ConfigProvider
 
 	okta *okta.Client
-	aws  *awsx.Client
+	gw   *awsx.Gateway
 }
 
 // NewCtx populates a new context from the environment variables.
@@ -93,10 +93,10 @@ func (ctx *Ctx) Okta() *okta.Client {
 	return ctx.okta
 }
 
-// AWS returns an AWS gateway client.
-func (ctx *Ctx) AWS() *awsx.Client {
-	if ctx.aws != nil {
-		return ctx.aws
+// Gateway returns an AWS gateway client.
+func (ctx *Ctx) Gateway() *awsx.Gateway {
+	if ctx.gw != nil {
+		return ctx.gw
 	}
 	if ctx.Sess == nil {
 		var err error
@@ -115,44 +115,44 @@ func (ctx *Ctx) AWS() *awsx.Client {
 			log.F("Failed to create AWS session: %v", err)
 		}
 	}
-	ctx.aws = awsx.NewClient(ctx.Sess)
+	ctx.gw = awsx.NewGateway(ctx.Sess)
 	if ctx.UseOkta() {
-		ctx.aws.Creds = ctx.newOktaCreds(ctx.Sess)
+		ctx.gw.Creds = ctx.newOktaCreds(ctx.Sess)
 	}
-	ctx.aws.MasterRole = awsx.NewARN("", "", "", "", IAMPath,
+	ctx.gw.MasterRole = awsx.NewARN("", "", "", "", IAMPath,
 		"OktapusOrganizationsProxy")
 	if ctx.MasterRole != "" {
-		ctx.aws.MasterRole = ctx.aws.MasterRole.WithPathName(ctx.MasterRole)
+		ctx.gw.MasterRole = ctx.gw.MasterRole.WithPathName(ctx.MasterRole)
 	}
-	if err := ctx.aws.Connect(); err != nil {
+	if err := ctx.gw.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
 	}
 	if ctx.CommonRole != "" {
-		ctx.aws.CommonRole = ctx.aws.CommonRole.WithPathName(ctx.CommonRole)
+		ctx.gw.CommonRole = ctx.gw.CommonRole.WithPathName(ctx.CommonRole)
 	} else {
-		ctx.aws.CommonRole = ctx.aws.CommonRole.WithPath(IAMPath)
+		ctx.gw.CommonRole = ctx.gw.CommonRole.WithPath(IAMPath)
 	}
-	return ctx.aws
+	return ctx.gw
 }
 
 // Accounts returns all accounts in the organization that match the spec.
 func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
-	c := ctx.AWS()
+	gw := ctx.Gateway()
 	if ctx.All == nil {
-		if err := c.Refresh(); err != nil {
+		if err := gw.Refresh(); err != nil {
 			log.E("Failed to list accounts")
 			return nil, err
 		}
-		info := c.Accounts()
+		info := gw.Accounts()
 		ctx.All = make(Accounts, len(info))
 		for i, ac := range info {
 			n := NewAccount(ac.ID, ac.Name)
-			n.Init(c.ConfigProvider(), c.CredsProvider(ac.ID))
+			n.Init(gw.ConfigProvider(), gw.CredsProvider(ac.ID))
 			ctx.All[i] = n
 		}
 	}
 	ctx.All.RequireCtl()
-	acs, err := ParseAccountSpec(spec, c.CommonRole.Name()).Filter(ctx.All)
+	acs, err := ParseAccountSpec(spec, gw.CommonRole.Name()).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err
 }

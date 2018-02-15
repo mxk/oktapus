@@ -58,7 +58,7 @@ func (cmd *free) Call(ctx *op.Ctx) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	name := ctx.AWS().CommonRole.Name()
+	name := ctx.Gateway().CommonRole.Name()
 	acs = acs.Filter(func(ac *op.Account) bool {
 		return ac.Err == nil && (cmd.Force || ac.Owner == name)
 	})

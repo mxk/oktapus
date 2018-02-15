@@ -47,11 +47,11 @@ func initCtl(ctx *op.Ctx, ctl *op.Ctl, ids ...string) error {
 	if ctl == nil {
 		ctl = &empty
 	}
-	c := ctx.AWS()
+	gw := ctx.Gateway()
 	for _, id := range ids {
 		id = mock.AccountID(id)
 		ac := op.NewAccount(id, "")
-		ac.Init(c.ConfigProvider(), c.CredsProvider(id))
+		ac.Init(gw.ConfigProvider(), gw.CredsProvider(id))
 		if err := ctl.Init(ac.IAM()); err != nil {
 			return err
 		}
