@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -89,7 +89,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Principal == "" {
 		// TODO: This is too permissive if the gateway account is not master
 		cmd.Principal = ctx.AWS().Ident().AccountID
-	} else if !op.IsAWSAccountID(cmd.Principal) &&
+	} else if !awsx.IsAccountID(cmd.Principal) &&
 		!strings.HasPrefix(cmd.Principal, "arn:") {
 		for _, ac := range ctx.All {
 			if ac.Name == cmd.Principal {
@@ -105,8 +105,10 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 
 	// Create API call inputs
 	roles := make([]*role, len(cmd.Roles))
+	baseARN := awsx.NilARN + "role/"
 	for i, r := range cmd.Roles {
-		path, name := internal.SplitResource(r)
+		arn := baseARN.WithPathName(r)
+		path, name := arn.Path(), arn.Name()
 		if cmd.Tmp {
 			path = op.TmpIAMPath + path[1:]
 		} else if strings.IndexByte(r, '/') == -1 {
@@ -189,7 +191,7 @@ type role struct {
 func (r *role) createOrUpdate(c iamiface.IAMAPI) (create bool, err error) {
 	out, err := c.GetRole(&r.get)
 	if err != nil {
-		if !op.AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
+		if !awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 			return false, err
 		}
 		attachPol := aws.StringValue(r.attach.PolicyArn) != ""

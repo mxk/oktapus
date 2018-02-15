@@ -81,7 +81,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Verify that current account is master
 	c := ctx.AWS()
 	org := c.OrgInfo()
-	log.I("Master account is: %s", org.MasterAccountID)
+	log.I("Master account is: %s", org.MasterID)
 	log.I("Authenticated as: %s", c.Ident().UserARN)
 	if !c.IsMaster() {
 		ignore := ""
@@ -103,8 +103,8 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 		ic = newCLIWriter(args...)
 	} else if cmd.Exec {
 		var cfg aws.Config
-		if c.GatewayCreds != nil {
-			cfg.Credentials = c.GatewayCreds.Creds()
+		if c.Creds != nil {
+			cfg.Credentials = c.Creds.Creds()
 		}
 		ic = iam.New(c.ConfigProvider(), &cfg)
 	}
@@ -120,7 +120,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Create proxy role
 	proxyAssumeRole.Statement[0].
 		Condition["StringEquals"]["sts:ExternalId"][0] = awsx.ProxyExternalID(&org)
-	path, name := c.MasterRole()
+	path, name := c.MasterRole.Path(), c.MasterRole.Name()
 	err = createRole(ic, path, name, proxyRoleDesc, &proxyAssumeRole)
 	if err != nil {
 		return err
@@ -257,7 +257,7 @@ func indentDoc(doc *string) []byte {
 }
 
 func ignoreExists(what string, err error) error {
-	if op.AWSErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+	if awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 		log.W("%s already exists: %s", what, err.(awserr.Error).Message())
 		err = nil
 	}

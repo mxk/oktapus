@@ -15,7 +15,6 @@ import (
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
@@ -111,7 +110,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	c := ctx.AWS()
 	if !c.IsMaster() {
 		return nil, fmt.Errorf("gateway account (%s) is not org master (%s)",
-			c.Ident().AccountID, c.OrgInfo().MasterAccountID)
+			c.Ident().AccountID, c.OrgInfo().MasterID)
 	}
 
 	// Configure name/email counters
@@ -136,33 +135,30 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 
 	// Create accounts
-	in := make(chan *orgs.CreateAccountInput)
-	var ls []*newAccountsOutput
-	go func() {
-		defer close(in)
-		for ; n > 0; n-- {
-			if cmd.Exec {
-				in <- &orgs.CreateAccountInput{
-					AccountName: aws.String(nameCtr.String()),
-					Email:       aws.String(emailCtr.String()),
-					RoleName:    aws.String(accountSetupRole),
-				}
-			} else {
-				ls = append(ls, &newAccountsOutput{
-					Name:  nameCtr.String(),
-					Email: emailCtr.String(),
-				})
-			}
-			nameCtr.n++
-			emailCtr.n++
+	in := make([]*orgs.CreateAccountInput, n)
+	for i := range in {
+		in[i] = &orgs.CreateAccountInput{
+			AccountName: aws.String(nameCtr.String()),
+			Email:       aws.String(emailCtr.String()),
+			RoleName:    aws.String(accountSetupRole),
 		}
-	}()
-	out := op.CreateAccounts(c.OrgsClient(), in)
+		nameCtr.n++
+		emailCtr.n++
+	}
+	if !cmd.Exec {
+		out := make([]*newAccountsOutput, len(in))
+		for i, ac := range in {
+			out[i] = &newAccountsOutput{Name: *ac.AccountName, Email: *ac.Email}
+		}
+		return out, nil
+	}
+	out := awsx.CreateAccounts(c.OrgsClient(), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup
 	acs := make(op.Accounts, 0, n)
-	masterID := c.OrgInfo().MasterAccountID
+	masterID := c.OrgInfo().MasterID
+	setupRoleARN := c.CommonRole.WithPathName(accountSetupRole)
 	for r := range out {
 		if r.Err != nil {
 			ac := op.NewAccount("", aws.StringValue(r.Name))
@@ -185,7 +181,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 
 			// Create admin and common roles
 			orgRoleErr := createOrgAccessRole(ac.IAM(), masterID)
-			crPath, crName := c.CommonRole()
+			crPath, crName := c.CommonRole.Path(), c.CommonRole.Name()
 			ac.Err = createCommonRole(ac.IAM(), masterID, crPath, crName)
 			if ac.Err != nil {
 				return
@@ -201,7 +197,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Delete setup role
-			if err := op.DelRole(ac.IAM(), accountSetupRole); err != nil {
+			if err := awsx.DeleteRole(ac.IAM(), accountSetupRole); err != nil {
 				log.W("Failed to delete %s role in account %s: %v",
 					accountSetupRole, ac.ID, err)
 			}
@@ -209,12 +205,9 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
 			ac.Err = ac.Ctl.Init(ac.IAM())
-		}(ac, c.AssumeRole(ac.ID, accountSetupRole), c.CredsProvider(ac.ID))
+		}(ac, c.AssumeRole(setupRoleARN.WithAccount(ac.ID)), c.CredsProvider(ac.ID))
 	}
 	wg.Wait()
-	if !cmd.Exec {
-		return ls, nil
-	}
 	return listResults(acs.Sort()), nil
 }
 
@@ -285,8 +278,7 @@ func waitForCreds(ac *op.Account) error {
 	timeout := internal.Time().Add(time.Minute)
 	for {
 		_, err := ac.Creds(true)
-		e, ok := err.(awserr.RequestFailure)
-		if err == nil || !ok || e.StatusCode() != http.StatusForbidden ||
+		if err == nil || !awsx.IsStatus(err, http.StatusForbidden) ||
 			!internal.Time().Before(timeout) {
 			return err
 		}
@@ -322,7 +314,7 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 			_, err = c.PutRolePolicy(&policy)
 			return err
 		}
-		if !op.AWSErrCode(err, "InvalidClientTokenId") ||
+		if !awsx.IsCode(err, "InvalidClientTokenId") ||
 			!internal.Time().Before(timeout) {
 			return err
 		}

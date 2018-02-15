@@ -1,38 +1,29 @@
-package op
+package awsx
 
 import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
-	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
+	orgsif "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCreateAccounts(t *testing.T) {
 	sleep = func(d time.Duration) {}
-	ch := make(chan *orgs.CreateAccountInput)
-	go func() {
-		defer close(ch)
-		ch <- &orgs.CreateAccountInput{
-			AccountName: aws.String("a"),
-			Email:       aws.String("test@example.com"),
-		}
-		ch <- &orgs.CreateAccountInput{
-			AccountName: aws.String("b"),
-			Email:       aws.String("test@example.com"),
-		}
-		ch <- &orgs.CreateAccountInput{
-			AccountName: aws.String("c"),
-			Email:       aws.String("test@example.com"),
-		}
-	}()
+	in := []*orgs.CreateAccountInput{{
+		AccountName: aws.String("a"),
+		Email:       aws.String("test@example.com"),
+	}, {
+		AccountName: aws.String("b"),
+		Email:       aws.String("test@example.com"),
+	}, {
+		AccountName: aws.String("c"),
+		Email:       aws.String("test@example.com"),
+	}}
 	var a, b, c *orgs.Account
-	for r := range CreateAccounts(testOrg{}, ch) {
+	for r := range CreateAccounts(testOrg{}, in) {
 		switch aws.StringValue(r.Name) {
 		case "a":
 			assert.NoError(t, r.Err)
@@ -50,71 +41,7 @@ func TestCreateAccounts(t *testing.T) {
 	assert.NotNil(t, c)
 }
 
-func TestDelTmpUsers(t *testing.T) {
-	s := mock.NewSession()
-	c := iam.New(s)
-	require.NoError(t, DelTmpUsers(c))
-
-	r := s.OrgsRouter().Account("").UserRouter()
-	r["a"] = &mock.User{User: iam.User{
-		Arn:      aws.String(mock.UserARN("", "a")),
-		Path:     aws.String("/"),
-		UserName: aws.String("a"),
-	}}
-	r["b"] = &mock.User{
-		User: iam.User{
-			Arn:      aws.String(mock.UserARN("", "b")),
-			Path:     aws.String(TmpIAMPath),
-			UserName: aws.String("b"),
-		},
-		AttachedPolicies: map[string]string{
-			mock.PolicyARN("", "TestPolicy"): "TestPolicy",
-		},
-		AccessKeys: []*iam.AccessKeyMetadata{{
-			AccessKeyId: aws.String(mock.AccessKeyID),
-			Status:      aws.String(iam.StatusTypeActive),
-			UserName:    aws.String("b"),
-		}},
-	}
-
-	require.NoError(t, DelTmpUsers(c))
-	assert.Contains(t, r, "a")
-	assert.NotContains(t, r, "b")
-}
-
-func TestDelTmpRoles(t *testing.T) {
-	s := mock.NewSession()
-	c := iam.New(s)
-	require.NoError(t, DelTmpRoles(c))
-
-	r := s.OrgsRouter().Account("").RoleRouter()
-	r["a"] = &mock.Role{Role: iam.Role{
-		Arn:      aws.String(mock.RoleARN("", "a")),
-		Path:     aws.String("/"),
-		RoleName: aws.String("a"),
-	}}
-	r["b"] = &mock.Role{
-		Role: iam.Role{
-			Arn:      aws.String(mock.RoleARN("", "b")),
-			Path:     aws.String(TmpIAMPath),
-			RoleName: aws.String("b"),
-		},
-		AttachedPolicies: map[string]string{
-			mock.PolicyARN("", "AttachedPolicy1"): "AttachedPolicy1",
-			mock.PolicyARN("", "AttachedPolicy2"): "AttachedPolicy2",
-		},
-		InlinePolicies: map[string]string{
-			"InlinePolicy1": "{}",
-			"InlinePolicy2": "{}",
-		},
-	}
-
-	require.NoError(t, DelTmpRoles(c))
-	assert.Contains(t, r, "a")
-	assert.NotContains(t, r, "b")
-}
-
-type testOrg struct{ orgsiface.OrganizationsAPI }
+type testOrg struct{ orgsif.OrganizationsAPI }
 
 func (testOrg) CreateAccount(in *orgs.CreateAccountInput) (*orgs.CreateAccountOutput, error) {
 	switch name := aws.StringValue(in.AccountName); name {

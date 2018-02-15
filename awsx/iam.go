@@ -1,103 +1,16 @@
-package op
+package awsx
 
 import (
-	"sync"
-	"time"
-
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
-	orgs "github.com/aws/aws-sdk-go/service/organizations"
-	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 )
 
-// IAMPath is a common path for managed IAM users and roles.
-const IAMPath = "/oktapus/"
-
-// TmpIAMPath is a path for temporary users and roles.
-const TmpIAMPath = IAMPath + "tmp/"
-
-// AWSErrCode returns true if err is an awserr.Error with the given code.
-func AWSErrCode(err error, code string) bool {
-	e, ok := err.(awserr.Error)
-	return ok && e.Code() == code
-}
-
-// CreateAccountResult contains the values returned by createAccount. If err is
-// not nil, Account will contain the original name from CreateAccountInput.
-type CreateAccountResult struct {
-	*orgs.Account
-	Err error
-}
-
-// CreateAccounts creates multiple accounts concurrently.
-func CreateAccounts(c orgsiface.OrganizationsAPI, in <-chan *orgs.CreateAccountInput) <-chan CreateAccountResult {
-	workers := 5 // Only 5 accounts may be created at the same time
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	out := make(chan CreateAccountResult)
-	for ; workers > 0; workers-- {
-		go func() {
-			defer wg.Done()
-			for v := range in {
-				ac, err := createAccount(c, v)
-				if err != nil {
-					// TODO: Retry if err is too many account creation ops
-					if ac == nil {
-						ac = &orgs.Account{Name: v.AccountName, Email: v.Email}
-					} else if ac.Name == nil {
-						ac.Name = v.AccountName
-					}
-				}
-				out <- CreateAccountResult{ac, err}
-			}
-		}()
-	}
-	go func() {
-		defer close(out)
-		wg.Wait()
-	}()
-	return out
-}
-
-var sleep = time.Sleep
-
-// createAccount creates a new account in the organization.
-func createAccount(c orgsiface.OrganizationsAPI, in *orgs.CreateAccountInput) (*orgs.Account, error) {
-	out, err := c.CreateAccount(in)
-	if err != nil {
-		return nil, err
-	}
-	s := out.CreateAccountStatus
-	reqID := orgs.DescribeCreateAccountStatusInput{
-		CreateAccountRequestId: s.Id,
-	}
-	for {
-		switch aws.StringValue(s.State) {
-		case orgs.CreateAccountStateInProgress:
-			sleep(time.Second)
-			out, err := c.DescribeCreateAccountStatus(&reqID)
-			if err != nil {
-				return nil, err
-			}
-			s = out.CreateAccountStatus
-		case orgs.CreateAccountStateSucceeded:
-			in := orgs.DescribeAccountInput{AccountId: s.AccountId}
-			out, err := c.DescribeAccount(&in)
-			return out.Account, err
-		default:
-			return nil, awserr.New(aws.StringValue(s.FailureReason),
-				"account creation failed", nil)
-		}
-	}
-}
-
-// DelTmpUsers deletes all users under the temporary IAM path.
-func DelTmpUsers(c iamiface.IAMAPI) error {
+// DeleteUsers deletes all users under the specified IAM path.
+func DeleteUsers(c iamiface.IAMAPI, path string) error {
 	var users []string
-	in := iam.ListUsersInput{PathPrefix: aws.String(TmpIAMPath)}
+	in := iam.ListUsersInput{PathPrefix: aws.String(path)}
 	pager := func(out *iam.ListUsersOutput, lastPage bool) bool {
 		for _, u := range out.Users {
 			users = append(users, aws.StringValue(u.UserName))
@@ -108,29 +21,29 @@ func DelTmpUsers(c iamiface.IAMAPI) error {
 		return err
 	}
 	return internal.GoForEach(len(users), 0, func(i int) error {
-		return DelUser(c, users[i])
+		return DeleteUser(c, users[i])
 	})
 }
 
-// DelUser deletes the specified user, ensuring that all prerequisites for
+// DeleteUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
-func DelUser(c iamiface.IAMAPI, user string) error {
+func DeleteUser(c iamiface.IAMAPI, name string) error {
 	err := internal.GoForEach(2, 2, func(i int) error {
 		if i == 0 {
-			return detachUserPolicies(c, user)
+			return detachUserPolicies(c, name)
 		} else {
-			return delAccessKeys(c, user)
+			return deleteAccessKeys(c, name)
 		}
 	})
 	if err == nil {
-		in := iam.DeleteUserInput{UserName: aws.String(user)}
+		in := iam.DeleteUserInput{UserName: aws.String(name)}
 		_, err = c.DeleteUser(&in)
 	}
 	return err
 }
 
-// delAccessKeys deletes all user access keys.
-func delAccessKeys(c iamiface.IAMAPI, user string) error {
+// deleteAccessKeys deletes all user access keys.
+func deleteAccessKeys(c iamiface.IAMAPI, user string) error {
 	var ids []string
 	in := iam.ListAccessKeysInput{UserName: aws.String(user)}
 	pager := func(out *iam.ListAccessKeysOutput, lastPage bool) bool {
@@ -175,10 +88,10 @@ func detachUserPolicies(c iamiface.IAMAPI, user string) error {
 	})
 }
 
-// DelTmpRoles deletes all roles under the temporary IAM path.
-func DelTmpRoles(c iamiface.IAMAPI) error {
+// DeleteRoles deletes all roles under the specified IAM path.
+func DeleteRoles(c iamiface.IAMAPI, path string) error {
 	var roles []string
-	in := iam.ListRolesInput{PathPrefix: aws.String(TmpIAMPath)}
+	in := iam.ListRolesInput{PathPrefix: aws.String(path)}
 	pager := func(out *iam.ListRolesOutput, lastPage bool) bool {
 		for _, r := range out.Roles {
 			roles = append(roles, aws.StringValue(r.RoleName))
@@ -189,18 +102,18 @@ func DelTmpRoles(c iamiface.IAMAPI) error {
 		return err
 	}
 	return internal.GoForEach(len(roles), 0, func(i int) error {
-		return DelRole(c, roles[i])
+		return DeleteRole(c, roles[i])
 	})
 }
 
-// DelRole deletes the specified role, ensuring that all prerequisites for
+// DeleteRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
-func DelRole(c iamiface.IAMAPI, role string) error {
+func DeleteRole(c iamiface.IAMAPI, role string) error {
 	err := internal.GoForEach(2, 2, func(i int) error {
 		if i == 0 {
 			return detachRolePolicies(c, role)
 		} else {
-			return delRolePolicies(c, role)
+			return deleteRolePolicies(c, role)
 		}
 	})
 	if err == nil {
@@ -233,8 +146,8 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 	})
 }
 
-// delRolePolicies deletes all inline role policies.
-func delRolePolicies(c iamiface.IAMAPI, role string) error {
+// deleteRolePolicies deletes all inline role policies.
+func deleteRolePolicies(c iamiface.IAMAPI, role string) error {
 	var names []string
 	in := iam.ListRolePoliciesInput{RoleName: aws.String(role)}
 	pager := func(out *iam.ListRolePoliciesOutput, lastPage bool) bool {
@@ -254,17 +167,4 @@ func delRolePolicies(c iamiface.IAMAPI, role string) error {
 		_, err := c.DeleteRolePolicy(&in)
 		return err
 	})
-}
-
-// IsAWSAccountID tests whether id is a valid AWS account ID.
-func IsAWSAccountID(id string) bool {
-	if len(id) != 12 {
-		return false
-	}
-	for i := 11; i >= 0; i-- {
-		if c := id[i]; c < '0' || '9' < c {
-			return false
-		}
-	}
-	return true
 }

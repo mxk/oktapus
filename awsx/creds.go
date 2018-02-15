@@ -215,10 +215,10 @@ type AssumeRoleCreds struct {
 }
 
 // NewAssumeRoleCreds returns a new role-based CredsProvider.
-func NewAssumeRoleCreds(api AssumeRoleFunc, role, roleSessionName string) *AssumeRoleCreds {
+func NewAssumeRoleCreds(api AssumeRoleFunc, role ARN, roleSessionName string) *AssumeRoleCreds {
 	return &AssumeRoleCreds{
 		AssumeRoleInput: sts.AssumeRoleInput{
-			RoleArn:         aws.String(role),
+			RoleArn:         role.Str(),
 			RoleSessionName: aws.String(roleSessionName),
 		},
 		api: api,

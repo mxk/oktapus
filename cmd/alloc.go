@@ -86,7 +86,7 @@ func (cmd *alloc) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 
 	// Allocate in batches
-	_, owner := ctx.AWS().CommonRole()
+	owner := ctx.AWS().CommonRole.Name()
 	if cmd.Owner != "" {
 		owner = cmd.Owner
 	}

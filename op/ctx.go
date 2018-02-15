@@ -22,6 +22,12 @@ import (
 
 var log = internal.Log
 
+// IAMPath is a common path for managed IAM users and roles.
+const IAMPath = "/oktapus/"
+
+// TmpIAMPath is a path for temporary users and roles.
+const TmpIAMPath = IAMPath + "tmp/"
+
 // Ctx provides global configuration information.
 type Ctx struct {
 	OktaHost       string
@@ -109,21 +115,22 @@ func (ctx *Ctx) AWS() *awsx.Client {
 			log.F("Failed to create AWS session: %v", err)
 		}
 	}
-	if ctx.MasterRole == "" {
-		ctx.MasterRole = IAMPath[1:] + "OktapusOrganizationsProxy"
-	}
-	ctx.aws = awsx.NewClient(ctx.Sess, ctx.MasterRole)
+	ctx.aws = awsx.NewClient(ctx.Sess)
 	if ctx.UseOkta() {
-		ctx.aws.GatewayCreds = ctx.newOktaCreds(ctx.Sess)
+		ctx.aws.Creds = ctx.newOktaCreds(ctx.Sess)
+	}
+	ctx.aws.MasterRole = awsx.NewARN("", "", "", "", IAMPath,
+		"OktapusOrganizationsProxy")
+	if ctx.MasterRole != "" {
+		ctx.aws.MasterRole = ctx.aws.MasterRole.WithPathName(ctx.MasterRole)
 	}
 	if err := ctx.aws.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
 	}
 	if ctx.CommonRole != "" {
-		ctx.aws.SetCommonRole(internal.SplitResource(ctx.CommonRole))
+		ctx.aws.CommonRole = ctx.aws.CommonRole.WithPathName(ctx.CommonRole)
 	} else {
-		_, name := ctx.aws.CommonRole()
-		ctx.aws.SetCommonRole(IAMPath, name)
+		ctx.aws.CommonRole = ctx.aws.CommonRole.WithPath(IAMPath)
 	}
 	return ctx.aws
 }
@@ -145,8 +152,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 		}
 	}
 	ctx.All.RequireCtl()
-	_, name := c.CommonRole()
-	acs, err := ParseAccountSpec(spec, name).Filter(ctx.All)
+	acs, err := ParseAccountSpec(spec, c.CommonRole.Name()).Filter(ctx.All)
 	sort.Sort(byName(acs))
 	return acs, err
 }

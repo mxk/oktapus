@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -79,11 +79,11 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.User == "" {
 		return out, nil
 	}
-	path, user := internal.SplitResource(cmd.User)
+	user := (awsx.NilARN + "user/").WithPathName(cmd.User)
 	if cmd.Tmp {
-		path = op.TmpIAMPath + path[1:]
+		user = user.WithPath(op.TmpIAMPath + user.Path())
 	}
-	km := newKeyMaker(path, user, cmd.Policy)
+	km := newKeyMaker(user, cmd.Policy)
 	acs.Apply(func(i int, ac *op.Account) {
 		if ac.Err != nil && ac.Err != op.ErrNoCtl {
 			return
@@ -110,28 +110,26 @@ type keyMaker struct {
 	key  iam.CreateAccessKeyInput
 }
 
-func newKeyMaker(path, user, policy string) *keyMaker {
-	if path == "" {
-		path = "/"
-	}
+func newKeyMaker(user awsx.ARN, policy string) *keyMaker {
+	name := user.Name()
 	return &keyMaker{
 		iam.CreateUserInput{
-			Path:     aws.String(path),
-			UserName: aws.String(user),
+			Path:     aws.String(user.Path()),
+			UserName: aws.String(name),
 		},
 		iam.AttachUserPolicyInput{
 			PolicyArn: aws.String(policy),
-			UserName:  aws.String(user),
+			UserName:  aws.String(name),
 		},
 		iam.CreateAccessKeyInput{
-			UserName: aws.String(user),
+			UserName: aws.String(name),
 		},
 	}
 }
 
 func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUser(&m.user); err != nil {
-		if !op.AWSErrCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+		if !awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 			return nil, err
 		}
 		// Existing user path must match to create a new access key

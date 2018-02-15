@@ -10,9 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	orgsiface "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
@@ -22,22 +20,16 @@ import (
 // Client provides access to multiple AWS accounts via one gateway account. It
 // is not safe to use the client concurrently from multiple goroutines.
 type Client struct {
-	// GatewayCreds are the credentials used to access the gateway account.
-	GatewayCreds CredsProvider
+	Creds CredsProvider // Client account credentials
+
+	MasterRole ARN // Master account role with ListAccounts permission
+	CommonRole ARN // Role to assume when accessing other accounts
 
 	sess    client.ConfigProvider
 	org     *orgs.Organizations
 	sts     *sts.STS
 	ident   Ident
 	orgInfo Org
-
-	// Master role is a master account role allowed to list org accounts
-	masterRolePath string
-	masterRoleName string
-
-	// Common role is the role to assume when accessing other accounts
-	commonRolePath string
-	commonRoleName string
 
 	roleSessionName string
 
@@ -47,14 +39,8 @@ type Client struct {
 
 // NewClient creates a new AWS gateway client. The client is not usable until
 // Connect() is called, which should be done after restoring any saved state.
-func NewClient(sess client.ConfigProvider, masterRole string) *Client {
-	path, name := internal.SplitResource(masterRole)
-	return &Client{
-		sess:           sess,
-		masterRolePath: internal.CleanResourcePath(path),
-		masterRoleName: name,
-		commonRolePath: "/",
-	}
+func NewClient(sess client.ConfigProvider) *Client {
+	return &Client{sess: sess}
 }
 
 // ConfigProvider returns the ConfigProvider that was passed to NewClient.
@@ -69,8 +55,8 @@ func (c *Client) Connect() error {
 		return errors.New("awsx: already connected")
 	}
 	var cfg aws.Config
-	if c.GatewayCreds != nil {
-		cfg.Credentials = c.GatewayCreds.Creds()
+	if c.Creds != nil {
+		cfg.Credentials = c.Creds.Creds()
 	}
 
 	// Get organization info
@@ -97,7 +83,8 @@ func (c *Client) Connect() error {
 	c.ident.set(id)
 	c.orgInfo.set(org)
 	c.roleSessionName = getSessName(&c.ident)
-	c.commonRoleName = c.roleSessionName
+	c.CommonRole = NewARN(c.ident.UserARN.Partition(), "iam", "", "",
+		"role/", c.roleSessionName)
 
 	// If gateway account isn't master, change org client credentials
 	if !c.IsMaster() {
@@ -131,28 +118,8 @@ func (c *Client) OrgInfo() Org {
 
 // IsMaster returns true if the gateway account is organization master.
 func (c *Client) IsMaster() bool {
-	return c.ident.AccountID == c.orgInfo.MasterAccountID &&
+	return c.ident.AccountID == c.orgInfo.MasterID &&
 		c.ident.AccountID != ""
-}
-
-// MasterRole returns the master role path and name.
-func (c *Client) MasterRole() (path, name string) {
-	return c.masterRolePath, c.masterRoleName
-}
-
-// CommonRole returns the common role path and name.
-func (c *Client) CommonRole() (path, name string) {
-	return c.commonRolePath, c.commonRoleName
-}
-
-// SetCommonRole sets the path and name of the common role, which is used to
-// access all non-gateway accounts.
-func (c *Client) SetCommonRole(path, name string) {
-	if strings.IndexByte(name, '/') != -1 {
-		panic("awsx: common role name has a path component: " + name)
-	}
-	c.commonRolePath = internal.CleanResourcePath(path)
-	c.commonRoleName = name
 }
 
 // OrgsClient returns the organizations API client. It returns nil if the
@@ -208,8 +175,7 @@ func (c *Client) CredsProvider(accountID string) CredsProvider {
 
 // AssumeRole returns new AssumeRole credentials for the specified account ID
 // and role name.
-func (c *Client) AssumeRole(accountID, roleName string) *AssumeRoleCreds {
-	role := roleARN(accountID, "/", roleName)
+func (c *Client) AssumeRole(role ARN) *AssumeRoleCreds {
 	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
@@ -226,8 +192,8 @@ func (c *Client) GobEncode() ([]byte, error) {
 		return nil, nil
 	}
 	var s clientState
-	if c.GatewayCreds != nil {
-		s.MasterCreds = c.GatewayCreds.Save()
+	if c.Creds != nil {
+		s.MasterCreds = c.Creds.Save()
 	}
 	if len(c.cache) > 0 {
 		acs := make([]accountState, 0, len(c.cache))
@@ -251,7 +217,7 @@ func (c *Client) GobDecode(b []byte) error {
 		return err
 	}
 	if s.MasterCreds != nil && s.MasterCreds.valid() {
-		c.GatewayCreds = s.MasterCreds
+		c.Creds = s.MasterCreds
 	}
 	// TODO: Should expired master creds invalidate account creds?
 	// Accounts cannot be restored until the client is connected
@@ -261,7 +227,7 @@ func (c *Client) GobDecode(b []byte) error {
 
 // credsProvider returns a credentials provider for the specified account id.
 func (c *Client) credsProvider(id string) CredsProvider {
-	role := roleARN(id, c.commonRolePath, c.commonRoleName)
+	role := c.CommonRole.WithAccount(id)
 	return NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 }
 
@@ -281,10 +247,10 @@ func (c *Client) getAccount(id string) *accountCtx {
 
 // proxyCreds returns credentials for the MasterRole.
 func (c *Client) proxyCreds() *AssumeRoleCreds {
-	if c.masterRoleName == "" {
+	if c.MasterRole == "" {
 		panic("awsx: master role not set")
 	}
-	role := roleARN(c.orgInfo.MasterAccountID, c.masterRolePath, c.masterRoleName)
+	role := c.MasterRole.WithAccount(c.orgInfo.MasterID)
 	cr := NewAssumeRoleCreds(c.sts.AssumeRole, role, c.roleSessionName)
 	cr.ExternalId = aws.String(ProxyExternalID(&c.orgInfo))
 	return cr
@@ -298,9 +264,9 @@ func ProxyExternalID(org *Org) string {
 	}
 	var buf [64]byte
 	b := append(buf[:0], "oktapus:"...)
-	b = append(b, org.MasterAccountID...)
+	b = append(b, org.MasterID...)
 	b = append(b, ':')
-	b = append(b, org.MasterAccountEmail...)
+	b = append(b, org.MasterEmail...)
 	h := hmac.New(sha512.New512_256, []byte(org.ID))
 	h.Write(b)
 	b = h.Sum(b[:0])
@@ -308,36 +274,40 @@ func ProxyExternalID(org *Org) string {
 }
 
 // Ident contains data from sts:GetCallerIdentity API call.
-type Ident struct{ AccountID, UserARN, UserID string }
+type Ident struct {
+	AccountID string
+	UserARN   ARN
+	UserID    string
+}
 
 // set updates identity information.
 func (id *Ident) set(out *sts.GetCallerIdentityOutput) {
 	*id = Ident{
 		AccountID: aws.StringValue(out.Account),
-		UserARN:   aws.StringValue(out.Arn),
+		UserARN:   ARNValue(out.Arn),
 		UserID:    aws.StringValue(out.UserId),
 	}
 }
 
 // Org contains data from organizations:DescribeOrganization API call.
 type Org struct {
-	ARN                string
-	FeatureSet         string
-	ID                 string
-	MasterAccountARN   string
-	MasterAccountEmail string
-	MasterAccountID    string
+	ARN         ARN
+	FeatureSet  string
+	ID          string
+	MasterARN   ARN
+	MasterEmail string
+	MasterID    string
 }
 
 // set updates organization information.
 func (o *Org) set(out *orgs.DescribeOrganizationOutput) {
 	*o = Org{
-		ARN:                aws.StringValue(out.Organization.Arn),
-		FeatureSet:         aws.StringValue(out.Organization.FeatureSet),
-		ID:                 aws.StringValue(out.Organization.Id),
-		MasterAccountARN:   aws.StringValue(out.Organization.MasterAccountArn),
-		MasterAccountEmail: aws.StringValue(out.Organization.MasterAccountEmail),
-		MasterAccountID:    aws.StringValue(out.Organization.MasterAccountId),
+		ARN:         ARNValue(out.Organization.Arn),
+		FeatureSet:  aws.StringValue(out.Organization.FeatureSet),
+		ID:          aws.StringValue(out.Organization.Id),
+		MasterARN:   ARNValue(out.Organization.MasterAccountArn),
+		MasterEmail: aws.StringValue(out.Organization.MasterAccountEmail),
+		MasterID:    aws.StringValue(out.Organization.MasterAccountId),
 	}
 }
 
@@ -347,17 +317,10 @@ func getSessName(id *Ident) string {
 	if i := strings.IndexByte(id.UserID, ':'); i != -1 {
 		return id.UserID[i+1:]
 	}
-	if r, _ := arn.Parse(id.UserARN); strings.HasPrefix(r.Resource, "user/") {
-		i := strings.LastIndexByte(r.Resource, '/')
-		return r.Resource[i+1:]
-	} else if r.Resource == "root" {
+	if id.UserARN.Type() == "user" {
+		return id.UserARN.Name()
+	} else if id.UserARN.Resource() == "root" {
 		return "OrganizationAccountAccessRole"
 	}
 	return id.UserID
-}
-
-// roleARN returns the IAM role ARN for the given account id and role name.
-func roleARN(account, path, name string) string {
-	// TODO: Need to handle client-specific partition
-	return "arn:aws:iam::" + account + ":role" + path + name
 }

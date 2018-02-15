@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
@@ -47,9 +48,9 @@ func (cmd *rm) Call(ctx *op.Ctx) (interface{}, error) {
 	var fn func(c iamiface.IAMAPI, name string) error
 	switch cmd.Type {
 	case "role":
-		fn = op.DelRole
+		fn = awsx.DeleteRole
 	case "user":
-		fn = op.DelUser
+		fn = awsx.DeleteUser
 	default:
 		return nil, fmt.Errorf("invalid resource type %q", cmd.Type)
 	}

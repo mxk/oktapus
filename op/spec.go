@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/LuminalHQ/oktapus/awsx"
 )
 
 type specType byte
@@ -76,7 +78,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 			if s.idx[name] = uint(i); !neg {
 				s.tagMask |= uint64(1) << uint(i)
 			}
-			if s.typ == stUnknown && IsAWSAccountID(name) {
+			if s.typ == stUnknown && awsx.IsAccountID(name) {
 				s.typ = stIds
 			}
 		}

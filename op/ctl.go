@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -57,7 +58,7 @@ func (ctl *Ctl) Get(c iamiface.IAMAPI) error {
 	if err == nil {
 		return ctl.decode(out.Role.Description)
 	}
-	if *ctl = (Ctl{}); AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
+	if *ctl = (Ctl{}); awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 		err = ErrNoCtl
 	}
 	return err
@@ -71,7 +72,7 @@ func (ctl *Ctl) Set(c iamiface.IAMAPI) error {
 			RoleName:    aws.String(CtlRole),
 		}
 		out, err := c.UpdateRoleDescription(&in)
-		if AWSErrCode(err, iam.ErrCodeNoSuchEntityException) {
+		if awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 			err = ErrNoCtl
 		}
 		return out.Role, err
