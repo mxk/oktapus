@@ -66,6 +66,24 @@ func SetTime(t time.Time) {
 	now.Store(t)
 }
 
+var noSleep int32
+
+// Sleep pauses the current goroutine for at least the duration d.
+func Sleep(d time.Duration) {
+	if atomic.LoadInt32(&noSleep) == 0 {
+		time.Sleep(d)
+	}
+}
+
+// NoSleep enables or disables the Sleep function.
+func NoSleep(b bool) {
+	var v int32
+	if b {
+		v = 1
+	}
+	atomic.StoreInt32(&noSleep, v)
+}
+
 // CloseBody attempts to drain http.Response body before closing it to allow
 // connection reuse (see https://github.com/google/go-github/pull/317).
 func CloseBody(body io.ReadCloser) {

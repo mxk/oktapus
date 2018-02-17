@@ -26,6 +26,20 @@ func TestTime(t *testing.T) {
 	assert.True(t, d <= 1500*time.Millisecond)
 }
 
+func TestSleep(t *testing.T) {
+	d := 50 * time.Millisecond
+	now := time.Now()
+	Sleep(d)
+	assert.True(t, time.Since(now) >= d)
+
+	NoSleep(true)
+	defer NoSleep(false)
+
+	now = time.Now()
+	Sleep(d)
+	assert.True(t, time.Since(now) < 25*time.Millisecond)
+}
+
 func TestCloseBody(t *testing.T) {
 	b := bytes.NewReader(make([]byte, 4097))
 	CloseBody(ioutil.NopCloser(b))
