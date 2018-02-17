@@ -80,7 +80,7 @@ func (cmd *masterSetup) FlagCfg(fs *flag.FlagSet) {
 func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 	// Verify that current account is master
 	gw := ctx.Gateway()
-	org := gw.OrgInfo()
+	org := gw.Org()
 	log.I("Master account is: %s", org.MasterID)
 	log.I("Authenticated as: %s", gw.Ident().UserARN)
 	if !gw.IsMaster() {

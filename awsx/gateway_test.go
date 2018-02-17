@@ -6,11 +6,9 @@ import (
 	"encoding/hex"
 	"sort"
 	"testing"
-	"time"
 
 	"github.com/LuminalHQ/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,12 +19,12 @@ func TestClientConnect(t *testing.T) {
 	c := NewGateway(s)
 	assert.Equal(t, s, c.ConfigProvider())
 	assert.Empty(t, c.Ident().AccountID)
-	assert.Empty(t, c.OrgInfo().MasterID)
+	assert.Empty(t, c.Org().MasterID)
 
 	require.NoError(t, c.Connect())
 	assert.Error(t, c.Connect())
 	assert.Equal(t, "000000000000", c.Ident().AccountID)
-	assert.Equal(t, "000000000000", c.OrgInfo().MasterID)
+	assert.Equal(t, "000000000000", c.Org().MasterID)
 	assert.NotNil(t, c.OrgsClient())
 }
 
@@ -65,10 +63,10 @@ func TestClientRefresh(t *testing.T) {
 	want := make([]*Account, len(acs))
 	for i := range want {
 		want[i] = &Account{ID: aws.StringValue(acs[i].Id)}
-		want[i].set(acs[i])
+		want[i].Set(acs[i])
 	}
 	assert.Panics(t, func() {
-		new(Account).set(acs[0])
+		new(Account).Set(acs[0])
 	})
 	c := NewGateway(s)
 	require.NoError(t, c.Connect())
@@ -94,30 +92,6 @@ func TestClientRefreshProxy(t *testing.T) {
 
 	require.NoError(t, c.Refresh())
 	assert.Len(t, c.Accounts(), 4)
-}
-
-func TestClientEncodeDecode(t *testing.T) {
-	s := mock.NewSession()
-	creds := &StaticCreds{
-		Value: credentials.Value{
-			AccessKeyID:     "ID",
-			SecretAccessKey: "SECRET",
-		},
-		Exp: time.Now().Add(time.Minute).Truncate(time.Second),
-	}
-	c := NewGateway(s)
-	c.Creds = creds
-	require.NoError(t, c.Connect())
-	require.NoError(t, c.Refresh())
-	want := sortByID(c.Accounts())
-	state, err := c.GobEncode()
-	require.NoError(t, err)
-
-	c = NewGateway(s)
-	require.NoError(t, c.GobDecode(state))
-	assert.Equal(t, creds.Save(), c.Creds.Save())
-	require.NoError(t, c.Connect())
-	assert.Equal(t, want, sortByID(c.Accounts()))
 }
 
 func TestClientCreds(t *testing.T) {

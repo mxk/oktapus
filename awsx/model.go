@@ -5,12 +5,51 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go/service/sts"
 )
+
+// Ident contains data from sts:GetCallerIdentity API call.
+type Ident struct {
+	AccountID string
+	UserARN   ARN
+	UserID    string
+}
+
+// Set updates identity information.
+func (id *Ident) Set(out *sts.GetCallerIdentityOutput) {
+	*id = Ident{
+		AccountID: aws.StringValue(out.Account),
+		UserARN:   ARNValue(out.Arn),
+		UserID:    aws.StringValue(out.UserId),
+	}
+}
+
+// Org contains data from organizations:DescribeOrganization API call.
+type Org struct {
+	ARN         ARN
+	FeatureSet  string
+	ID          string
+	MasterARN   ARN
+	MasterEmail string
+	MasterID    string
+}
+
+// Set updates organization information.
+func (o *Org) Set(out *orgs.DescribeOrganizationOutput) {
+	*o = Org{
+		ARN:         ARNValue(out.Organization.Arn),
+		FeatureSet:  aws.StringValue(out.Organization.FeatureSet),
+		ID:          aws.StringValue(out.Organization.Id),
+		MasterARN:   ARNValue(out.Organization.MasterAccountArn),
+		MasterEmail: aws.StringValue(out.Organization.MasterAccountEmail),
+		MasterID:    aws.StringValue(out.Organization.MasterAccountId),
+	}
+}
 
 // Account is an account in an AWS organization.
 type Account struct {
 	ID         string
-	ARN        string
+	ARN        ARN
 	Name       string
 	Email      string
 	Status     string
@@ -18,34 +57,17 @@ type Account struct {
 	JoinTime   time.Time
 }
 
-// set updates account information.
-func (ac *Account) set(src *orgs.Account) {
+// Set updates account information.
+func (ac *Account) Set(src *orgs.Account) {
 	if id := aws.StringValue(src.Id); id == "" || ac.ID != id {
 		panic("awsx: account id mismatch: " + ac.ID + " != " + id)
 	}
-	ac.ARN = aws.StringValue(src.Arn)
+	ac.ARN = ARNValue(src.Arn)
 	ac.Name = aws.StringValue(src.Name)
 	ac.Email = aws.StringValue(src.Email)
 	ac.Status = accountStatusEnum(src.Status)
 	ac.JoinMethod = joinedMethodEnum(src.JoinedMethod)
 	ac.JoinTime = aws.TimeValue(src.JoinedTimestamp)
-}
-
-// accountCtx maintains runtime context for each account.
-type accountCtx struct {
-	Account
-	cp CredsProvider
-}
-
-// accountState contains saved accountCtx state.
-type accountState struct {
-	Account *Account
-	Creds   *StaticCreds
-}
-
-// restore creates an accountCtx from the saved state.
-func (s *accountState) restore(cp CredsProvider) *accountCtx {
-	return &accountCtx{*s.Account, NewSavedCreds(s.Creds, cp)}
 }
 
 // accountStatusEnum returns AccountStatus enum string without allocation.

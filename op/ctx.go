@@ -119,7 +119,7 @@ func (ctx *Ctx) Gateway() *awsx.Gateway {
 	if ctx.UseOkta() {
 		ctx.gw.Creds = ctx.newOktaCreds(ctx.Sess)
 	}
-	ctx.gw.MasterRole = awsx.NewARN("", "", "", "", IAMPath,
+	ctx.gw.MasterRole = awsx.NewARN("", "", "", "", "role", IAMPath,
 		"OktapusOrganizationsProxy")
 	if ctx.MasterRole != "" {
 		ctx.gw.MasterRole = ctx.gw.MasterRole.WithPathName(ctx.MasterRole)
@@ -147,7 +147,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 		ctx.All = make(Accounts, len(info))
 		for i, ac := range info {
 			n := NewAccount(ac.ID, ac.Name)
-			n.Init(gw.ConfigProvider(), gw.CredsProvider(ac.ID))
+			n.Init(gw, gw.CredsProvider(ac.ID))
 			ctx.All[i] = n
 		}
 	}

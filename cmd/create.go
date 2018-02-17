@@ -110,7 +110,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	gw := ctx.Gateway()
 	if !gw.IsMaster() {
 		return nil, fmt.Errorf("gateway account (%s) is not org master (%s)",
-			gw.Ident().AccountID, gw.OrgInfo().MasterID)
+			gw.Ident().AccountID, gw.Org().MasterID)
 	}
 
 	// Configure name/email counters
@@ -157,7 +157,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	// Configure accounts
 	var wg sync.WaitGroup
 	acs := make(op.Accounts, 0, n)
-	masterID := gw.OrgInfo().MasterID
+	masterID := gw.Org().MasterID
 	setupRoleARN := gw.CommonRole.WithPathName(accountSetupRole)
 	for r := range out {
 		if r.Err != nil {
@@ -166,7 +166,8 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			acs = append(acs, ac)
 			continue
 		}
-		info := gw.Update(r.Account)
+		info := gw.Account(aws.StringValue(r.Id))
+		info.Set(r.Account)
 		ac := op.NewAccount(info.ID, info.Name)
 		acs = append(acs, ac)
 		wg.Add(1)
