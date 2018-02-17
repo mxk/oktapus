@@ -176,7 +176,7 @@ func oktaCreds(ctx *op.Ctx, spec string) ([]*credsOutput, error) {
 		if err == okta.ErrRateLimit && internal.Time().Before(timeout) {
 			// Limit is 40 requests per 10 seconds
 			// https://support.okta.com/help/Documentation/Knowledge_Article/API-54325410
-			time.Sleep(15 * time.Second)
+			internal.Sleep(15 * time.Second)
 			goto retry
 		}
 		creds[i] = &credsOutput{

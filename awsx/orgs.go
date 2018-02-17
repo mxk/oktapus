@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
@@ -51,8 +52,6 @@ func CreateAccounts(c orgsif.OrganizationsAPI, in []*orgs.CreateAccountInput) <-
 	return rch
 }
 
-var sleep = time.Sleep
-
 // createAccount creates a new account in the organization.
 func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*orgs.Account, error) {
 	out, err := c.CreateAccount(in)
@@ -66,7 +65,7 @@ func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*org
 	for {
 		switch aws.StringValue(s.State) {
 		case orgs.CreateAccountStateInProgress:
-			sleep(time.Second)
+			internal.Sleep(time.Second)
 			out, err := c.DescribeCreateAccountStatus(&reqID)
 			if err != nil {
 				return nil, err

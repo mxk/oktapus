@@ -117,7 +117,7 @@ func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
 		fmt.Printf("\nTest #%d in...", t.Num)
 		for i := 3; i > 0; i-- {
 			fmt.Printf(" %d", i)
-			time.Sleep(time.Second)
+			internal.Sleep(time.Second)
 		}
 		fmt.Println(" 0")
 		run.Broadcast()
@@ -158,7 +158,7 @@ func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
 			t.AssumedOwner = r.name
 			fmt.Printf("Owner is %s, will verify in %v... ",
 				r.name, confirmDelay)
-			time.Sleep(confirmDelay)
+			internal.Sleep(confirmDelay)
 			if err := r.Get(c); err != nil {
 				panic(err)
 			}
@@ -181,7 +181,7 @@ func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
 		} else if t.Setters < n/2 && freeDelay < time.Minute {
 			freeDelay += 5 * time.Second
 		}
-		time.Sleep(freeDelay)
+		internal.Sleep(freeDelay)
 
 		// Update summary
 		s := summary[len(summary)-1]
@@ -251,7 +251,7 @@ func worker(name string, c *iam.IAM, run *sync.Cond, ch chan<- *workerResult) {
 		}
 
 		r.step = stepVerify
-		time.Sleep(verifyDelay)
+		internal.Sleep(verifyDelay)
 		r.err = r.Get(c)
 		ch <- r
 	}

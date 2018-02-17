@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/op"
 )
 
@@ -118,7 +119,7 @@ func (cmd *alloc) Call(ctx *op.Ctx) (interface{}, error) {
 		})
 
 		// Delay determined by running 1,100 mutex-test trials with 50 threads
-		time.Sleep(10 * time.Second)
+		internal.Sleep(10 * time.Second)
 
 		// Verify owner
 		batch.RefreshCtl().Filter(func(ac *op.Account) bool {

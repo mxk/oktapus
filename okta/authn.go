@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/LuminalHQ/oktapus/internal"
 )
 
 // Authenticator implements the user interface for multi-factor authentication.
@@ -279,14 +281,12 @@ func (totp) run(f *Factor, c *authnClient, r *result) (*result, error) {
 // push implements push notification verification protocol.
 type push struct{ driver }
 
-var pushPollDelay = 2 * time.Second
-
 func (push) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	in := response{FID: f.ID, StateToken: r.StateToken}
 	r, err := c.nav(f.Links.Verify, &in)
 	c.Notify("Waiting for approval from your %s... ", f.Profile.Name)
 	for err == nil && r.FactorResult == "WAITING" {
-		time.Sleep(pushPollDelay)
+		internal.Sleep(2 * time.Second)
 		r, err = c.nav(r.Links.Next, &in)
 	}
 	c.Notify("%s\n", r.FactorResult)

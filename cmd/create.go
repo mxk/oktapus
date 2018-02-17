@@ -283,7 +283,7 @@ func waitForCreds(ac *op.Account) error {
 			!internal.Time().Before(timeout) {
 			return err
 		}
-		time.Sleep(time.Second)
+		internal.Sleep(time.Second)
 	}
 }
 
@@ -319,7 +319,7 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 			!internal.Time().Before(timeout) {
 			return err
 		}
-		time.Sleep(time.Second)
+		internal.Sleep(time.Second)
 	}
 }
 
