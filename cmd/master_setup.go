@@ -106,7 +106,7 @@ func (cmd *masterSetup) Run(ctx *op.Ctx, args []string) error {
 		if gw.Creds != nil {
 			cfg.Credentials = gw.Creds.Creds()
 		}
-		ic = iam.New(gw.ConfigProvider(), &cfg)
+		ic = iam.New(gw, &cfg)
 	}
 	err := createPolicy(ic, op.IAMPath, gatewayAccessName, gatewayAccessDesc, &gatewayAccess)
 	if err != nil {

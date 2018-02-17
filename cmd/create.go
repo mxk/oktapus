@@ -175,7 +175,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			defer wg.Done()
 
 			// Wait for setup credentials to become valid
-			ac.Init(gw.ConfigProvider(), setupCreds)
+			ac.Init(gw, setupCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
@@ -192,7 +192,7 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Switch to common role credentials
-			ac.Init(gw.ConfigProvider(), commonCreds)
+			ac.Init(gw, commonCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}

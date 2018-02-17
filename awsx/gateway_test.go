@@ -17,7 +17,6 @@ import (
 func TestClientConnect(t *testing.T) {
 	s := mock.NewSession()
 	c := NewGateway(s)
-	assert.Equal(t, s, c.ConfigProvider())
 	assert.Empty(t, c.Ident().AccountID)
 	assert.Empty(t, c.Org().MasterID)
 

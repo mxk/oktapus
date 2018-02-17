@@ -51,7 +51,7 @@ func initCtl(ctx *op.Ctx, ctl *op.Ctl, ids ...string) error {
 	for _, id := range ids {
 		id = mock.AccountID(id)
 		ac := op.NewAccount(id, "")
-		ac.Init(gw.ConfigProvider(), gw.CredsProvider(id))
+		ac.Init(gw, gw.CredsProvider(id))
 		if err := ctl.Init(ac.IAM()); err != nil {
 			return err
 		}
