@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 )
 
+// Possible errors returned when parsing AWS SAML assertion.
 var (
 	ErrNoAWSRoles     = errors.New("okta: no AWS roles in SAML assertion")
 	ErrInvalidAWSRole = errors.New("okta: specified role is not available")

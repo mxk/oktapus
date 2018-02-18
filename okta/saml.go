@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/html"
 )
 
+// ErrNoSAMLResponse is returned when the SAML assertion was not found in Okta's
+// HTML response.
 var ErrNoSAMLResponse = errors.New("okta: SAMLResponse form input not found")
 
 // samlAssertion is a SAML assertion in its decoded XML form.
