@@ -44,7 +44,10 @@ func NewSession() *Session {
 	}
 	//noinspection GoStructInitializationWithoutFieldNames
 	s := &Session{
-		Session:     session.Session{cfg, defaults.Handlers()},
+		Session: session.Session{
+			Config:   cfg,
+			Handlers: defaults.Handlers(),
+		},
 		ChainRouter: ChainRouter{NewSTSRouter(""), NewOrgsRouter()},
 	}
 	s.Session = *s.Session.Copy() // Run initHandlers
