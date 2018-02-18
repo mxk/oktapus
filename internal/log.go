@@ -24,16 +24,16 @@ type LogMsg struct {
 	Msg   string
 }
 
-// log writes messages to an io.Writer and/or a LogFunc.
-type log struct {
+// Logger writes messages to an io.Writer and/or a LogFunc.
+type Logger struct {
 	w io.Writer
 	f LogFunc
 	e ExitFunc
 }
 
-// NewLogger returns a new log instance.
-func NewLogger(w io.Writer, f LogFunc) *log {
-	return &log{w, f, os.Exit}
+// NewLogger returns a new Logger instance.
+func NewLogger(w io.Writer, f LogFunc) *Logger {
+	return &Logger{w, f, os.Exit}
 }
 
 // logMu is held during all output operations.
@@ -41,7 +41,7 @@ var logMu sync.Mutex
 
 // SetWriter sets log output writer. If w is nil, logging to a writer is
 // disabled.
-func (l *log) SetWriter(w io.Writer) (prev io.Writer) {
+func (l *Logger) SetWriter(w io.Writer) (prev io.Writer) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	prev, l.w = l.w, w
@@ -50,7 +50,7 @@ func (l *log) SetWriter(w io.Writer) (prev io.Writer) {
 
 // SetFunc sets log output function. If fn is nil, logging to a function is
 // disabled.
-func (l *log) SetFunc(fn LogFunc) (prev LogFunc) {
+func (l *Logger) SetFunc(fn LogFunc) (prev LogFunc) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	prev, l.f = l.f, fn
@@ -58,33 +58,39 @@ func (l *log) SetFunc(fn LogFunc) (prev LogFunc) {
 }
 
 // SetExitFunc sets termination function for Log.F.
-func (l *log) SetExitFunc(fn ExitFunc) (prev ExitFunc) {
+func (l *Logger) SetExitFunc(fn ExitFunc) (prev ExitFunc) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	prev, l.e = l.e, fn
 	return prev
 }
 
-func (l *log) D(format string, v ...interface{}) { l.out('D', format, v...) }
-func (l *log) I(format string, v ...interface{}) { l.out('I', format, v...) }
-func (l *log) W(format string, v ...interface{}) { l.out('W', format, v...) }
-func (l *log) E(format string, v ...interface{}) { l.out('E', format, v...) }
-func (l *log) F(format string, v ...interface{}) {
+// D logs a debug message.
+func (l *Logger) D(format string, v ...interface{}) { l.out('D', format, v...) }
+
+// I logs an informational message.
+func (l *Logger) I(format string, v ...interface{}) { l.out('I', format, v...) }
+
+// W logs a warning message.
+func (l *Logger) W(format string, v ...interface{}) { l.out('W', format, v...) }
+
+// E logs an error message.
+func (l *Logger) E(format string, v ...interface{}) { l.out('E', format, v...) }
+
+// F logs an error message and terminates the running process.
+func (l *Logger) F(format string, v ...interface{}) {
 	l.out('F', format, v...)
-	if l.e == nil {
-		os.Exit(1)
-	}
-	l.e(1)
-	panic("ExitFunc did not terminate execution")
+	l.exit()
 }
 
-func (l *log) Msg(m *LogMsg) { l.out(m.Level, "%s", m.Msg) }
+// Msg logs message m.
+func (l *Logger) Msg(m *LogMsg) { l.out(m.Level, "%s", m.Msg) }
 
 var bufs = sync.Pool{New: func() interface{} {
 	return new(bytes.Buffer)
 }}
 
-func (l *log) out(lvl byte, format string, v ...interface{}) {
+func (l *Logger) out(lvl byte, format string, v ...interface{}) {
 	b := bufs.Get().(*bytes.Buffer)
 	b.Reset()
 	b.WriteByte('[')
@@ -108,4 +114,12 @@ func (l *log) out(lvl byte, format string, v ...interface{}) {
 		l.w.Write(b.Bytes())
 		bufs.Put(b)
 	}
+}
+
+func (l *Logger) exit() {
+	if l.e == nil {
+		os.Exit(1)
+	}
+	l.e(1)
+	panic("ExitFunc did not terminate execution")
 }

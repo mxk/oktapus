@@ -15,7 +15,7 @@ func TestLog(t *testing.T) {
 		assert.Equal(t, want, buf.String())
 		buf.Reset()
 	}
-	l := new(log)
+	l := new(Logger)
 	exitCode := 0
 	l.SetWriter(&buf)
 	l.SetExitFunc(func(code int) { exitCode = code })
