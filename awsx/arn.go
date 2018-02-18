@@ -48,19 +48,35 @@ func (r ARN) Str() *string {
 	return &s
 }
 
-// Field getters.
+// Partition returns ARN partition.
 func (r ARN) Partition() string { return r.Field(0) }
-func (r ARN) Service() string   { return r.Field(1) }
-func (r ARN) Region() string    { return r.Field(2) }
-func (r ARN) Account() string   { return r.Field(3) }
-func (r ARN) Resource() string  { return r.Field(4) }
 
-// Field setters.
+// Service returns ARN service.
+func (r ARN) Service() string { return r.Field(1) }
+
+// Region returns ARN region.
+func (r ARN) Region() string { return r.Field(2) }
+
+// Account returns ARN account.
+func (r ARN) Account() string { return r.Field(3) }
+
+// Resource returns ARN resource.
+func (r ARN) Resource() string { return r.Field(4) }
+
+// WithPartition returns a new ARN with partition replaced by v.
 func (r ARN) WithPartition(v string) ARN { return r.WithField(0, v) }
-func (r ARN) WithService(v string) ARN   { return r.WithField(1, v) }
-func (r ARN) WithRegion(v string) ARN    { return r.WithField(2, v) }
-func (r ARN) WithAccount(v string) ARN   { return r.WithField(3, v) }
-func (r ARN) WithResource(v string) ARN  { return r.WithField(4, v) }
+
+// WithService returns a new ARN with service replaced by v.
+func (r ARN) WithService(v string) ARN { return r.WithField(1, v) }
+
+// WithRegion returns a new ARN with region replaced by v.
+func (r ARN) WithRegion(v string) ARN { return r.WithField(2, v) }
+
+// WithAccount returns a new ARN with account replaced by v.
+func (r ARN) WithAccount(v string) ARN { return r.WithField(3, v) }
+
+// WithResource returns a new ARN with resource replaced by v.
+func (r ARN) WithResource(v string) ARN { return r.WithField(4, v) }
 
 // Valid returns true if r has a valid prefix and the required number of fields.
 func (r ARN) Valid() bool {
