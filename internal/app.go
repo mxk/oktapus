@@ -1,5 +1,6 @@
 package internal
 
+// App metadata.
 const (
 	AppName    = "oktapus"
 	AppVersion = "0.8.0"
