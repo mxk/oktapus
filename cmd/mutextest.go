@@ -68,7 +68,7 @@ type testResult struct {
 func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if n < 1 || err != nil {
-		op.UsageErr(cmd, "number of workers must be > 0")
+		op.UsageErrf(cmd, "number of workers must be > 0")
 	}
 
 	// Create verification IAM client

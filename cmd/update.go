@@ -51,7 +51,7 @@ func (cmd *update) Run(ctx *op.Ctx, args []string) error {
 		return err
 	}
 	if cmd.Desc == nil && len(set)+len(clr) == 0 {
-		op.UsageErr(cmd, "either description or tags must be specified")
+		op.UsageErrf(cmd, "either description or tags must be specified")
 	}
 	cmd.Spec, cmd.Set, cmd.Clr = args[0], set, clr
 	out, err := ctx.Call(cmd)

@@ -35,7 +35,7 @@ func (cmd *rm) Run(ctx *op.Ctx, args []string) error {
 	switch cmd.Type {
 	case "role", "user":
 	default:
-		op.UsageErr(cmd, "invalid resource type %q", cmd.Type)
+		op.UsageErrf(cmd, "invalid resource type %q", cmd.Type)
 	}
 	out, err := ctx.Call(cmd)
 	if err == nil {

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,44 +14,68 @@ func TestHelp(t *testing.T) {
 	assert.True(t, isHelp("help"))
 
 	var buf bytes.Buffer
-	var code int
+	code := -1
 	helpWriter = &buf
-	helpExitFunc = func(c int) { code = c }
+	helpExitFunc = func(c int) {
+		if code == -1 {
+			code = c
+		}
+	}
 	cmd := Cmd(helpCmd{})
 	ci := cmd.Info()
 	Register(ci)
 
-	err := "general error"
-	UsageErr(nil, err)
-	assert.Equal(t, 2, code)
-	help := buf.String()
-	assert.Contains(t, help, err)
-	assert.Contains(t, help, ci.Names[0])
-	assert.Contains(t, help, ci.Summary)
-
-	code = 0
+	// General help
+	Help(nil)
+	out := buf.String()
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, ci.Names[0])
+	assert.Contains(t, out, ci.Summary)
+	code = -1
 	buf.Reset()
 
-	err = "command error"
-	UsageErr(cmd, err)
-	assert.Equal(t, 2, code)
-	help = buf.String()
-	assert.Contains(t, help, err)
-	for _, name := range ci.Names {
-		assert.Contains(t, help, name)
-	}
-	assert.Contains(t, help, "Command help")
-	assert.Contains(t, help, "testflag")
-
-	code = 0
+	// Command help
+	Help(ci)
+	out = buf.String()
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, ci.Usage)
+	assert.Contains(t, out, "Command help")
+	assert.Contains(t, out, "-testflag")
+	code = -1
 	buf.Reset()
 
+	// General error
+	UsageErrf(nil, "general error")
+	want := internal.Dedent(`
+		Error: general error
+		Usage: oktapus command [options] args
+		       oktapus command help
+		       oktapus help [command]
+	`)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, want[1:], buf.String())
+	code = -1
+	buf.Reset()
+
+	// Command error
+	UsageErrf(cmd, "command error")
+	want = internal.Dedent(`
+		Error: command error
+		Usage: oktapus {helpcmd|helpalias} [-testflag]
+		       oktapus {helpcmd|helpalias} help
+	`)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, want[1:], buf.String())
+	code = -1
+	buf.Reset()
+
+	// Panic reported before calling helpExitFunc
 	cmd = panicCmd{}
 	ci = cmd.Info()
 	Register(ci)
-	CmdHelp(ci, nil)
-	help = buf.String()
-	assert.Contains(t, help, "panic: help panic")
+	Help(ci)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, buf.String(), "panic: help panic")
 }
 
 type helpCmd struct{}
@@ -59,6 +84,7 @@ func (helpCmd) Info() *CmdInfo {
 	return &CmdInfo{
 		Names:   []string{"helpcmd", "helpalias"},
 		Summary: "test command summary",
+		Usage:   "[-testflag]",
 		New:     func() Cmd { return helpCmd{} },
 	}
 }

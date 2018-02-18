@@ -89,13 +89,13 @@ func (cmd *create) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	cmd.NameTpl, cmd.EmailTpl = args[1], args[2]
 	if err != nil {
-		op.UsageErr(cmd, "first argument must be a number")
+		op.UsageErrf(cmd, "first argument must be a number")
 	} else if n <= 0 {
-		op.UsageErr(cmd, "number of accounts must be > 0")
+		op.UsageErrf(cmd, "number of accounts must be > 0")
 	} else if n > 50 {
-		op.UsageErr(cmd, "number of accounts must be <= 50")
+		op.UsageErrf(cmd, "number of accounts must be <= 50")
 	} else if i := strings.IndexByte(cmd.EmailTpl, '@'); i == -1 {
-		op.UsageErr(cmd, "invalid email address")
+		op.UsageErrf(cmd, "invalid email address")
 	}
 	cmd.Num = n
 	out, err := ctx.Call(cmd)
@@ -118,18 +118,18 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	nameCtr, nameErr := newCounter(cmd.NameTpl)
 	emailCtr, emailErr := newCounter(cmd.EmailTpl)
 	if nameErr != nil {
-		op.UsageErr(cmd, nameErr.Error())
+		op.UsageErr(cmd, nameErr)
 	} else if emailErr != nil {
-		op.UsageErr(cmd, emailErr.Error())
+		op.UsageErr(cmd, emailErr)
 	} else if (nameCtr == nil) != (emailCtr == nil) {
-		op.UsageErr(cmd, "account name/email format mismatch")
+		op.UsageErrf(cmd, "account name/email format mismatch")
 	} else if nameCtr != nil {
 		if err := gw.Refresh(); err != nil {
 			return nil, err
 		}
 		setCounters(gw.Accounts(), nameCtr, emailCtr)
 	} else if n > 1 {
-		op.UsageErr(cmd, "account name/email must be dynamic templates")
+		op.UsageErrf(cmd, "account name/email must be dynamic templates")
 	} else {
 		nameCtr, emailCtr = &counter{p: cmd.NameTpl}, &counter{p: cmd.EmailTpl}
 	}

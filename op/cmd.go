@@ -62,28 +62,28 @@ func Run(args []string) {
 	cmd.FlagCfg(&fs)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			err = nil
+			Help(cmd.Info())
 		}
-		CmdHelp(cmd.Info(), err)
+		UsageErr(cmd, err)
 	}
 
 	// Verify positional argument count
 	args, ci := fs.Args(), cmd.Info()
 	if min, max := ci.MinArgs, ci.MaxArgs; min == max && len(args) != min {
 		if min <= 0 {
-			UsageErr(cmd, "command does not accept any arguments")
+			UsageErrf(cmd, "command does not accept any arguments")
 		} else {
-			UsageErr(cmd, "command requires %d argument(s)", min)
+			UsageErrf(cmd, "command requires %d argument(s)", min)
 		}
 	} else if len(args) < min {
-		UsageErr(cmd, "command requires at least %d argument(s)", min)
+		UsageErrf(cmd, "command requires at least %d argument(s)", min)
 	} else if min < max && max < len(args) {
-		UsageErr(cmd, "command accepts at most %d argument(s)", max)
+		UsageErrf(cmd, "command accepts at most %d argument(s)", max)
 	}
 
 	// Run
 	if err := cmd.Run(NewCtx(), args); err != nil {
-		log.F("Command error: %v\n", err)
+		log.F("Command failed: %v\n", err)
 	}
 }
 
@@ -107,7 +107,7 @@ func getCmd(args []string) (Cmd, []string) {
 	if len(args) > 0 {
 		if ci := cmds[args[0]]; ci != nil {
 			if len(args) > 1 && isHelp(args[1]) {
-				CmdHelp(ci, nil)
+				Help(ci)
 			}
 			return ci.New(), args[1:]
 		}
@@ -116,12 +116,12 @@ func getCmd(args []string) (Cmd, []string) {
 			unknown = args[0]
 		} else if len(args) > 1 {
 			if ci := cmds[args[1]]; ci != nil {
-				CmdHelp(ci, nil)
+				Help(ci)
 			}
 			unknown = args[1]
 		}
 		if unknown != "" {
-			UsageErr(nil, "unknown command %q", unknown)
+			UsageErrf(nil, "unknown command %q", unknown)
 		}
 	}
 	Help(nil)

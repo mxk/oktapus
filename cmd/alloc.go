@@ -55,12 +55,12 @@ func (cmd *alloc) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
 		if n < 1 || 100 < n {
-			op.UsageErr(cmd, "number of accounts must be between 1 and 100")
+			op.UsageErrf(cmd, "number of accounts must be between 1 and 100")
 		}
 		padArgs(cmd, &args)
 		args = args[1:]
 	} else if len(args) != 1 {
-		op.UsageErr(cmd, "first argument must be a number")
+		op.UsageErrf(cmd, "first argument must be a number")
 	} else {
 		n = -1
 	}
