@@ -82,6 +82,8 @@ func CmdHelp(ci *CmdInfo, err error) {
 	w.WriteByte('\n')
 }
 
+// AccountSpecHelp writes short 'account-spec' help for commands that use this
+// argument.
 func AccountSpecHelp(w *bufio.Writer) {
 	w.WriteByte('\n')
 	WriteHelp(w, `

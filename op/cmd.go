@@ -131,6 +131,7 @@ func getCmd(args []string) (Cmd, []string) {
 // strPtrValue implements flag.Value for *string types.
 type strPtrValue struct{ v **string }
 
+// StringPtrVar defines a *string flag with specified name and usage string.
 func StringPtrVar(fs *flag.FlagSet, p **string, name string, usage string) {
 	fs.Var(strPtrValue{p}, name, usage)
 }
