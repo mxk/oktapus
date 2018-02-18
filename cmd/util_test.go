@@ -5,10 +5,23 @@ import (
 	"bytes"
 	"flag"
 	"io/ioutil"
+	"testing"
 
 	"github.com/LuminalHQ/oktapus/mock"
 	"github.com/LuminalHQ/oktapus/op"
+	"github.com/stretchr/testify/require"
 )
+
+func TestHelp(t *testing.T) {
+	var buf bytes.Buffer
+	bio := bufio.NewWriter(&buf)
+	for _, name := range op.CmdNames() {
+		op.GetCmdInfo(name).New().Help(bio)
+		bio.Flush()
+		require.NotZero(t, buf.Len(), "command=%s", name)
+		buf.Reset()
+	}
+}
 
 // newCtx returns a Ctx for testing commands, optionally initializing account
 // control information for the specified account IDs.
@@ -30,13 +43,6 @@ func newCmd(name string, args ...string) op.Cmd {
 	cmd.FlagCfg(&fs)
 	if err := fs.Parse(args); err != nil {
 		panic(err)
-	}
-	var buf bytes.Buffer
-	bio := bufio.NewWriter(&buf)
-	cmd.Help(bio)
-	bio.Flush()
-	if buf.Len() == 0 {
-		panic("command " + name + " does not provide help information")
 	}
 	return cmd
 }

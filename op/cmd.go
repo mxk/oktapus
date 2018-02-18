@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"io/ioutil"
+	"sort"
 )
 
 // cmds maps command names to info structs. New commands are added by calling
@@ -25,6 +26,16 @@ type CmdInfo struct {
 // GetCmdInfo returns command information for the given command name.
 func GetCmdInfo(name string) *CmdInfo {
 	return cmds[name]
+}
+
+// CmdNames returns the canonical names of all registered commands.
+func CmdNames() []string {
+	names := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		names = append(names, c.Names[0])
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Cmd is an executable command interface.
