@@ -24,10 +24,12 @@ var log = internal.Log
 // Name provides common Cmd method implementations.
 type Name string
 
+// Info returns command information.
 func (n Name) Info() *op.CmdInfo {
 	return op.GetCmdInfo(string(n))
 }
 
+// Help provides a default help implementation based on command summary.
 func (n Name) Help(w *bufio.Writer) {
 	ci := op.GetCmdInfo(string(n))
 	w.WriteString(ci.Summary)
@@ -46,13 +48,16 @@ func (noFlags) FlagCfg(fs *flag.FlagSet) {}
 // output.
 type PrintFmt string
 
-// flag.Value interface.
+// String implements flag.Value.String method.
 func (f PrintFmt) String() string { return string(f) }
+
+// Set implements flag.Value.Set method.
 func (f *PrintFmt) Set(s string) error {
 	*f = PrintFmt(s)
 	return nil
 }
 
+// FlagCfg adds -out flag to fs.
 func (f *PrintFmt) FlagCfg(fs *flag.FlagSet) {
 	out := "json"
 	if terminal.IsTerminal(syscall.Stdout) {
