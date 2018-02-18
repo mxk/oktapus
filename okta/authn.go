@@ -49,10 +49,10 @@ type profile struct {
 }
 
 // Key implements Choice.Key method.
-func (f *Factor) Key() string    { return f.ID }
+func (f *Factor) Key() string { return f.ID }
 
 // Value implements Choice.Value method.
-func (f *Factor) Value() string  { return f.driver().name() }
+func (f *Factor) Value() string { return f.driver().name() }
 
 // Prompt implements Choice.Prompt method.
 func (f *Factor) Prompt() string { return f.driver().prompt(f) }
