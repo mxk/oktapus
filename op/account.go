@@ -2,8 +2,6 @@ package op
 
 import (
 	"errors"
-	"math"
-	"math/rand"
 	"sort"
 
 	"github.com/LuminalHQ/oktapus/awsx"
@@ -65,18 +63,6 @@ type Accounts []*Account
 func (s Accounts) Sort() Accounts {
 	// TODO: Natural number sorting
 	sort.Sort(byName(s))
-	return s
-}
-
-// Shuffle randomizes account order.
-func (s Accounts) Shuffle() Accounts {
-	if len(s) > math.MaxInt32 {
-		panic("you have way too many accounts")
-	}
-	for i := int32(len(s) - 1); i > 0; i-- {
-		j := rand.Int31n(i + 1)
-		s[i], s[j] = s[j], s[i]
-	}
 	return s
 }
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -80,11 +81,12 @@ func (cmd *alloc) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 	acs = acs.Filter(func(ac *op.Account) bool {
 		return ac.Err == nil && ac.Owner == ""
-	}).Shuffle()
+	})
 	n := cmd.Num
 	if n == -1 {
 		n = len(acs)
 	}
+	rand.Shuffle(len(acs), func(i, j int) { acs[i], acs[j] = acs[j], acs[i] })
 
 	// Allocate in batches
 	owner := ctx.Gateway().CommonRole.Name()

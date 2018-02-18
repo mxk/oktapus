@@ -41,26 +41,6 @@ func TestAccountCreds(t *testing.T) {
 	require.Equal(t, err, awsx.ErrCredsExpired)
 }
 
-func TestAccountShuffle(t *testing.T) {
-	acs := Accounts{
-		{Name: "a"},
-		{Name: "b"},
-	}
-	var ab, ba bool
-	for i := 0; i < 100 && !(ab && ba); i++ {
-		acs.Sort()
-		require.Equal(t, "a", acs[0].Name)
-		require.Equal(t, "b", acs[1].Name)
-		acs.Shuffle()
-		if acs[0].Name == "a" {
-			ab = true
-		} else {
-			ba = true
-		}
-	}
-	require.True(t, ab && ba)
-}
-
 func TestAccountFilter(t *testing.T) {
 	acs := Accounts{
 		{Name: "a"},
