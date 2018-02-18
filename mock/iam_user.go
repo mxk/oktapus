@@ -53,13 +53,11 @@ func (r UserRouter) Route(s *Session, q *request.Request, api string) bool {
 func (r UserRouter) attachUserPolicy(q *request.Request) {
 	in := q.Params.(*iam.AttachUserPolicyInput)
 	if user := r.get(in.UserName, q); user != nil {
-		arn := aws.StringValue(in.PolicyArn)
-		name := arn[strings.LastIndexByte(arn, '/')+1:]
 		if user.AttachedPolicies == nil {
-			user.AttachedPolicies = map[string]string{arn: name}
-		} else {
-			user.AttachedPolicies[arn] = name
+			user.AttachedPolicies = make(map[string]string)
 		}
+		arn := aws.StringValue(in.PolicyArn)
+		user.AttachedPolicies[arn] = arn[strings.LastIndexByte(arn, '/')+1:]
 	}
 }
 

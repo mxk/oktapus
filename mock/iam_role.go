@@ -41,6 +41,8 @@ func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 		r.listRolePolicies(q)
 	case "iam:ListRoles":
 		r.listRoles(q)
+	case "iam:PutRolePolicy":
+		r.putRolePolicy(q)
 	case "iam:UpdateAssumeRolePolicy":
 		r.updateAssumeRolePolicy(q)
 	case "iam:UpdateRoleDescription":
@@ -54,13 +56,11 @@ func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 func (r RoleRouter) attachRolePolicy(q *request.Request) {
 	in := q.Params.(*iam.AttachRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
-		arn := aws.StringValue(in.PolicyArn)
-		name := arn[strings.LastIndexByte(arn, '/')+1:]
 		if role.AttachedPolicies == nil {
-			role.AttachedPolicies = map[string]string{arn: name}
-		} else {
-			role.AttachedPolicies[arn] = name
+			role.AttachedPolicies = make(map[string]string)
 		}
+		arn := aws.StringValue(in.PolicyArn)
+		role.AttachedPolicies[arn] = arn[strings.LastIndexByte(arn, '/')+1:]
 	}
 }
 
@@ -162,6 +162,17 @@ func (r RoleRouter) listRoles(q *request.Request) {
 		roles = append(roles, &cpy)
 	}
 	q.Data.(*iam.ListRolesOutput).Roles = roles
+}
+
+func (r RoleRouter) putRolePolicy(q *request.Request) {
+	in := q.Params.(*iam.PutRolePolicyInput)
+	if role := r.get(in.RoleName, q); role != nil {
+		if role.InlinePolicies == nil {
+			role.InlinePolicies = make(map[string]string)
+		}
+		name := aws.StringValue(in.PolicyName)
+		role.InlinePolicies[name] = aws.StringValue(in.PolicyDocument)
+	}
 }
 
 func (r RoleRouter) updateAssumeRolePolicy(q *request.Request) {

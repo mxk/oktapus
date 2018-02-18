@@ -1,11 +1,14 @@
 package mock
 
 import (
+	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/iam"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 )
 
@@ -78,6 +81,12 @@ func (r OrgsRouter) AllAccounts() []*orgs.Account {
 // Route implements the Router interface.
 func (r OrgsRouter) Route(s *Session, q *request.Request, api string) bool {
 	switch api {
+	case "organizations:CreateAccount":
+		r.createAccount(q)
+	case "organizations:DescribeAccount":
+		r.describeAccount(q)
+	case "organizations:DescribeCreateAccountStatus":
+		r.describeCreateAccountStatus(q)
 	case "organizations:DescribeOrganization":
 		r.describeOrganization(q)
 	case "organizations:ListAccounts":
@@ -86,6 +95,58 @@ func (r OrgsRouter) Route(s *Session, q *request.Request, api string) bool {
 		return r[reqAccountID(q)].Route(s, q, api)
 	}
 	return true
+}
+
+func (r OrgsRouter) createAccount(q *request.Request) {
+	requireMaster(q)
+	in := q.Params.(*orgs.CreateAccountInput)
+	var max uint64
+	for id := range r {
+		n, err := strconv.ParseUint(id, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		if n > max {
+			max = n
+		}
+	}
+	id := fmt.Sprintf("%.12d", max+1)
+	ac := NewAccount(id, aws.StringValue(in.AccountName))
+	r[id] = ac
+	ac.Email = in.Email
+	role := aws.StringValue(in.RoleName)
+	if role == "" {
+		role = "OrganizationAccountAccessRole"
+	}
+	ac.RoleRouter()[role] = &Role{Role: iam.Role{
+		Arn:      aws.String(RoleARN("", role)),
+		Path:     aws.String("/"),
+		RoleName: aws.String(role),
+	}}
+	q.Data.(*orgs.CreateAccountOutput).CreateAccountStatus = &orgs.CreateAccountStatus{
+		Id:    aws.String(id),
+		State: aws.String(orgs.CreateAccountStateInProgress),
+	}
+}
+
+func (r OrgsRouter) describeAccount(q *request.Request) {
+	requireMaster(q)
+	id := aws.StringValue(q.Params.(*orgs.DescribeAccountInput).AccountId)
+	ac := r.Account(id)
+	cpy := ac.Account
+	q.Data.(*orgs.DescribeAccountOutput).Account = &cpy
+}
+
+func (r OrgsRouter) describeCreateAccountStatus(q *request.Request) {
+	requireMaster(q)
+	id := aws.StringValue(q.Params.(*orgs.DescribeCreateAccountStatusInput).
+		CreateAccountRequestId)
+	ac := r.Account(id)
+	q.Data.(*orgs.DescribeCreateAccountStatusOutput).CreateAccountStatus = &orgs.CreateAccountStatus{
+		AccountId:   ac.Id,
+		AccountName: ac.Name,
+		State:       aws.String(orgs.CreateAccountStateSucceeded),
+	}
 }
 
 func (r OrgsRouter) describeOrganization(q *request.Request) {
