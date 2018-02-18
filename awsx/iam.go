@@ -31,9 +31,8 @@ func DeleteUser(c iamiface.IAMAPI, name string) error {
 	err := internal.GoForEach(2, 2, func(i int) error {
 		if i == 0 {
 			return detachUserPolicies(c, name)
-		} else {
-			return deleteAccessKeys(c, name)
 		}
+		return deleteAccessKeys(c, name)
 	})
 	if err == nil {
 		in := iam.DeleteUserInput{UserName: aws.String(name)}
@@ -112,9 +111,8 @@ func DeleteRole(c iamiface.IAMAPI, role string) error {
 	err := internal.GoForEach(2, 2, func(i int) error {
 		if i == 0 {
 			return detachRolePolicies(c, role)
-		} else {
-			return deleteRolePolicies(c, role)
 		}
+		return deleteRolePolicies(c, role)
 	})
 	if err == nil {
 		in := iam.DeleteRoleInput{RoleName: aws.String(role)}
