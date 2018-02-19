@@ -185,11 +185,11 @@ type SAMLCreds struct {
 }
 
 // NewSAMLCreds returns a new SAML-based CredsProvider.
-func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role, saml string) *SAMLCreds {
+func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role ARN, saml string) *SAMLCreds {
 	return &SAMLCreds{
 		AssumeRoleWithSAMLInput: sts.AssumeRoleWithSAMLInput{
-			PrincipalArn:  aws.String(principal),
-			RoleArn:       aws.String(role),
+			PrincipalArn:  principal.Str(),
+			RoleArn:       role.Str(),
 			SAMLAssertion: aws.String(saml),
 		},
 		api: api,

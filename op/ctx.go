@@ -269,7 +269,7 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 			}
 			awsAppLink = app.LinkURL
 		}
-		auth, err := c.OpenAWS(awsAppLink, ctx.Env[OktaAWSRoleEnv])
+		auth, err := c.OpenAWS(awsAppLink, awsx.ARN(ctx.Env[OktaAWSRoleEnv]))
 		if err != nil {
 			return err
 		}

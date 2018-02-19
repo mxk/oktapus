@@ -19,6 +19,8 @@ type Account struct {
 	Name string
 	Err  error
 
+	// TODO: Add partition here for GovCloud support?
+
 	iam iamiface.IAMAPI
 	cp  awsx.CredsProvider
 	ref Ctl

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 	"github.com/LuminalHQ/oktapus/okta"
 	"github.com/LuminalHQ/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
@@ -64,9 +64,10 @@ func (cmd *execCmd) Help(w *bufio.Writer) {
 		used by AWS CLI and SDKs.
 
 		The -okta option can be used to run the command for each AWS app in
-		Okta. In this mode, account names are derived from Okta app labels. The
-		account-spec can be used to filter apps by label or account ID. The
-		following command lists all available AWS apps in Okta:
+		Okta. In this mode, account names are derived from IAM aliases, with
+		Okta app labels used as fallback. The account-spec can be used to filter
+		apps by label or account ID. The following command lists all available
+		AWS apps in Okta:
 
 		  oktapus exec -okta "" true
 
@@ -101,38 +102,36 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 				return err
 			}
 		}
-		credsOut, err = oktaCreds(ctx, args[0])
+		if ctx.All, err = oktaAccounts(ctx, args[0]); err != nil {
+			return err
+		}
+		credsOut = listCreds(ctx.All, false)
 	} else {
 		cmd := op.GetCmdInfo("creds").New().(*creds)
 		cmd.Spec, args = args[0], args[1:]
 		var out interface{}
-		if out, err = ctx.Call(cmd); err == nil {
-			credsOut = out.([]*credsOutput)
+		if out, err = ctx.Call(cmd); err != nil {
+			return err
 		}
-	}
-	if err != nil {
-		return err
+		credsOut = out.([]*credsOutput)
 	}
 	env := execEnv()
 	credsFail, cmdFail := 0, 0
-	for _, cr := range credsOut {
-		fmt.Fprintf(os.Stderr, "===> Account %s (%s)\n", cr.AccountID, cr.Name)
+	for i, cr := range credsOut {
+		name := cr.Name
+		if cmd.OktaApps {
+			name += ": " + ctx.All[i].Desc
+		}
+		fmt.Fprintf(os.Stderr, "===> Account %s (%s)\n", cr.AccountID, name)
 		if cr.Error != "" {
 			fmt.Fprintf(os.Stderr, "===> ERROR: %s\n", cr.Error)
 			credsFail++
 			continue
 		}
-		awsEnv := []string{
-			op.AccountIDEnv + "=" + cr.AccountID,
-			op.AccountNameEnv + "=" + cr.Name,
-			op.AccessKeyIDEnv + "=" + cr.AccessKeyID,
-			op.SecretKeyEnv + "=" + cr.SecretAccessKey,
-			op.SessionTokenEnv + "=" + cr.SessionToken,
-		}
 		c := exec.Cmd{
 			Path:   path,
 			Args:   args,
-			Env:    append(env, awsEnv...),
+			Env:    mergeEnv(env, cr),
 			Stdin:  os.Stdin,
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
@@ -168,8 +167,19 @@ func execEnv() []string {
 	return env
 }
 
-// oktaCreds returns credentials for all AWS apps in Okta.
-func oktaCreds(ctx *op.Ctx, spec string) ([]*credsOutput, error) {
+// mergeEnv returns command-specific environment configuration.
+func mergeEnv(common []string, cr *credsOutput) []string {
+	return append(common, []string{
+		op.AccountIDEnv + "=" + cr.AccountID,
+		op.AccountNameEnv + "=" + cr.Name,
+		op.AccessKeyIDEnv + "=" + cr.AccessKeyID,
+		op.SecretKeyEnv + "=" + cr.SecretAccessKey,
+		op.SessionTokenEnv + "=" + cr.SessionToken,
+	}...)
+}
+
+// oktaAccounts returns Accounts for all AWS apps in Okta that match the spec.
+func oktaAccounts(ctx *op.Ctx, spec string) (op.Accounts, error) {
 	c := ctx.Okta()
 	apps, err := c.AppLinks()
 	if err != nil {
@@ -184,32 +194,51 @@ func oktaCreds(ctx *op.Ctx, spec string) ([]*credsOutput, error) {
 	if len(links) == 0 {
 		return nil, errors.New("no aws apps found")
 	}
-	creds := make([]*credsOutput, len(links))
+
+	// Open all AWS apps
+	all := make(op.Accounts, len(links))
 	internal.GoForEach(len(links), 40, func(i int) error {
 		timeout := internal.Time().Add(time.Minute)
-	retry:
-		out, err := getAppCreds(c, links[i], ctx.Sess)
-		if err == nil {
-			creds[i] = out
-			return nil
-		}
-		if err == okta.ErrRateLimit && internal.Time().Before(timeout) {
+		for {
+			out, err := getAccount(c, links[i], ctx.Sess)
+			if err == nil || err != okta.ErrRateLimit {
+				all[i] = out
+				return nil
+			}
+			if !internal.Time().Before(timeout) {
+				break
+			}
 			// Limit is 40 requests per 10 seconds
 			// https://support.okta.com/help/Documentation/Knowledge_Article/API-54325410
-			internal.Sleep(15 * time.Second)
-			goto retry
+			internal.Sleep(12 * time.Second)
 		}
-		creds[i] = &credsOutput{
-			Name:  links[i].Label,
-			Error: explainError(err),
-		}
+		log.E("Timeout while waiting for AWS app %q: %v", links[i].Label, err)
 		return nil
 	})
-	return filterCreds(creds, spec)
+
+	// Remove duplicate and invalid accounts
+	ids := make(map[string]int, len(all))
+	acs := all[:0]
+	for i, ac := range all {
+		if ac == nil {
+			continue
+		}
+		if idx, dup := ids[ac.ID]; dup {
+			log.W("Apps %q and %q refer to the same account %s (%s)",
+				links[idx].Label, links[i].Label, ac.ID, ac.Name)
+			continue
+		}
+		ids[ac.ID] = i
+		acs = append(acs, ac)
+	}
+
+	// Apply account-spec
+	acs, err = op.ParseAccountSpec(spec, "").Filter(acs)
+	return acs.Sort(), err
 }
 
-// getAppCreds returns credentials for an AWS app in Okta.
-func getAppCreds(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*credsOutput, error) {
+// getAccount returns a new Account for an AWS app in Okta.
+func getAccount(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*op.Account, error) {
 	auth, err := c.OpenAWS(app.LinkURL, "")
 	if err != nil {
 		if err != okta.ErrRateLimit {
@@ -221,65 +250,31 @@ func getAppCreds(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*
 		log.W("Multiple AWS roles available for %q, using %q",
 			app.Label, auth.Roles[0].Role)
 	}
-
-	// TODO: Improve GovCloud handling
+	r := auth.Roles[0]
 
 	// Exchange SAML assertion for temporary security credentials
 	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
-	role, _ := arn.Parse(auth.Roles[0].Role)
-	if role.Partition == endpoints.AwsUsGovPartitionID {
-		cfg.EndpointResolver = endpoints.AwsUsGovPartition()
-		cfg.Region = aws.String(endpoints.UsGovWest1RegionID)
+	if r.Role.Partition() == endpoints.AwsUsGovPartitionID {
+		cp = awsx.GovCloudConfigProvider{ConfigProvider: cp}
 	}
 	stsc := sts.New(cp, &cfg)
-	cr := auth.Creds(stsc.AssumeRoleWithSAML, auth.Roles[0])
-	v, err := cr.Creds().Get()
-	if err != nil {
+	cr := auth.Creds(stsc.AssumeRoleWithSAML, r)
+	if _, err = cr.Creds().Get(); err != nil {
 		log.E("Failed to get credentials for %q: %v", app.Label, err)
 		return nil, err
 	}
 
-	// Get account ID
-	stsc.Config.Credentials = cr.Creds()
-	ident, err := stsc.GetCallerIdentity(nil)
-	if err != nil {
-		log.E("Failed to get account ID for %q: %v", app.Label, err)
-		return nil, err
-	}
-	return &credsOutput{
-		AccountID:       aws.StringValue(ident.Account),
-		Name:            app.Label,
-		Expires:         expTime{cr.Expires()},
-		AccessKeyID:     v.AccessKeyID,
-		SecretAccessKey: v.SecretAccessKey,
-		SessionToken:    v.SessionToken,
-	}, nil
-}
-
-// filterCreds uses account filtering logic to filter credentials by account id
-// or name.
-func filterCreds(creds []*credsOutput, spec string) ([]*credsOutput, error) {
-	idm := make(map[string]*credsOutput, len(creds))
-	acs := make(op.Accounts, 0, len(creds))
-	for _, cr := range creds {
-		if other := idm[cr.AccountID]; other != nil {
-			log.W("Credentials for %q and %q refer to the same AWS account (%s)",
-				other.Name, cr.Name, cr.AccountID)
-		} else {
-			idm[cr.AccountID] = cr
-			ac := op.NewAccount(cr.AccountID, cr.Name)
-			// TODO: Get real control info?
-			ac.Ctl = new(op.Ctl)
-			acs = append(acs, ac)
+	// Create account
+	ac := op.NewAccount(r.Role.Account(), app.Label)
+	ac.Ctl = &op.Ctl{Desc: app.Label}
+	ac.Init(cp, cr)
+	out, err := ac.IAM().ListAccountAliases(nil)
+	if len(out.AccountAliases) > 0 {
+		if name := aws.StringValue(out.AccountAliases[0]); name != "" {
+			ac.Name = name
 		}
+	} else if err != nil {
+		log.W("Failed to get account alias %q: %v", app.Label, err)
 	}
-	acs, err := op.ParseAccountSpec(spec, "").Filter(acs)
-	if err != nil || len(acs) == 0 {
-		return nil, err
-	}
-	creds = creds[:0]
-	for _, ac := range acs.Sort() {
-		creds = append(creds, idm[ac.ID])
-	}
-	return creds, nil
+	return ac, nil
 }

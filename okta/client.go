@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/internal"
 )
 
@@ -119,7 +120,7 @@ func (c *Client) AppLinks() ([]*AppLink, error) {
 
 // OpenAWS returns SAML authentication data for the AWS app specified by
 // appLink. If roleARN is specified, the matching AWS role is pre-selected.
-func (c *Client) OpenAWS(appLink, roleARN string) (*AWSAuth, error) {
+func (c *Client) OpenAWS(appLink string, role awsx.ARN) (*AWSAuth, error) {
 	ref, err := url.Parse(appLink)
 	if err != nil {
 		return nil, err
@@ -144,7 +145,7 @@ func (c *Client) OpenAWS(appLink, roleARN string) (*AWSAuth, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newAWSAuth(sa, roleARN)
+	return newAWSAuth(sa, role)
 }
 
 // state contains serialized Client state.
