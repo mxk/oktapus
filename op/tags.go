@@ -107,6 +107,13 @@ func (t *Tags) Apply(set, clr Tags) {
 	*t = u
 }
 
+// alias returns true if t and u share the same backing array.
+func (t Tags) alias(u Tags) bool {
+	// Taken from math/big/nat.go, doesn't work if capacity is changed
+	return cap(t) > 0 && cap(u) > 0 &&
+		&t[0:cap(t)][cap(t)-1] == &u[0:cap(u)][cap(u)-1]
+}
+
 // parseTag returns the name and negation state of tag t. An error is returned
 // if t is not a valid tag.
 func parseTag(t string, negOK bool) (name string, neg bool, err error) {

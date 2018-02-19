@@ -125,6 +125,16 @@ func TestCtlMerge(t *testing.T) {
 	}
 }
 
+func TestCtlAlias(t *testing.T) {
+	ctl := Ctl{Tags: Tags{"a", "b", "c"}}
+	cur := Ctl{}
+	ref := ctl
+	assert.Panics(t, func() { ctl.copy(&ref) })
+	assert.Panics(t, func() { ctl.merge(&cur, &ref) })
+	assert.Panics(t, func() { ctl.merge(&ref, &cur) })
+	assert.Panics(t, func() { cur.merge(&ctl, &ref) })
+}
+
 type ctlIAM struct {
 	iamiface.IAMAPI
 	desc *string

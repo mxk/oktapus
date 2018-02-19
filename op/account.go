@@ -125,7 +125,7 @@ func (s Accounts) RefreshCtl() Accounts {
 			if ac.Ctl == nil {
 				ac.Ctl = new(Ctl)
 			}
-			*ac.Ctl = ac.ref
+			ac.Ctl.copy(&ac.ref)
 		}
 	})
 }
@@ -159,7 +159,7 @@ func (s Accounts) Save() Accounts {
 
 		// Update state
 		if ac.Err = ac.Ctl.Set(ac.iam); ac.Err == nil {
-			ac.ref = *ac.Ctl
+			ac.ref.copy(ac.Ctl)
 		}
 	})
 }

@@ -86,8 +86,24 @@ func (ctl *Ctl) eq(other *Ctl) bool {
 		internal.StringsEq(ctl.Tags, other.Tags))
 }
 
+// copy performs a deep copy of other to ctl.
+func (ctl *Ctl) copy(other *Ctl) {
+	if ctl != other {
+		if ctl.Tags.alias(other.Tags) {
+			panic("op: tag aliasing detected during copy")
+		}
+		tags := append(ctl.Tags[:0], other.Tags...)
+		*ctl = *other
+		ctl.Tags = tags
+	}
+}
+
 // merge performs a 3-way merge of account control information changes.
 func (ctl *Ctl) merge(cur, ref *Ctl) {
+	if ctl.Tags.alias(cur.Tags) || ctl.Tags.alias(ref.Tags) ||
+		cur.Tags.alias(ref.Tags) {
+		panic("op: tag aliasing detected during merge")
+	}
 	if ctl.Owner == ref.Owner {
 		ctl.Owner = cur.Owner
 	}
