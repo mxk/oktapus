@@ -19,7 +19,11 @@ func TestStaticCreds(t *testing.T) {
 	defer internal.SetTime(time.Time{})
 
 	v := credsVal("StaticCreds")
-	c := &StaticCreds{Value: v, Exp: exp}
+	c := NewStaticCreds(v.AccessKeyID, v.SecretAccessKey, v.SessionToken)
+	c.ProviderName = v.ProviderName
+	require.Equal(t, v, c.Value)
+
+	c.Exp = exp
 	cr := c.Creds()
 	require.NotNil(t, cr)
 

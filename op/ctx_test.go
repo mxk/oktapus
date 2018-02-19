@@ -10,8 +10,8 @@ import (
 )
 
 func TestCtxAWS(t *testing.T) {
-	os.Unsetenv("OKTA_ORG")
-	os.Setenv("OKTAPUS_NO_DAEMON", "1")
+	os.Unsetenv(OktaHostEnv)
+	os.Setenv(NoDaemonEnv, "1")
 	ctx := NewCtx()
 
 	ctx.Sess = mock.NewSession()

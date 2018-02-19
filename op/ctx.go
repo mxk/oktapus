@@ -5,8 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/LuminalHQ/oktapus/awsx"
 	"github.com/LuminalHQ/oktapus/daemon"
@@ -28,38 +28,51 @@ const IAMPath = "/oktapus/"
 // TmpIAMPath is a path for temporary users and roles.
 const TmpIAMPath = IAMPath + "tmp/"
 
+// Environment variables that affect Ctx operation. Okta vars match those from
+// github.com/oktadeveloper/okta-aws-cli-assume-role.
+const (
+	OktaHostEnv    = "OKTA_ORG"
+	OktaSessEnv    = "OKTA_SID"
+	OktaUserEnv    = "OKTA_USERNAME"
+	OktaAWSAppEnv  = "OKTA_AWS_APP_URL"
+	OktaAWSRoleEnv = "OKTA_AWS_ROLE_TO_ASSUME"
+
+	AWSProfileEnv = "OKTAPUS_AWS_PROFILE"
+	MasterRoleEnv = "OKTAPUS_MASTER_ROLE"
+	CommonRoleEnv = "OKTAPUS_COMMON_ROLE"
+	NoDaemonEnv   = "OKTAPUS_NO_DAEMON"
+
+	AccountIDEnv    = "AWS_ACCOUNT_ID"
+	AccountNameEnv  = "AWS_ACCOUNT_NAME"
+	AccessKeyIDEnv  = "AWS_ACCESS_KEY_ID"
+	SecretKeyEnv    = "AWS_SECRET_ACCESS_KEY"
+	SessionTokenEnv = "AWS_SESSION_TOKEN"
+)
+
 // Ctx provides global configuration information.
 type Ctx struct {
-	OktaHost       string
-	OktaSID        string
-	OktaUser       string
-	OktaAWSAppLink string
-	AWSRoleARN     string
-	MasterRole     string
-	CommonRole     string
-	UseDaemon      bool
-
+	Env  map[string]string
 	All  Accounts
 	Sess client.ConfigProvider
+
+	UseDaemon bool
 
 	okta *okta.Client
 	gw   *awsx.Gateway
 }
 
-// NewCtx populates a new context from the environment variables.
+// NewCtx returns a new command execution context configured from environment
+// variables.
 func NewCtx() *Ctx {
-	// Using same env vars as github.com/oktadeveloper/okta-aws-cli-assume-role
-	ctx := &Ctx{
-		OktaHost:       os.Getenv("OKTA_ORG"),
-		OktaSID:        os.Getenv("OKTA_SID"),
-		OktaUser:       os.Getenv("OKTA_USERNAME"),
-		OktaAWSAppLink: os.Getenv("OKTA_AWS_APP_URL"),
-		AWSRoleARN:     os.Getenv("OKTA_AWS_ROLE_TO_ASSUME"),
-		MasterRole:     os.Getenv("OKTAPUS_MASTER_ROLE"),
-		CommonRole:     os.Getenv("OKTAPUS_COMMON_ROLE"),
-		UseDaemon:      true,
+	env := make(map[string]string)
+	for _, kv := range os.Environ() {
+		if len(kv) > 4 && (kv[:4] == "OKTA" || kv[:4] == "AWS_") {
+			i := strings.IndexByte(kv, '=')
+			env[kv[:i]] = kv[i+1:]
+		}
 	}
-	if v, ok := os.LookupEnv("OKTAPUS_NO_DAEMON"); ok {
+	ctx := &Ctx{Env: env, UseDaemon: true}
+	if v, ok := ctx.Env[NoDaemonEnv]; ok {
 		no, err := strconv.ParseBool(v)
 		ctx.UseDaemon = err == nil && !no
 	}
@@ -68,29 +81,38 @@ func NewCtx() *Ctx {
 
 // UseOkta returns true if Okta is used for authentication.
 func (ctx *Ctx) UseOkta() bool {
-	return ctx.OktaHost != ""
+	return ctx.Env[OktaHostEnv] != ""
 }
 
-// Okta returns a client for Okta.
+// InExec returns true if the process was started by the exec command. Only one
+// account is accessible in this mode, with credentials provided in environment
+// variables.
+func (ctx *Ctx) InExec() bool {
+	return !ctx.UseDaemon && awsx.IsAccountID(ctx.Env[AccountIDEnv])
+}
+
+// Okta returns an Okta client.
 func (ctx *Ctx) Okta() *okta.Client {
 	if ctx.okta != nil {
 		return ctx.okta
 	}
-	if ctx.OktaHost == "" {
+	host := ctx.Env[OktaHostEnv]
+	if host == "" {
 		log.F("Okta host not configured")
 	}
-	ctx.okta = okta.NewClient(ctx.OktaHost)
-	if ctx.OktaSID != "" {
-		if err := ctx.okta.RefreshSession(ctx.OktaSID); err != nil {
+	c := okta.NewClient(host)
+	if sid := ctx.Env[OktaSessEnv]; sid != "" {
+		if err := c.RefreshSession(sid); err != nil {
 			log.F("Failed to refresh Okta session: %v", err)
 		}
 	} else {
-		authn := newTermAuthn(ctx.OktaUser)
-		if err := ctx.okta.Authenticate(authn); err != nil {
+		authn := newTermAuthn(ctx.Env[OktaUserEnv])
+		if err := c.Authenticate(authn); err != nil {
 			log.F("Okta authentication failed: %v", err)
 		}
 	}
-	return ctx.okta
+	ctx.okta = c
+	return c
 }
 
 // Gateway returns an AWS gateway client.
@@ -99,62 +121,69 @@ func (ctx *Ctx) Gateway() *awsx.Gateway {
 		return ctx.gw
 	}
 	if ctx.Sess == nil {
-		var err error
+		var cfg aws.Config
 		if ctx.UseOkta() {
 			// With Okta, all credentials must be explicit
 			cp := &credentials.ErrorProvider{
 				Err:          errors.New("missing credentials"),
 				ProviderName: "ErrorProvider",
 			}
-			cfg := aws.Config{Credentials: credentials.NewCredentials(cp)}
-			ctx.Sess, err = NewSession(&cfg)
-		} else {
-			ctx.Sess, err = NewSession(nil)
+			cfg.Credentials = credentials.NewCredentials(cp)
 		}
-		if err != nil {
+		var err error
+		if ctx.Sess, err = NewSession(&cfg); err != nil {
 			log.F("Failed to create AWS session: %v", err)
 		}
 	}
-	ctx.gw = awsx.NewGateway(ctx.Sess)
+	gw := awsx.NewGateway(ctx.Sess)
 	if ctx.UseOkta() {
-		ctx.gw.Creds = ctx.newOktaCreds(ctx.Sess)
+		gw.Creds = ctx.newOktaCreds(ctx.Sess)
 	}
-	ctx.gw.MasterRole = awsx.NewARN("", "", "", "", "role", IAMPath,
-		"OktapusOrganizationsProxy")
-	if ctx.MasterRole != "" {
-		ctx.gw.MasterRole = ctx.gw.MasterRole.WithPathName(ctx.MasterRole)
+	gw.MasterRole = awsx.NilARN + "role" + IAMPath + "OktapusOrganizationsProxy"
+	if r := ctx.Env[MasterRoleEnv]; r != "" {
+		gw.MasterRole = gw.MasterRole.WithPathName(r)
 	}
-	if err := ctx.gw.Connect(); err != nil {
+	if err := gw.Connect(); err != nil {
 		log.F("AWS connection failed: %v", err)
 	}
-	if ctx.CommonRole != "" {
-		ctx.gw.CommonRole = ctx.gw.CommonRole.WithPathName(ctx.CommonRole)
+	if r := ctx.Env[CommonRoleEnv]; r != "" {
+		gw.CommonRole = gw.CommonRole.WithPathName(r)
 	} else {
-		ctx.gw.CommonRole = ctx.gw.CommonRole.WithPath(IAMPath)
+		gw.CommonRole = gw.CommonRole.WithPath(IAMPath)
 	}
-	return ctx.gw
+	ctx.gw = gw
+	return gw
 }
 
 // Accounts returns all accounts in the organization that match the spec.
 func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	gw := ctx.Gateway()
 	if ctx.All == nil {
-		if err := gw.Refresh(); err != nil {
-			log.E("Failed to list accounts")
-			return nil, err
-		}
-		info := gw.Accounts()
-		ctx.All = make(Accounts, len(info))
-		for i, ac := range info {
-			n := NewAccount(ac.ID, ac.Name)
-			n.Init(gw, gw.CredsProvider(ac.ID))
-			ctx.All[i] = n
+		if ctx.InExec() {
+			ac := NewAccount(ctx.Env[AccountIDEnv], ctx.Env[AccountNameEnv])
+			ac.Init(gw, awsx.NewStaticCreds(
+				ctx.Env[AccessKeyIDEnv],
+				ctx.Env[SecretKeyEnv],
+				ctx.Env[SessionTokenEnv],
+			))
+			ctx.All = Accounts{ac}
+		} else {
+			if err := gw.Refresh(); err != nil {
+				log.E("Failed to list accounts")
+				return nil, err
+			}
+			info := gw.Accounts()
+			ctx.All = make(Accounts, len(info))
+			for i, ac := range info {
+				n := NewAccount(ac.ID, ac.Name)
+				n.Init(gw, gw.CredsProvider(ac.ID))
+				ctx.All[i] = n
+			}
 		}
 	}
 	ctx.All.RequireCtl()
 	acs, err := ParseAccountSpec(spec, gw.CommonRole.Name()).Filter(ctx.All)
-	sort.Sort(byName(acs))
-	return acs, err
+	return acs.Sort(), err
 }
 
 // Call executes cmd locally or via a daemon process.
@@ -180,25 +209,31 @@ func (ctx *Ctx) EnvMap() map[string]string {
 			}
 		}
 	}
-	return map[string]string{
-		"VERSION":                 internal.AppVersion,
-		"UID":                     uid,
-		"AWS_ACCESS_KEY_ID":       akid,
-		"OKTA_ORG":                ctx.OktaHost,
-		"OKTA_SID":                ctx.OktaSID,
-		"OKTA_USERNAME":           ctx.OktaUser,
-		"OKTA_AWS_APP_URL":        ctx.OktaAWSAppLink,
-		"OKTA_AWS_ROLE_TO_ASSUME": ctx.AWSRoleARN,
-		"OKTAPUS_MASTER_ROLE":     ctx.MasterRole,
-		"OKTAPUS_COMMON_ROLE":     ctx.CommonRole,
+	keys := []string{
+		OktaHostEnv,
+		OktaSessEnv,
+		OktaUserEnv,
+		OktaAWSAppEnv,
+		OktaAWSRoleEnv,
+		MasterRoleEnv,
+		CommonRoleEnv,
 	}
+	m := map[string]string{
+		"VERSION":      internal.AppVersion,
+		"UID":          uid,
+		AccessKeyIDEnv: akid,
+	}
+	for _, k := range keys {
+		m[k] = ctx.Env[k]
+	}
+	return m
 }
 
 // StartDaemon configures and starts a new daemon process.
 func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 	if ctx.UseOkta() {
 		s := ctx.Okta().Session()
-		c.Env = append(c.Env, "OKTA_SID="+s.ID)
+		c.Env = append(c.Env, OktaSessEnv+"="+s.ID)
 	}
 	return c.Start()
 }
@@ -208,9 +243,10 @@ func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
 	c := awsx.NewSAMLCreds(sts.New(sess, &cfg).AssumeRoleWithSAML, "", "", "")
+	awsAppLink := ctx.Env[OktaAWSAppEnv]
 	c.Renew = func(in *sts.AssumeRoleWithSAMLInput) error {
 		c := ctx.Okta()
-		if ctx.OktaAWSAppLink == "" {
+		if awsAppLink == "" {
 			apps, err := c.AppLinks()
 			if err != nil {
 				return err
@@ -231,9 +267,9 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 			} else if multiple {
 				log.W("Multiple AWS apps found in Okta, using %q", app.Label)
 			}
-			ctx.OktaAWSAppLink = app.LinkURL
+			awsAppLink = app.LinkURL
 		}
-		auth, err := c.OpenAWS(ctx.OktaAWSAppLink, ctx.AWSRoleARN)
+		auth, err := c.OpenAWS(awsAppLink, ctx.Env[OktaAWSRoleEnv])
 		if err != nil {
 			return err
 		}
@@ -248,7 +284,9 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 
 // NewSession returns a new AWS session with the given config.
 func NewSession(cfg *aws.Config) (client.ConfigProvider, error) {
-	sess, err := session.NewSession(cfg)
+	opts := session.Options{Profile: os.Getenv(AWSProfileEnv)}
+	opts.Config.MergeIn(cfg)
+	sess, err := session.NewSessionWithOptions(opts)
 	if err == nil {
 		// Remove useless handler that writes messages to stdout
 		sess.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)

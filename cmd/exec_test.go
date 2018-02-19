@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/oktapus/op"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExec(t *testing.T) {
-	if os.Getenv("AWS_ACCOUNT_ID") != "" {
+	if os.Getenv(op.AccountIDEnv) != "" {
 		env := os.Environ()
 		awsEnv := env[:0]
 		for _, v := range env {
@@ -26,7 +27,7 @@ func TestExec(t *testing.T) {
 		for _, v := range awsEnv {
 			fmt.Println(v)
 		}
-		if os.Getenv("AWS_ACCOUNT_NAME") == "test2" {
+		if os.Getenv(op.AccountNameEnv) == "test2" {
 			os.Exit(1)
 		}
 		os.Exit(0)

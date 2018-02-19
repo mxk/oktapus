@@ -108,6 +108,18 @@ type StaticCreds struct {
 	creds *credentials.Credentials
 }
 
+// NewStaticCreds returns static credentials that do not expire.
+func NewStaticCreds(accessKeyID, secretAccessKey, sessionToken string) *StaticCreds {
+	return &StaticCreds{
+		Value: credentials.Value{
+			AccessKeyID:     accessKeyID,
+			SecretAccessKey: secretAccessKey,
+			SessionToken:    sessionToken,
+		},
+		Exp: time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+}
+
 // Creds returns credentials using StaticCreds as the provider.
 func (c *StaticCreds) Creds() *credentials.Credentials {
 	if c.creds == nil {

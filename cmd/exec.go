@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/LuminalHQ/oktapus/internal"
@@ -72,6 +73,13 @@ func (cmd *execCmd) Help(w *bufio.Writer) {
 		Due to Okta request rate limits, this command may take a long time to
 		execute if there are hundreds of AWS apps in your Okta account (but who
 		would ever have that many apps, right?).
+
+		Oktapus can execute itself with the exec command. This mostly needed to
+		configure initial account access. In this mode, the gateway function is
+		disabled and the given command operates on just one account, so the
+		account-spec should be empty. For example:
+
+		  oktapus exec -okta "" oktapus authz --principal ... "" user@example.com
 	`)
 	op.AccountSpecHelp(w)
 }
@@ -105,8 +113,7 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
-	env := os.Environ()
-	env = append(make([]string, 0, len(env)+5), env...)
+	env := execEnv()
 	credsFail, cmdFail := 0, 0
 	for _, cr := range credsOut {
 		fmt.Fprintf(os.Stderr, "===> Account %s (%s)\n", cr.AccountID, cr.Name)
@@ -116,11 +123,11 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 			continue
 		}
 		awsEnv := []string{
-			"AWS_ACCOUNT_ID=" + cr.AccountID,
-			"AWS_ACCOUNT_NAME=" + cr.Name,
-			"AWS_ACCESS_KEY_ID=" + cr.AccessKeyID,
-			"AWS_SECRET_ACCESS_KEY=" + cr.SecretAccessKey,
-			"AWS_SESSION_TOKEN=" + cr.SessionToken,
+			op.AccountIDEnv + "=" + cr.AccountID,
+			op.AccountNameEnv + "=" + cr.Name,
+			op.AccessKeyIDEnv + "=" + cr.AccessKeyID,
+			op.SecretKeyEnv + "=" + cr.SecretAccessKey,
+			op.SessionTokenEnv + "=" + cr.SessionToken,
 		}
 		c := exec.Cmd{
 			Path:   path,
@@ -146,6 +153,19 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 			n, s, credsFail)
 	}
 	return nil
+}
+
+// execEnv returns environment variables used for all command invocations.
+func execEnv() []string {
+	all := os.Environ()
+	env := make([]string, 0, len(all)+8)
+	for _, e := range all {
+		if !strings.HasPrefix(e, "OKTA_") {
+			env = append(env, e)
+		}
+	}
+	env = append(env, op.NoDaemonEnv+"=1")
+	return env
 }
 
 // oktaCreds returns credentials for all AWS apps in Okta.
