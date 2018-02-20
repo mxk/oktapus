@@ -28,7 +28,7 @@ func init() {
 	op.Register(&op.CmdInfo{
 		Names:   []string{"exec"},
 		Summary: "Run external command for multiple accounts",
-		Usage:   "[-okta] account-spec command ...",
+		Usage:   "[options] account-spec command ...",
 		MinArgs: 2,
 		New:     func() op.Cmd { return &execCmd{Name: "exec"} },
 	})
@@ -36,7 +36,8 @@ func init() {
 
 type execCmd struct {
 	Name
-	OktaApps bool
+	OktaApps  bool
+	Partition string
 }
 
 func (cmd *execCmd) Help(w *bufio.Writer) {
@@ -88,6 +89,8 @@ func (cmd *execCmd) Help(w *bufio.Writer) {
 func (cmd *execCmd) FlagCfg(fs *flag.FlagSet) {
 	fs.BoolVar(&cmd.OktaApps, "okta", false,
 		"Execute command for each AWS app in Okta")
+	fs.StringVar(&cmd.Partition, "partition", "aws",
+		"Only operate on Okta AWS apps within one `partition`")
 }
 
 func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
@@ -103,7 +106,7 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 				return err
 			}
 		}
-		if ctx.All, err = oktaAccounts(ctx, spec); err != nil {
+		if ctx.All, err = oktaAccounts(ctx, cmd.Partition, spec); err != nil {
 			return err
 		}
 		credsOut = listCreds(ctx.All, false)
@@ -180,7 +183,7 @@ func mergeEnv(common []string, cr *credsOutput) []string {
 }
 
 // oktaAccounts returns Accounts for all AWS apps in Okta that match the spec.
-func oktaAccounts(ctx *op.Ctx, spec string) (op.Accounts, error) {
+func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 	c := ctx.Okta()
 	apps, err := c.AppLinks()
 	if err != nil {
@@ -199,22 +202,12 @@ func oktaAccounts(ctx *op.Ctx, spec string) (op.Accounts, error) {
 
 	// Open all AWS apps
 	all := make(op.Accounts, len(links))
+	role := awsx.ARN(ctx.Env[op.OktaAWSRoleEnv])
 	internal.GoForEach(len(links), 40, func(i int) error {
-		timeout := internal.Time().Add(time.Minute)
-		for {
-			out, err := getAccount(c, links[i], ctx.Sess)
-			if err == nil || err != okta.ErrRateLimit {
-				all[i] = out
-				return nil
-			}
-			if !internal.Time().Before(timeout) {
-				break
-			}
-			// Limit is 40 requests per 10 seconds
-			// https://support.okta.com/help/Documentation/Knowledge_Article/API-54325410
-			internal.Sleep(12 * time.Second)
+		auth := getAWSAuth(c, links[i], role)
+		if auth != nil && (part == "" || auth.Roles[0].Role.Partition() == part) {
+			all[i] = getAccount(links[i], auth, ctx.Sess)
 		}
-		log.E("Timeout while waiting for AWS app %q: %v", links[i].Label, err)
 		return nil
 	})
 
@@ -239,20 +232,35 @@ func oktaAccounts(ctx *op.Ctx, spec string) (op.Accounts, error) {
 	return acs.Sort(), err
 }
 
-// getAccount returns a new Account for an AWS app in Okta.
-func getAccount(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*op.Account, error) {
-	auth, err := c.OpenAWS(app.LinkURL, "")
-	if err != nil {
+// getAWSAuth returns authentication data for an AWS app in Okta.
+func getAWSAuth(c *okta.Client, app *okta.AppLink, role awsx.ARN) *okta.AWSAuth {
+	timeout := internal.Time().Add(time.Minute)
+	for {
+		auth, err := c.OpenAWS(app.LinkURL, role)
 		if err != okta.ErrRateLimit {
+			if err == nil {
+				return auth
+			}
 			log.E("Failed to open AWS app %q: %v", app.Label, err)
+			return nil
 		}
-		return nil, err
+		if !internal.Time().Before(timeout) {
+			log.E("Okta rate limit timeout for AWS app %q", app.Label)
+			return nil
+		}
+		// Limit is 40 requests per 10 seconds
+		// https://support.okta.com/help/Documentation/Knowledge_Article/API-54325410
+		internal.Sleep(11 * time.Second)
 	}
+}
+
+// getAccount returns a new Account for an AWS app in Okta.
+func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cp client.ConfigProvider) *op.Account {
+	r := auth.Roles[0]
 	if len(auth.Roles) > 1 {
 		log.W("Multiple AWS roles available for %q, using %q",
-			app.Label, auth.Roles[0].Role)
+			app.Label, r.Role)
 	}
-	r := auth.Roles[0]
 
 	// Exchange SAML assertion for temporary security credentials
 	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
@@ -261,9 +269,9 @@ func getAccount(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*o
 	}
 	stsc := sts.New(cp, &cfg)
 	cr := auth.Creds(stsc.AssumeRoleWithSAML, r)
-	if _, err = cr.Creds().Get(); err != nil {
+	if _, err := cr.Creds().Get(); err != nil {
 		log.E("Failed to get credentials for %q: %v", app.Label, err)
-		return nil, err
+		return nil
 	}
 
 	// Create account
@@ -276,7 +284,7 @@ func getAccount(c *okta.Client, app *okta.AppLink, cp client.ConfigProvider) (*o
 			ac.Name = name
 		}
 	} else if err != nil {
-		log.W("Failed to get account alias %q: %v", app.Label, err)
+		log.W("Failed to get account alias for %q: %v", app.Label, err)
 	}
-	return ac, nil
+	return ac
 }
