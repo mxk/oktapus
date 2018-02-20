@@ -54,9 +54,8 @@ func (cmd *creds) FlagCfg(fs *flag.FlagSet) {
 		"Renew temporary credentials")
 	fs.StringVar(&cmd.User, "user", "",
 		"Get long-term credentials for the `name`d IAM user")
-	fs.StringVar(&cmd.Policy, "policy",
-		"arn:aws:iam::aws:policy/AdministratorAccess",
-		"Set user policy `ARN`")
+	fs.StringVar(&cmd.Policy, "policy", "",
+		"Set user policy `ARN` (default is AdministratorAccess)")
 	fs.BoolVar(&cmd.Tmp, "tmp", false,
 		"Delete this user automatically when the account is freed")
 }
@@ -83,7 +82,12 @@ func (cmd *creds) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Tmp {
 		user = user.WithPath(op.TmpIAMPath + user.Path())
 	}
-	km := newKeyMaker(user, cmd.Policy)
+	policy := awsx.ARN(cmd.Policy)
+	if policy == "" {
+		part := ctx.Gateway().Ident().UserARN.Partition()
+		policy = awsx.AdminAccess.WithPartition(part)
+	}
+	km := newKeyMaker(user, policy)
 	acs.Apply(func(i int, ac *op.Account) {
 		if ac.Err != nil && ac.Err != op.ErrNoCtl {
 			return
@@ -110,20 +114,12 @@ type keyMaker struct {
 	key  iam.CreateAccessKeyInput
 }
 
-func newKeyMaker(user awsx.ARN, policy string) *keyMaker {
-	name := user.Name()
+func newKeyMaker(user, policy awsx.ARN) *keyMaker {
+	name := aws.String(user.Name())
 	return &keyMaker{
-		iam.CreateUserInput{
-			Path:     aws.String(user.Path()),
-			UserName: aws.String(name),
-		},
-		iam.AttachUserPolicyInput{
-			PolicyArn: aws.String(policy),
-			UserName:  aws.String(name),
-		},
-		iam.CreateAccessKeyInput{
-			UserName: aws.String(name),
-		},
+		iam.CreateUserInput{Path: aws.String(user.Path()), UserName: name},
+		iam.AttachUserPolicyInput{PolicyArn: policy.Str(), UserName: name},
+		iam.CreateAccessKeyInput{UserName: name},
 	}
 }
 

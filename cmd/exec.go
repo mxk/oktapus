@@ -28,7 +28,7 @@ func init() {
 	op.Register(&op.CmdInfo{
 		Names:   []string{"exec"},
 		Summary: "Run external command for multiple accounts",
-		Usage:   "account-spec command ...",
+		Usage:   "[-okta] account-spec command ...",
 		MinArgs: 2,
 		New:     func() op.Cmd { return &execCmd{Name: "exec"} },
 	})
@@ -80,7 +80,7 @@ func (cmd *execCmd) Help(w *bufio.Writer) {
 		disabled and the given command operates on just one account, so the
 		account-spec should be empty. For example:
 
-		  oktapus exec -okta "" oktapus authz --principal ... "" user@example.com
+		  oktapus exec -okta "" oktapus authz -principal ... "" user@example.com
 	`)
 	op.AccountSpecHelp(w)
 }
@@ -95,6 +95,7 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 	if err != nil {
 		return err
 	}
+	spec, args := args[0], args[1:]
 	var credsOut []*credsOutput
 	if cmd.OktaApps {
 		if ctx.Sess == nil {
@@ -102,13 +103,13 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 				return err
 			}
 		}
-		if ctx.All, err = oktaAccounts(ctx, args[0]); err != nil {
+		if ctx.All, err = oktaAccounts(ctx, spec); err != nil {
 			return err
 		}
 		credsOut = listCreds(ctx.All, false)
 	} else {
 		cmd := op.GetCmdInfo("creds").New().(*creds)
-		cmd.Spec, args = args[0], args[1:]
+		cmd.Spec = spec
 		var out interface{}
 		if out, err = ctx.Call(cmd); err != nil {
 			return err
@@ -169,13 +170,13 @@ func execEnv() []string {
 
 // mergeEnv returns command-specific environment configuration.
 func mergeEnv(common []string, cr *credsOutput) []string {
-	return append(common, []string{
-		op.AccountIDEnv + "=" + cr.AccountID,
-		op.AccountNameEnv + "=" + cr.Name,
-		op.AccessKeyIDEnv + "=" + cr.AccessKeyID,
-		op.SecretKeyEnv + "=" + cr.SecretAccessKey,
-		op.SessionTokenEnv + "=" + cr.SessionToken,
-	}...)
+	return append(common,
+		op.AccountIDEnv+"="+cr.AccountID,
+		op.AccountNameEnv+"="+cr.Name,
+		op.AccessKeyIDEnv+"="+cr.AccessKeyID,
+		op.SecretKeyEnv+"="+cr.SecretAccessKey,
+		op.SessionTokenEnv+"="+cr.SessionToken,
+	)
 }
 
 // oktaAccounts returns Accounts for all AWS apps in Okta that match the spec.
@@ -185,9 +186,10 @@ func oktaAccounts(ctx *op.Ctx, spec string) (op.Accounts, error) {
 	if err != nil {
 		return nil, err
 	}
+	want := ctx.Env[op.OktaAWSAppEnv]
 	links := make([]*okta.AppLink, 0, len(apps))
 	for _, app := range apps {
-		if app.AppName == "amazon_aws" {
+		if app.AppName == "amazon_aws" && (want == "" || want == app.LinkURL) {
 			links = append(links, app)
 		}
 	}

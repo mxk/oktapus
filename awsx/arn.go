@@ -15,6 +15,9 @@ const (
 // NilARN is an ARN without any fields set.
 const NilARN = ARN("arn:::::")
 
+// AdminAccess is the managed IAM administrator policy.
+const AdminAccess = ARN("arn:aws:iam::aws:policy/AdministratorAccess")
+
 // ARN is an Amazon Resource Name.
 type ARN string
 

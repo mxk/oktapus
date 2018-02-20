@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/gob"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
@@ -42,15 +43,27 @@ func (cmd *authz) Help(w *bufio.Writer) {
 	op.WriteHelp(w, `
 		Authorize account access by creating or updating IAM roles.
 
-		By default, this command grants admin access and sets the AssumeRole
-		policy principal to your current gateway account. The following command
-		allows user1@example.com to access all accounts currently owned by you:
+		By default, new roles are granted admin access with AssumeRole principal
+		derived from your current identity and new role name. Use an explicit
+		-principal to grant access to a role/user in another account. The
+		following command allows user1@example.com to access all accounts
+		currently owned by you via the same gateway:
 
 		  oktapus authz owner=me user1@example.com
 
-		Use -principal to specify another gateway account by ID, name, or ARN.
-		If the role already exists, the principal is added without any other
-		changes, provided that the role path is the same.
+		If the role already exists, the new AssumeRole principal is added
+		without any other changes, provided that the role path is the same.
+
+		Principal examples:
+
+		  User:
+		    arn:aws:iam::AWS-account-ID:user/user-name
+
+		  Role:
+		    arn:aws:iam::AWS-account-ID:role/role-name
+
+		  Assumed role:
+		    arn:aws:sts::AWS-account-ID:assumed-role/role-name/role-session-name
 	`)
 	op.AccountSpecHelp(w)
 }
@@ -58,13 +71,11 @@ func (cmd *authz) Help(w *bufio.Writer) {
 func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
 	cmd.PrintFmt.FlagCfg(fs)
 	op.StringPtrVar(fs, &cmd.Desc, "desc",
-		"Set role description")
-	// TODO: Change default for GovCloud
-	fs.StringVar(&cmd.Policy, "policy",
-		"arn:aws:iam::aws:policy/AdministratorAccess",
-		"Set attached role policy `ARN`")
+		"Set role `description`")
+	fs.StringVar(&cmd.Policy, "policy", "",
+		"Set attached role policy `ARN` (default is AdministratorAccess)")
 	fs.StringVar(&cmd.Principal, "principal", "",
-		"Set principal `ARN` for AssumeRole policy (default is current gateway account)")
+		"Set principal `ARN` for AssumeRole policy (default is current user or gateway account)")
 	fs.BoolVar(&cmd.Tmp, "tmp", false,
 		"Delete this role automatically when the account is freed")
 }
@@ -85,57 +96,28 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 		return nil, err
 	}
 
-	// Create AssumeRole policy document
+	// Validate principal
+	user := ctx.Gateway().Ident().UserARN
 	if cmd.Principal == "" {
-		// TODO: This is too permissive if the gateway account is not master
-		cmd.Principal = ctx.Gateway().Ident().AccountID
-	} else if !awsx.IsAccountID(cmd.Principal) &&
-		!strings.HasPrefix(cmd.Principal, "arn:") {
-		for _, ac := range ctx.All {
-			if ac.Name == cmd.Principal {
-				cmd.Principal = ac.ID
-				goto valid
-			}
+		if t := user.Type(); t != "user" && t != "assumed-role" {
+			return nil, errors.New("-principal required")
 		}
+	} else if !awsx.IsAccountID(cmd.Principal) &&
+		!awsx.ARN(cmd.Principal).Valid() {
 		return nil, fmt.Errorf("invalid principal %q", cmd.Principal)
-	valid:
 	}
-	assumeRolePolicy := op.NewAssumeRolePolicy(cmd.Principal)
-	assumeRolePolicyDoc := assumeRolePolicy.Doc()
 
 	// Create API call inputs
-	roles := make([]*role, len(cmd.Roles))
-	baseARN := awsx.NilARN + "role/"
-	for i, r := range cmd.Roles {
-		arn := baseARN.WithPathName(r)
-		path, name := arn.Path(), arn.Name()
-		if cmd.Tmp {
-			path = op.TmpIAMPath + path[1:]
-		} else if strings.IndexByte(r, '/') == -1 {
-			path = op.IAMPath
-		}
-		roleName := aws.String(name)
-		roles[i] = &role{
-			get: iam.GetRoleInput{RoleName: roleName},
-			create: iam.CreateRoleInput{
-				AssumeRolePolicyDocument: assumeRolePolicyDoc,
-				Description:              cmd.Desc,
-				Path:                     aws.String(path),
-				RoleName:                 roleName,
-			},
-			attach: iam.AttachRolePolicyInput{
-				PolicyArn: aws.String(cmd.Policy),
-				RoleName:  roleName,
-			},
-			assume: assumeRolePolicy.Statement[0],
-		}
+	roles := make([]*role, 0, len(cmd.Roles))
+	for _, r := range cmd.Roles {
+		roles = append(roles, cmd.newRole(r, user))
 	}
 
 	// Execute
-	var mu sync.Mutex
-	mu.Lock()
 	out := make([]*roleOutput, 0, len(acs)*len(roles))
 	ch := make(chan *roleOutput)
+	var mu sync.Mutex
+	mu.Lock()
 	go func() {
 		defer mu.Unlock()
 		for r := range ch {
@@ -177,6 +159,42 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 		return a.Name < b.Name || (a.Name == b.Name && a.Role < b.Role)
 	})
 	return out, nil
+}
+
+func (cmd *authz) newRole(pathName string, user awsx.ARN) *role {
+	arn := (awsx.NilARN + "role/").WithPathName(pathName)
+	path, name := arn.Path(), arn.Name()
+	if cmd.Tmp {
+		path = op.TmpIAMPath + path[1:]
+	} else if strings.IndexByte(pathName, '/') == -1 {
+		path = op.IAMPath
+	}
+	roleName := aws.String(name)
+
+	principal := cmd.Principal
+	if principal == "" {
+		principal = string(user.WithName(name))
+	}
+	assumeRolePolicy := op.NewAssumeRolePolicy(principal)
+
+	policy := cmd.Policy
+	if policy == "" {
+		policy = string(awsx.AdminAccess.WithPartition(user.Partition()))
+	}
+	return &role{
+		get: iam.GetRoleInput{RoleName: roleName},
+		create: iam.CreateRoleInput{
+			AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
+			Description:              cmd.Desc,
+			Path:                     aws.String(path),
+			RoleName:                 roleName,
+		},
+		attach: iam.AttachRolePolicyInput{
+			PolicyArn: aws.String(policy),
+			RoleName:  roleName,
+		},
+		assume: assumeRolePolicy.Statement[0],
+	}
 }
 
 type roleOutput struct{ AccountID, Name, Path, Role, Result string }
