@@ -210,7 +210,7 @@ func (t expTime) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte(`""`), nil
 	}
-	return t.MarshalJSON()
+	return t.Time.MarshalJSON()
 }
 
 func (t expTime) String() string {
