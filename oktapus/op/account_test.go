@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsx"
-	"github.com/LuminalHQ/oktapus/internal"
-	"github.com/LuminalHQ/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

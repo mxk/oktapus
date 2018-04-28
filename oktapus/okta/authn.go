@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
 // Authenticator implements the user interface for multi-factor authentication.

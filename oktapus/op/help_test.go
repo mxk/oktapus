@@ -6,7 +6,7 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/stretchr/testify/assert"
 )
 

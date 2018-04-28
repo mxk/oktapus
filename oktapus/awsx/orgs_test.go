@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	orgsif "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"

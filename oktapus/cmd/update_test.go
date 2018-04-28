@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

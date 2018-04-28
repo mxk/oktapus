@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsx"
-	"github.com/LuminalHQ/oktapus/internal"
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"golang.org/x/crypto/ssh/terminal"
 )

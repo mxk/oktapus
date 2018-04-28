@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 )
 
 type specType byte

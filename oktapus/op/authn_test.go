@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/okta"
+	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

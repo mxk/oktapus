@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"

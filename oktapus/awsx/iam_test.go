@@ -3,7 +3,7 @@ package awsx
 import (
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/stretchr/testify/assert"

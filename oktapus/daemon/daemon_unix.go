@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
 // fdEnv is an environment variable containing daemon's socket file descriptor.

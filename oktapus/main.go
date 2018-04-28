@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	_ "github.com/LuminalHQ/oktapus/cmd"
-	"github.com/LuminalHQ/oktapus/op"
+	_ "github.com/LuminalHQ/cloudcover/oktapus/cmd"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 )
 
 func main() {

@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/mock"
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/stretchr/testify/require"
 )
 

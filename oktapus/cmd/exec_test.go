@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/internal"
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

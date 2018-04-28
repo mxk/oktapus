@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"errors"
 
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 )
 
 func init() {

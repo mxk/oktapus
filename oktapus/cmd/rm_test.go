@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

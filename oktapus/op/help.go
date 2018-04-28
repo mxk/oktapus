@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
 // Help writes global or command-specific help information to stderr and exits.

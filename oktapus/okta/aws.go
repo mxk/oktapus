@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sts"
 )

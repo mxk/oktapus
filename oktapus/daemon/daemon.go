@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"sort"
 
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
 var log = internal.Log

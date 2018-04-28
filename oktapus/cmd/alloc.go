@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/internal"
-	"github.com/LuminalHQ/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/op"
 )
 
 func init() {

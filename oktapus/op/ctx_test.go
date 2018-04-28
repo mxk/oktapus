@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/LuminalHQ/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

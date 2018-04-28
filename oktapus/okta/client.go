@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/oktapus/awsx"
-	"github.com/LuminalHQ/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
 // ErrRateLimit is returned when too many requests are sent.
