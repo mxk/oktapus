@@ -37,7 +37,7 @@ func (cmd *killDaemon) Help(w *bufio.Writer) {
 		the current authentication context. If no options are specified, only
 		the active daemon is killed.
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *killDaemon) FlagCfg(fs *flag.FlagSet) {

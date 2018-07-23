@@ -36,7 +36,7 @@ func (cmd *update) Help(w *bufio.Writer) {
 		escape the '!' character with a backslash, or quote the entire argument,
 		to inhibit shell expansion.
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *update) FlagCfg(fs *flag.FlagSet) {

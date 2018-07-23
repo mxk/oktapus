@@ -83,7 +83,7 @@ func (cmd *execCmd) Help(w *bufio.Writer) {
 
 		  oktapus exec -okta "" oktapus authz -principal ... "" user@example.com
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *execCmd) FlagCfg(fs *flag.FlagSet) {

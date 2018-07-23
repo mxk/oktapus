@@ -35,7 +35,7 @@ func (n Name) Help(w *bufio.Writer) {
 	w.WriteString(ci.Summary)
 	w.WriteString(".\n")
 	if strings.Contains(ci.Usage, "account-spec") {
-		op.AccountSpecHelp(w)
+		accountSpecHelp(w)
 	}
 }
 

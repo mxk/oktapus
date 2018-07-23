@@ -65,7 +65,7 @@ func (cmd *authz) Help(w *bufio.Writer) {
 		  Assumed role:
 		    arn:aws:sts::AWS-account-ID:assumed-role/role-name/role-session-name
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *authz) FlagCfg(fs *flag.FlagSet) {

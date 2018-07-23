@@ -77,3 +77,13 @@ func (specHelp) Run(ctx *op.Ctx, args []string) error {
 	specHelp{}.Help(buf)
 	return buf.Flush()
 }
+
+// accountSpecHelp writes short 'account-spec' help for commands that use this
+// argument.
+func accountSpecHelp(w *bufio.Writer) {
+	w.WriteByte('\n')
+	op.WriteHelp(w, `
+		Run 'oktapus help account-spec' for details on account filtering
+		specifications.
+	`)
+}

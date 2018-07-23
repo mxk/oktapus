@@ -33,7 +33,7 @@ func (cmd *initCmd) Help(w *bufio.Writer) {
 		that do not have this role are not managed by oktapus. This command
 		creates the role and initializes the account control structure.
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *initCmd) Run(ctx *op.Ctx, args []string) error {

@@ -43,16 +43,6 @@ func UsageErrf(cmd Cmd, format string, v ...interface{}) {
 	UsageErr(cmd, fmt.Errorf(format, v...))
 }
 
-// AccountSpecHelp writes short 'account-spec' help for commands that use this
-// argument.
-func AccountSpecHelp(w *bufio.Writer) {
-	w.WriteByte('\n')
-	WriteHelp(w, `
-		Run 'oktapus help account-spec' for details on account filtering
-		specifications.
-	`)
-}
-
 // WriteHelp writes multi-line string s to w, removing any indentation.
 func WriteHelp(w *bufio.Writer, s string) {
 	w.WriteString(strings.TrimSpace(internal.Dedent(s)))
@@ -132,7 +122,6 @@ func globalHelp(w *bufio.Writer) {
 	for _, name := range names {
 		fmt.Fprintf(w, "  %-*s  %s\n", maxLen, name, cmds[name].Summary)
 	}
-	AccountSpecHelp(w)
 	w.WriteByte('\n')
 }
 

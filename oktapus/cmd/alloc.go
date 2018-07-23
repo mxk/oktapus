@@ -43,7 +43,7 @@ func (cmd *alloc) Help(w *bufio.Writer) {
 		Otherwise, that number of requested accounts are allocated randomly from
 		the pool of all matching accounts.
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *alloc) FlagCfg(fs *flag.FlagSet) {

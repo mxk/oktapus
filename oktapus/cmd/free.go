@@ -34,7 +34,7 @@ func (cmd *free) Help(w *bufio.Writer) {
 		contains any temporary IAM users or roles, those are deleted (see authz
 		and creds commands for more info).
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *free) FlagCfg(fs *flag.FlagSet) {

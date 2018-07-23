@@ -45,7 +45,7 @@ func (cmd *creds) Help(w *bufio.Writer) {
 		IAM user with an access key. If you use the -tmp option, the user will
 		be automatically deleted when the account is freed.
 	`)
-	op.AccountSpecHelp(w)
+	accountSpecHelp(w)
 }
 
 func (cmd *creds) FlagCfg(fs *flag.FlagSet) {
