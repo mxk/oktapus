@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/stretchr/testify/assert"
@@ -78,7 +79,7 @@ func TestClientRefreshProxy(t *testing.T) {
 	s := mock.NewSession()
 	s.STSRouter()[""] = mock.NewSTSRouter("1")[""]
 	c := NewGateway(s)
-	c.MasterRole = NilARN + "role/MasterRole"
+	c.MasterRole = arn.Base + "role/MasterRole"
 	require.NoError(t, c.Connect())
 	assert.False(t, c.IsMaster())
 	assert.Equal(t, "000000000001", c.Ident().AccountID)

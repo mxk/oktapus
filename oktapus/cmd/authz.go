@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -91,7 +92,7 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			return nil, errors.New("-principal required")
 		}
 	} else if !awsx.IsAccountID(cmd.Principal) &&
-		!awsx.ARN(cmd.Principal).Valid() {
+		!arn.ARN(cmd.Principal).Valid() {
 		return nil, fmt.Errorf("invalid principal %q", cmd.Principal)
 	}
 
@@ -149,9 +150,11 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	return out, nil
 }
 
-func (cmd *authzCmd) newRole(pathName string, user awsx.ARN) *role {
-	arn := (awsx.NilARN + "role/").WithPathName(pathName)
-	path, name := arn.Path(), arn.Name()
+const adminAccess = arn.ARN("arn:aws:iam::aws:policy/AdministratorAccess")
+
+func (cmd *authzCmd) newRole(pathName string, user arn.ARN) *role {
+	r := (arn.Base + "role/").WithPathName(pathName)
+	path, name := r.Path(), r.Name()
 	if cmd.Tmp {
 		path = op.TmpIAMPath + path[1:]
 	} else if strings.IndexByte(pathName, '/') == -1 {
@@ -167,7 +170,7 @@ func (cmd *authzCmd) newRole(pathName string, user awsx.ARN) *role {
 
 	policy := cmd.Policy
 	if policy == "" {
-		policy = string(awsx.AdminAccess.WithPartition(user.Partition()))
+		policy = string(adminAccess.WithPartition(user.Partition()))
 	}
 	return &role{
 		get: iam.GetRoleInput{RoleName: roleName},

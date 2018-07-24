@@ -3,6 +3,7 @@ package awsx
 import (
 	"time"
 
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go/aws"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -11,7 +12,7 @@ import (
 // Ident contains data from sts:GetCallerIdentity API call.
 type Ident struct {
 	AccountID string
-	UserARN   ARN
+	UserARN   arn.ARN
 	UserID    string
 }
 
@@ -19,17 +20,17 @@ type Ident struct {
 func (id *Ident) Set(out *sts.GetCallerIdentityOutput) {
 	*id = Ident{
 		AccountID: aws.StringValue(out.Account),
-		UserARN:   ARNValue(out.Arn),
+		UserARN:   arn.Value(out.Arn),
 		UserID:    aws.StringValue(out.UserId),
 	}
 }
 
 // Org contains data from organizations:DescribeOrganization API call.
 type Org struct {
-	ARN         ARN
+	ARN         arn.ARN
 	FeatureSet  string
 	ID          string
-	MasterARN   ARN
+	MasterARN   arn.ARN
 	MasterEmail string
 	MasterID    string
 }
@@ -37,10 +38,10 @@ type Org struct {
 // Set updates organization information.
 func (o *Org) Set(out *orgs.DescribeOrganizationOutput) {
 	*o = Org{
-		ARN:         ARNValue(out.Organization.Arn),
+		ARN:         arn.Value(out.Organization.Arn),
 		FeatureSet:  aws.StringValue(out.Organization.FeatureSet),
 		ID:          aws.StringValue(out.Organization.Id),
-		MasterARN:   ARNValue(out.Organization.MasterAccountArn),
+		MasterARN:   arn.Value(out.Organization.MasterAccountArn),
 		MasterEmail: aws.StringValue(out.Organization.MasterAccountEmail),
 		MasterID:    aws.StringValue(out.Organization.MasterAccountId),
 	}
@@ -49,7 +50,7 @@ func (o *Org) Set(out *orgs.DescribeOrganizationOutput) {
 // Account is an account in an AWS organization.
 type Account struct {
 	ID         string
-	ARN        ARN
+	ARN        arn.ARN
 	Name       string
 	Email      string
 	Status     string
@@ -62,7 +63,7 @@ func (ac *Account) Set(src *orgs.Account) {
 	if id := aws.StringValue(src.Id); id == "" || ac.ID != id {
 		panic("awsx: account id mismatch: " + ac.ID + " != " + id)
 	}
-	ac.ARN = ARNValue(src.Arn)
+	ac.ARN = arn.Value(src.Arn)
 	ac.Name = aws.StringValue(src.Name)
 	ac.Email = aws.StringValue(src.Email)
 	ac.Status = accountStatusEnum(src.Status)

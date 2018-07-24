@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -185,11 +186,11 @@ type SAMLCreds struct {
 }
 
 // NewSAMLCreds returns a new SAML-based CredsProvider.
-func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role ARN, saml string) *SAMLCreds {
+func NewSAMLCreds(api AssumeRoleWithSAMLFunc, principal, role arn.ARN, saml string) *SAMLCreds {
 	return &SAMLCreds{
 		AssumeRoleWithSAMLInput: sts.AssumeRoleWithSAMLInput{
-			PrincipalArn:  principal.Str(),
-			RoleArn:       role.Str(),
+			PrincipalArn:  arn.String(principal),
+			RoleArn:       arn.String(role),
 			SAMLAssertion: aws.String(saml),
 		},
 		api: api,
@@ -227,10 +228,10 @@ type AssumeRoleCreds struct {
 }
 
 // NewAssumeRoleCreds returns a new role-based CredsProvider.
-func NewAssumeRoleCreds(api AssumeRoleFunc, role ARN, roleSessionName string) *AssumeRoleCreds {
+func NewAssumeRoleCreds(api AssumeRoleFunc, role arn.ARN, roleSessionName string) *AssumeRoleCreds {
 	return &AssumeRoleCreds{
 		AssumeRoleInput: sts.AssumeRoleInput{
-			RoleArn:         role.Str(),
+			RoleArn:         arn.String(role),
 			RoleSessionName: aws.String(roleSessionName),
 		},
 		api: api,

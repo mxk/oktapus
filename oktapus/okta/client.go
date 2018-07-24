@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 )
 
 // ErrRateLimit is returned when too many requests are sent.
@@ -120,7 +120,7 @@ func (c *Client) AppLinks() ([]*AppLink, error) {
 
 // OpenAWS returns SAML authentication data for the AWS app specified by
 // appLink. If roleARN is specified, the matching AWS role is pre-selected.
-func (c *Client) OpenAWS(appLink string, role awsx.ARN) (*AWSAuth, error) {
+func (c *Client) OpenAWS(appLink string, role arn.ARN) (*AWSAuth, error) {
 	ref, err := url.Parse(appLink)
 	if err != nil {
 		return nil, err

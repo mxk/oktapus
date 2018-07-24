@@ -5,6 +5,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -68,14 +69,14 @@ func (cmd *credsCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.User == "" {
 		return out, nil
 	}
-	user := (awsx.NilARN + "user/").WithPathName(cmd.User)
+	user := (arn.Base + "user/").WithPathName(cmd.User)
 	if cmd.Tmp {
 		user = user.WithPath(op.TmpIAMPath + user.Path())
 	}
-	policy := awsx.ARN(cmd.Policy)
+	policy := arn.ARN(cmd.Policy)
 	if policy == "" {
 		part := ctx.Gateway().Ident().UserARN.Partition()
-		policy = awsx.AdminAccess.WithPartition(part)
+		policy = adminAccess.WithPartition(part)
 	}
 	km := newKeyMaker(user, policy)
 	acs.Apply(func(i int, ac *op.Account) {
@@ -104,11 +105,11 @@ type keyMaker struct {
 	key  iam.CreateAccessKeyInput
 }
 
-func newKeyMaker(user, policy awsx.ARN) *keyMaker {
+func newKeyMaker(user, policy arn.ARN) *keyMaker {
 	name := aws.String(user.Name())
 	return &keyMaker{
 		iam.CreateUserInput{Path: aws.String(user.Path()), UserName: name},
-		iam.AttachUserPolicyInput{PolicyArn: policy.Str(), UserName: name},
+		iam.AttachUserPolicyInput{PolicyArn: arn.String(policy), UserName: name},
 		iam.CreateAccessKeyInput{UserName: name},
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
@@ -20,8 +21,8 @@ import (
 type Gateway struct {
 	Creds CredsProvider // Gateway account credentials
 
-	MasterRole ARN // Master account role with ListAccounts permission
-	CommonRole ARN // Role to assume when accessing other accounts
+	MasterRole arn.ARN // Master account role with ListAccounts permission
+	CommonRole arn.ARN // Role to assume when accessing other accounts
 
 	sess    client.ConfigProvider
 	org     *orgs.Organizations
@@ -82,7 +83,7 @@ func (gw *Gateway) Connect() error {
 	gw.ident.Set(id)
 	gw.orgInfo.Set(org)
 	gw.roleSessionName = getSessName(&gw.ident)
-	gw.CommonRole = NewARN(gw.ident.UserARN.Partition(), "iam", "", "",
+	gw.CommonRole = arn.New(gw.ident.UserARN.Partition(), "iam", "", "",
 		"role/", gw.roleSessionName)
 
 	// If gateway account isn't master, change org client credentials
@@ -182,7 +183,7 @@ func (gw *Gateway) CredsProvider(accountID string) CredsProvider {
 
 // AssumeRole returns new AssumeRole credentials for the specified account ID
 // and role name.
-func (gw *Gateway) AssumeRole(role ARN) *AssumeRoleCreds {
+func (gw *Gateway) AssumeRole(role arn.ARN) *AssumeRoleCreds {
 	return NewAssumeRoleCreds(gw.sts.AssumeRole, role, gw.roleSessionName)
 }
 
@@ -191,7 +192,7 @@ func (gw *Gateway) proxyCreds() *AssumeRoleCreds {
 	if gw.MasterRole == "" {
 		panic("awsx: master role not set")
 	}
-	role := NewARN(gw.ident.UserARN.Partition(), "iam", "", gw.orgInfo.MasterID,
+	role := arn.New(gw.ident.UserARN.Partition(), "iam", "", gw.orgInfo.MasterID,
 		"role", gw.MasterRole.Path(), gw.MasterRole.Name())
 	cr := NewAssumeRoleCreds(gw.sts.AssumeRole, role, gw.roleSessionName)
 	cr.ExternalId = aws.String(ProxyExternalID(&gw.orgInfo))

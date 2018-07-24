@@ -12,6 +12,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -196,7 +197,7 @@ func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 
 	// Open all AWS apps
 	all := make(op.Accounts, len(links))
-	role := awsx.ARN(ctx.Env[op.OktaAWSRoleEnv])
+	role := arn.ARN(ctx.Env[op.OktaAWSRoleEnv])
 	internal.GoForEach(len(links), 40, func(i int) error {
 		auth := getAWSAuth(c, links[i], role)
 		if auth != nil && (part == "" || auth.Roles[0].Role.Partition() == part) {
@@ -227,7 +228,7 @@ func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 }
 
 // getAWSAuth returns authentication data for an AWS app in Okta.
-func getAWSAuth(c *okta.Client, app *okta.AppLink, role awsx.ARN) *okta.AWSAuth {
+func getAWSAuth(c *okta.Client, app *okta.AppLink, role arn.ARN) *okta.AWSAuth {
 	timeout := internal.Time().Add(time.Minute)
 	for {
 		auth, err := c.OpenAWS(app.LinkURL, role)

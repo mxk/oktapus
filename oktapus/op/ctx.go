@@ -12,6 +12,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -140,7 +141,7 @@ func (ctx *Ctx) Gateway() *awsx.Gateway {
 	if ctx.UseOkta() {
 		gw.Creds = ctx.newOktaCreds(ctx.Sess)
 	}
-	gw.MasterRole = awsx.NilARN + "role" + IAMPath + "OktapusOrganizationsProxy"
+	gw.MasterRole = arn.Base + "role" + IAMPath + "OktapusOrganizationsProxy"
 	if r := ctx.Env[MasterRoleEnv]; r != "" {
 		gw.MasterRole = gw.MasterRole.WithPathName(r)
 	}
@@ -276,7 +277,7 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 			}
 			awsAppLink = app.LinkURL
 		}
-		auth, err := c.OpenAWS(awsAppLink, awsx.ARN(ctx.Env[OktaAWSRoleEnv]))
+		auth, err := c.OpenAWS(awsAppLink, arn.ARN(ctx.Env[OktaAWSRoleEnv]))
 		if err != nil {
 			return err
 		}
