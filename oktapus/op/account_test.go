@@ -31,14 +31,6 @@ func TestAccountCreds(t *testing.T) {
 	cr, err := ac.Creds(true)
 	require.NoError(t, err)
 	assert.Equal(t, v, cr.Value)
-
-	ac.cp = awsx.NewSavedCreds(cr, ac.cp)
-	cr, err = ac.Creds(false)
-	require.NoError(t, err)
-	assert.Equal(t, v, cr.Value)
-
-	cr, err = ac.Creds(true)
-	require.Equal(t, err, awsx.ErrCredsExpired)
 }
 
 func TestAccountFilter(t *testing.T) {
