@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +55,7 @@ func TestExec(t *testing.T) {
 
 	require.NoError(t, err)
 	require.EqualError(t, runErr, "1 command failed (0 due to invalid credentials)")
-	want := internal.Dedent(`
+	want := cli.Dedent(`
 		===> Account 000000000001 (test1)
 		AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 		AWS_ACCOUNT_ID=000000000001

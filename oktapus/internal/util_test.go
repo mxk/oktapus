@@ -69,26 +69,6 @@ func TestStringsEq(t *testing.T) {
 	}
 }
 
-func TestDedent(t *testing.T) {
-	tests := []*struct {
-		in  string
-		out string
-	}{
-		{"", ""},
-		{"\t", "\t"},
-		{"\t\n", "\t\n"},
-		{"\t\n\t", "\t\n\t"},
-		{"\t\n\tA", "\t\nA"},
-		{"\n\tA", "\nA"},
-		{"\n\tA\nB", "\nA\nB"},
-		{"\n\t\t\n\tA\n\t\tB", "\n\t\t\nA\n\tB"},
-		{"A\n\t\tB\nC\n\tD\n\t\t\tE\n\t", "A\nB\nC\nD\n\tE\n"},
-	}
-	for _, test := range tests {
-		assert.Equal(t, test.out, Dedent(test.in))
-	}
-}
-
 func TestGoForEach(t *testing.T) {
 	for n := 0; n <= 256; {
 		b, c := bytes.Repeat([]byte{'0'}, n), byte('1')

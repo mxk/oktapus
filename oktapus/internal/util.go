@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -114,34 +113,6 @@ func StringsEq(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// Dedent removes leading tab characters from each line in s. The first line is
-// skipped, the next line containing non-tab characters determines the number of
-// tabs to remove.
-func Dedent(s string) string {
-	n, i := 0, strings.IndexByte(s, '\n')
-	for j := i + 1; j < len(s); j++ {
-		if c := s[j]; c == '\n' {
-			i = j
-		} else if c != '\t' {
-			n = j - i - 1
-			break
-		}
-	}
-	if i == -1 || n == 0 {
-		return s
-	}
-	b := make([]byte, 0, len(s))
-	for i != -1 {
-		b, s, i = append(b, s[:i+1]...), s[i+1:], 0
-		for i < n && i < len(s) && s[i] == '\t' {
-			i++
-		}
-		s = s[i:]
-		i = strings.IndexByte(s, '\n')
-	}
-	return string(append(b, s...))
 }
 
 // GoForEach executes n tasks using at most batch goroutines. If batch is <= 0,

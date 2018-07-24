@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -228,5 +229,5 @@ func (r *row) PrintRow(p *Printer) {
 }
 
 func table(s string) string {
-	return strings.TrimLeftFunc(Dedent(s), unicode.IsSpace)
+	return strings.TrimLeftFunc(cli.Dedent(s), unicode.IsSpace)
 }
