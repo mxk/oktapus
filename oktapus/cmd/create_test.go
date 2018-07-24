@@ -12,12 +12,12 @@ func TestCreate(t *testing.T) {
 	internal.NoSleep(true)
 	defer internal.NoSleep(false)
 
-	cmd := newCmd("create").(*create)
+	cmd := createCmd{
+		Num:      3,
+		EmailTpl: "test{}@example.com",
+		NameTpl:  "test{00}",
+	}
 	ctx := newCtx()
-
-	cmd.Num = 3
-	cmd.EmailTpl = "test{}@example.com"
-	cmd.NameTpl = "test{00}"
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*newAccountsOutput{
@@ -27,10 +27,8 @@ func TestCreate(t *testing.T) {
 	}
 	assert.Equal(t, want, out)
 
-	cmd = newCmd("create", "-exec").(*create)
+	cmd.Exec = true
 	cmd.Num = 1
-	cmd.EmailTpl = "test{}@example.com"
-	cmd.NameTpl = "test{00}"
 	out, err = cmd.Call(ctx)
 	require.NoError(t, err)
 	results := []*resultsOutput{{

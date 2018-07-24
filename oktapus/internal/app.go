@@ -2,7 +2,6 @@ package internal
 
 // App metadata.
 const (
-	AppName    = "oktapus"
-	AppVersion = "0.8.0"
+	AppVersion = "0.8.0" // TODO: Remove
 	UserAgent  = "Oktapus/1.0"
 )

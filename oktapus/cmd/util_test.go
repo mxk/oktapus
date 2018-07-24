@@ -1,27 +1,9 @@
 package cmd
 
 import (
-	"bufio"
-	"bytes"
-	"flag"
-	"io/ioutil"
-	"testing"
-
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/stretchr/testify/require"
 )
-
-func TestHelp(t *testing.T) {
-	var buf bytes.Buffer
-	bio := bufio.NewWriter(&buf)
-	for _, name := range op.CmdNames() {
-		op.GetCmdInfo(name).New().Help(bio)
-		bio.Flush()
-		require.NotZero(t, buf.Len(), "command=%s", name)
-		buf.Reset()
-	}
-}
 
 // newCtx returns a Ctx for testing commands, optionally initializing account
 // control information for the specified account IDs.
@@ -33,18 +15,6 @@ func newCtx(init ...string) *op.Ctx {
 		}
 	}
 	return ctx
-}
-
-// newCmd creates a new command instance and parses flag arguments.
-func newCmd(name string, args ...string) op.Cmd {
-	cmd := op.GetCmdInfo(name).New()
-	fs := flag.FlagSet{Usage: func() {}}
-	fs.SetOutput(ioutil.Discard)
-	cmd.FlagCfg(&fs)
-	if err := fs.Parse(args); err != nil {
-		panic(err)
-	}
-	return cmd
 }
 
 // initCtl initializes account control information for unit tests.

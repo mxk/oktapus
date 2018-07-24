@@ -25,7 +25,7 @@ func TestAddr(t *testing.T) {
 	ctx := newTestCtx()
 	h := sha512.Sum512([]byte("RAND=" + ctx.env["RAND"] + "\n"))
 	sig := base64.URLEncoding.EncodeToString(h[:12])
-	want := filepath.Join(os.TempDir(), internal.AppName+"."+sig)
+	want := filepath.Join(os.TempDir(), sockPrefix+sig)
 	assert.Equal(t, want, Addr(ctx))
 }
 

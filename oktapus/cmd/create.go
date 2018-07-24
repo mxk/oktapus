@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"bufio"
-	"encoding/gob"
-	"flag"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,6 +11,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
@@ -26,76 +24,70 @@ import (
 // path component.
 const accountSetupRole = "OktapusAccountSetup"
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"create"},
-		Summary: "Create new account(s)",
-		Usage:   "[options] num account-name root-email",
-		MinArgs: 3,
-		MaxArgs: 3,
-		New:     func() op.Cmd { return &create{Name: "create"} },
-	})
-	gob.Register([]*newAccountsOutput{})
-}
+var createCli = register(&cli.Info{
+	Name:    "create",
+	Usage:   "[options] num account-name root-email",
+	Summary: "Create new account(s)",
+	MinArgs: 3,
+	MaxArgs: 3,
+	New:     func() cli.Cmd { return &createCmd{} },
+})
 
-type create struct {
-	Name
-	PrintFmt
-	Exec     bool
+type createCmd struct {
+	OutFmt
+	Exec     bool `flag:"Execute account creation (list names/emails otherwise)"`
 	Num      int
 	NameTpl  string
 	EmailTpl string
 }
 
-func (cmd *create) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Create new accounts.
+func (cmd *createCmd) Info() *cli.Info { return createCli }
 
-		WARNING: Accounts can never be deleted. They can be closed and removed
-		from your organization, but doing so requires gaining access to the root
-		user via the email password reset procedure. The rest of the process is
-		also entirely manual, requiring many mouse clicks. Don't create new
-		accounts unless you really need them for the long-term.
+func (cmd *createCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Create new accounts.
 
-		Each account must have a unique name and email address. The command
-		accepts templates for both, and uses automatic numbering to generate
-		unique names and emails. Many email providers treat addresses in the
-		form user+extratext@example.com as an alias for user@example.com, so
-		this is a convenient way of generating unique, but valid email
-		addresses. This address may be needed later to reset the root password.
+	WARNING: Accounts can never be deleted. They can be closed and removed from
+	your organization, but doing so requires gaining access to the root user via
+	the email password reset procedure. The rest of the process is also entirely
+	manual, requiring many mouse clicks. Don't create new accounts unless you
+	really need them for the long-term.
 
-		The templates use a dynamic field in the format '{N}' where N is a
-		number. If N is 0 or absent, the starting value is automatically
-		selected based on existing account names. Otherwise, the numbering
-		begins with N. You can use leading zeros to set field width. For
-		example, the template 'test-{00}' will generate account names 'test-01',
-		'test-02', and so on.
+	Each account must have a unique name and email address. The command accepts
+	templates for both, and uses automatic numbering to generate unique names
+	and emails. Many email providers treat addresses in the form
+	user+extratext@example.com as an alias for user@example.com, so this is a
+	convenient way of generating unique, but valid email addresses. This address
+	may be needed later to reset the root password.
 
-		Unless the -exec option is specified, the command simply returns the
-		account names and emails that would be used if the accounts were
-		actually created.
+	The templates use a dynamic field in the format '{N}' where N is a number.
+	If N is 0 or absent, the starting value is automatically selected based on
+	existing account names. Otherwise, the numbering begins with N. You can use
+	leading zeros to set field width. For example, the template 'test-{00}' will
+	generate account names 'test-01', 'test-02', and so on.
+
+	Unless the -exec option is specified, the command simply returns the account
+	names and emails that would be used if the accounts were actually created.
 	`)
 }
 
 type newAccountsOutput struct{ Name, Email string }
 
-func (cmd *create) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.Exec, "exec", false,
-		"Execute account creation (list names/emails otherwise)")
+func (cmd *createCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
-func (cmd *create) Run(ctx *op.Ctx, args []string) error {
+func (cmd *createCmd) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	cmd.NameTpl, cmd.EmailTpl = args[1], args[2]
 	if err != nil {
-		op.UsageErrf(cmd, "first argument must be a number")
+		return cli.Error("first argument must be a number")
 	} else if n <= 0 {
-		op.UsageErrf(cmd, "number of accounts must be > 0")
+		return cli.Error("number of accounts must be > 0")
 	} else if n > 50 {
-		op.UsageErrf(cmd, "number of accounts must be <= 50")
+		return cli.Error("number of accounts must be <= 50")
 	} else if i := strings.IndexByte(cmd.EmailTpl, '@'); i == -1 {
-		op.UsageErrf(cmd, "invalid email address")
+		return cli.Error("invalid email address")
 	}
 	cmd.Num = n
 	out, err := ctx.Call(cmd)
@@ -105,7 +97,7 @@ func (cmd *create) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	// Only the organization's master account can create new accounts
 	gw := ctx.Gateway()
 	if !gw.IsMaster() {
@@ -118,18 +110,18 @@ func (cmd *create) Call(ctx *op.Ctx) (interface{}, error) {
 	nameCtr, nameErr := newCounter(cmd.NameTpl)
 	emailCtr, emailErr := newCounter(cmd.EmailTpl)
 	if nameErr != nil {
-		op.UsageErr(cmd, nameErr)
+		return nil, cli.Error(nameErr)
 	} else if emailErr != nil {
-		op.UsageErr(cmd, emailErr)
+		return nil, cli.Error(emailErr)
 	} else if (nameCtr == nil) != (emailCtr == nil) {
-		op.UsageErrf(cmd, "account name/email format mismatch")
+		return nil, cli.Error("account name/email format mismatch")
 	} else if nameCtr != nil {
 		if err := gw.Refresh(); err != nil {
 			return nil, err
 		}
 		setCounters(gw.Accounts(), nameCtr, emailCtr)
 	} else if n > 1 {
-		op.UsageErrf(cmd, "account name/email must be dynamic templates")
+		return nil, cli.Error("account name/email must be dynamic templates")
 	} else {
 		nameCtr, emailCtr = &counter{p: cmd.NameTpl}, &counter{p: cmd.EmailTpl}
 	}

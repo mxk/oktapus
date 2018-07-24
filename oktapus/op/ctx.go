@@ -12,6 +12,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
@@ -184,6 +185,12 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	ctx.All.RequireCtl()
 	acs, err := ParseAccountSpec(spec, gw.CommonRole.Name()).Filter(ctx.All)
 	return acs.Sort(), err
+}
+
+// CallableCmd is a command that can be called remotely.
+type CallableCmd interface {
+	cli.Cmd
+	Call(ctx *Ctx) (interface{}, error)
 }
 
 // Call executes cmd locally or via a daemon process.

@@ -8,7 +8,7 @@ import (
 )
 
 func TestFree(t *testing.T) {
-	cmd := newCmd("free").(*free)
+	cmd := freeCmd{Spec: "test1,test2,test3"}
 	ctx := newCtx("1", "2")
 
 	acs, err := ctx.Accounts("test1")
@@ -16,7 +16,6 @@ func TestFree(t *testing.T) {
 	acs[0].Ctl.Owner = "user@example.com"
 	acs.Save()
 
-	cmd.Spec = "test1,test2,test3"
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*resultsOutput{{

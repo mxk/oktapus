@@ -19,11 +19,8 @@ func TestAlloc(t *testing.T) {
 	internal.NoSleep(true)
 	defer internal.NoSleep(false)
 
-	cmd := newCmd("alloc").(*alloc)
+	cmd := allocCmd{Num: 1, Spec: "test1"}
 	ctx := newCtx("1", "2", "3")
-
-	cmd.Num = 1
-	cmd.Spec = "test1"
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*credsOutput{{

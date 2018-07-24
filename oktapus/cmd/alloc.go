@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"bufio"
-	"flag"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -10,57 +8,56 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"alloc"},
-		Summary: "Allocate accounts",
-		Usage:   "[options] [num] [account-spec]",
-		MinArgs: 1,
-		MaxArgs: 2,
-		New:     func() op.Cmd { return &alloc{Name: "alloc"} },
-	})
-}
+var allocCli = register(&cli.Info{
+	Name:    "alloc",
+	Usage:   "[options] [num] [account-spec]",
+	Summary: "Allocate accounts",
+	MinArgs: 1,
+	MaxArgs: 2,
+	New:     func() cli.Cmd { return &allocCmd{} },
+})
 
-type alloc struct {
-	Name
-	PrintFmt
-	Owner string
+type allocCmd struct {
+	OutFmt
+	Owner string `flag:"Override default owner <name>"`
 	Num   int
 	Spec  string
 }
 
-func (cmd *alloc) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Account allocation assigns an owner to an account, preventing anyone
-		else from allocating that account until it is freed. The owner is
-		effectively a per-account mutex.
+func (cmd *allocCmd) Info() *cli.Info { return allocCli }
 
-		You can specify the number of accounts to allocate along with account
-		filtering specifications. One or the other may be omitted, but not both.
-		If the number is not specified, all matching accounts are allocated.
-		Otherwise, that number of requested accounts are allocated randomly from
-		the pool of all matching accounts.
+func (cmd *allocCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Account allocation assigns an owner to an account, preventing anyone else
+	from allocating that account until it is freed. The owner is effectively a
+	per-account mutex.
+
+	You can specify the number of accounts to allocate along with account
+	filtering specifications. One or the other may be omitted, but not both. If
+	the number is not specified, all matching accounts are allocated. Otherwise,
+	that number of requested accounts are allocated randomly from the pool of
+	all matching accounts.
 	`)
 	accountSpecHelp(w)
 }
 
-func (cmd *alloc) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	fs.StringVar(&cmd.Owner, "owner", "", "Override default owner `name`")
+func (cmd *allocCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
-func (cmd *alloc) Run(ctx *op.Ctx, args []string) error {
+func (cmd *allocCmd) Run(ctx *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
 		if n < 1 || 100 < n {
-			op.UsageErrf(cmd, "number of accounts must be between 1 and 100")
+			return cli.Error("number of accounts must be between 1 and 100")
 		}
 		padArgs(cmd, &args)
 		args = args[1:]
 	} else if len(args) != 1 {
-		op.UsageErrf(cmd, "first argument must be a number")
+		return cli.Error("first argument must be a number")
 	} else {
 		n = -1
 	}
@@ -73,7 +70,7 @@ func (cmd *alloc) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *alloc) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *allocCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	// Find free accounts and randomize their order
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {

@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +12,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -24,73 +23,68 @@ import (
 // TODO: Parallel execution (close stdin, capture stdout/stderr)?
 // TODO: Need to pass partition/region to command?
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"exec"},
-		Summary: "Run external command for multiple accounts",
-		Usage:   "[options] account-spec command ...",
-		MinArgs: 2,
-		New:     func() op.Cmd { return &execCmd{Name: "exec"} },
-	})
-}
+var execCli = register(&cli.Info{
+	Name:    "exec",
+	Usage:   "[options] account-spec command ...",
+	Summary: "Run external command for multiple accounts",
+	MinArgs: 2,
+	New:     func() cli.Cmd { return &execCmd{Partition: "aws"} },
+})
 
 type execCmd struct {
-	Name
-	OktaApps  bool
-	Partition string
+	OktaApps  bool   `flag:"okta,Execute command for each AWS app in Okta"`
+	Partition string `flag:"Only operate on Okta AWS apps within one <partition>"`
 }
 
-func (cmd *execCmd) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Run external command for one or more accounts using temporary security
-		credentials.
+func (cmd *execCmd) Info() *cli.Info { return execCli }
 
-		The specified command is executed for each account matched by
-		account-spec. Account information and credentials are passed in
-		environment variables. The following command executes AWS CLI, which
-		reports caller identity information for all accessible accounts:
+func (cmd *execCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Run external command for one or more accounts using temporary security
+	credentials.
 
-		  oktapus exec "" aws sts get-caller-identity
+	The specified command is executed for each account matched by account-spec.
+	Account information and credentials are passed in environment variables. The
+	following command executes AWS CLI, which reports caller identity
+	information for all accessible accounts:
 
-		The following environment variables are set for each command execution:
+	  oktapus exec "" aws sts get-caller-identity
 
-		  AWS_ACCOUNT_ID
-		  AWS_ACCOUNT_NAME
-		  AWS_ACCESS_KEY_ID
-		  AWS_SECRET_ACCESS_KEY
-		  AWS_SESSION_TOKEN
+	The following environment variables are set for each command execution:
 
-		Account ID and name are non-standard variables that provide information
-		about the current account. The remaining variables are the same ones
-		used by AWS CLI and SDKs.
+	  AWS_ACCOUNT_ID
+	  AWS_ACCOUNT_NAME
+	  AWS_ACCESS_KEY_ID
+	  AWS_SECRET_ACCESS_KEY
+	  AWS_SESSION_TOKEN
 
-		The -okta option can be used to run the command for each AWS app in
-		Okta. In this mode, account names are derived from IAM aliases, with
-		Okta app labels used as fallback. The account-spec can be used to filter
-		apps by label or account ID. The following command lists all available
-		AWS apps in Okta:
+	Account ID and name are non-standard variables that provide information
+	about the current account. The remaining variables are the same ones used by
+	AWS CLI and SDKs.
 
-		  oktapus exec -okta "" true
+	The -okta option can be used to run the command for each AWS app in Okta. In
+	this mode, account names are derived from IAM aliases, with Okta app labels
+	used as fallback. The account-spec can be used to filter apps by label or
+	account ID. The following command lists all available AWS apps in Okta:
 
-		Due to Okta request rate limits, this command may take a long time to
-		execute if there are hundreds of AWS apps in your Okta account (but who
-		would ever have that many apps, right?).
+	  oktapus exec -okta "" true
 
-		Oktapus can execute itself with the exec command. This mostly needed to
-		configure initial account access. In this mode, the gateway function is
-		disabled and the given command operates on just one account, so the
-		account-spec should be empty. For example:
+	Due to Okta request rate limits, this command may take a long time to
+	execute if there are hundreds of AWS apps in your Okta account (but who
+	would ever have that many apps, right?).
 
-		  oktapus exec -okta "" oktapus authz -principal ... "" user@example.com
+	Oktapus can execute itself with the exec command. This mostly needed to
+	configure initial account access. In this mode, the gateway function is
+	disabled and the given command operates on just one account, so the
+	account-spec should be empty. For example:
+
+	  oktapus exec -okta "" oktapus authz -principal ... "" user@example.com
 	`)
 	accountSpecHelp(w)
 }
 
-func (cmd *execCmd) FlagCfg(fs *flag.FlagSet) {
-	fs.BoolVar(&cmd.OktaApps, "okta", false,
-		"Execute command for each AWS app in Okta")
-	fs.StringVar(&cmd.Partition, "partition", "aws",
-		"Only operate on Okta AWS apps within one `partition`")
+func (cmd *execCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
 func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
@@ -111,7 +105,7 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 		}
 		credsOut = listCreds(ctx.All, false)
 	} else {
-		cmd := op.GetCmdInfo("creds").New().(*creds)
+		cmd := credsCli.New().(*credsCmd)
 		cmd.Spec = spec
 		var out interface{}
 		if out, err = ctx.Call(cmd); err != nil {

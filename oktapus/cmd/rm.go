@@ -1,41 +1,48 @@
 package cmd
 
 import (
-	"encoding/gob"
 	"fmt"
 	"sort"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"rm"},
-		Summary: "Remove IAM users/roles",
-		Usage:   "account-spec {role|user} name [name ...]",
-		MinArgs: 3,
-		New:     func() op.Cmd { return &rm{Name: "rm"} },
-	})
-	gob.Register([]*rmOutput{})
-}
+var rmCli = register(&cli.Info{
+	Name:    "rm",
+	Usage:   "account-spec {role|user} name [name ...]",
+	Summary: "Remove IAM users/roles",
+	MinArgs: 3,
+	New:     func() cli.Cmd { return &rmCmd{} },
+})
 
-type rm struct {
-	Name
-	PrintFmt
+type rmCmd struct {
+	OutFmt
 	Spec  string
 	Type  string
 	Names []string
 }
 
-func (cmd *rm) Run(ctx *op.Ctx, args []string) error {
+func (cmd *rmCmd) Info() *cli.Info { return rmCli }
+
+func (cmd *rmCmd) Help(w *cli.Writer) {
+	w.Text("Remove IAM users/roles.")
+	accountSpecHelp(w)
+}
+
+func (cmd *rmCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
+}
+
+func (cmd *rmCmd) Run(ctx *op.Ctx, args []string) error {
 	cmd.Spec, cmd.Type, cmd.Names = args[0], args[1], args[2:]
 	switch cmd.Type {
 	case "role", "user":
 	default:
-		op.UsageErrf(cmd, "invalid resource type %q", cmd.Type)
+		return cli.Errorf("invalid resource type %q", cmd.Type)
 	}
 	out, err := ctx.Call(cmd)
 	if err == nil {
@@ -44,7 +51,7 @@ func (cmd *rm) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *rm) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *rmCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	var fn func(c iamiface.IAMAPI, name string) error
 	switch cmd.Type {
 	case "role":

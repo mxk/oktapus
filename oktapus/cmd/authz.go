@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"bufio"
-	"encoding/gob"
 	"errors"
-	"flag"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,75 +9,66 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"authz"},
-		Summary: "Authorize account access",
-		Usage:   "[options] account-spec role-name [role-name ...]",
-		MinArgs: 2,
-		New:     func() op.Cmd { return &authz{Name: "authz"} },
-	})
-	gob.Register([]*roleOutput{})
-}
+var authzCli = register(&cli.Info{
+	Name:    "authz",
+	Usage:   "[options] account-spec role-name [role-name ...]",
+	Summary: "Authorize account access",
+	MinArgs: 2,
+	New:     func() cli.Cmd { return &authzCmd{} },
+})
 
-type authz struct {
-	Name
-	PrintFmt
-	Desc      *string
-	Policy    string
-	Principal string
-	Tmp       bool
+type authzCmd struct {
+	OutFmt
+	Desc      *string `flag:"Set role <description>"`
+	Policy    string  `flag:"Set attached role policy <ARN> (default is AdministratorAccess)"`
+	Principal string  `flag:"Set principal <ARN> for AssumeRole policy (default is current user or gateway account)"`
+	Tmp       bool    `flag:"Delete this role automatically when the account is freed"`
 	Spec      string
 	Roles     []string
 }
 
-func (cmd *authz) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Authorize account access by creating or updating IAM roles.
+func (cmd *authzCmd) Info() *cli.Info { return authzCli }
 
-		By default, new roles are granted admin access with AssumeRole principal
-		derived from your current identity and new role name. Use an explicit
-		-principal to grant access to a role/user in another account. The
-		following command allows user1@example.com to access all accounts
-		currently owned by you via the same gateway:
+func (cmd *authzCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Authorize account access by creating or updating IAM roles.
 
-		  oktapus authz owner=me user1@example.com
+	By default, new roles are granted admin access with AssumeRole principal
+	derived from your current identity and new role name. Use an explicit
+	-principal to grant access to a role/user in another account. The following
+	command allows user1@example.com to access all accounts currently owned by
+	you via the same gateway:
 
-		If the role already exists, the new AssumeRole principal is added
-		without any other changes, provided that the role path is the same.
+	  oktapus authz owner=me user1@example.com
 
-		Principal examples:
+	If the role already exists, the new AssumeRole principal is added without
+	any other changes, provided that the role path is the same.
 
-		  User:
-		    arn:aws:iam::AWS-account-ID:user/user-name
+	Principal examples:
 
-		  Role:
-		    arn:aws:iam::AWS-account-ID:role/role-name
+	  User:
+	    arn:aws:iam::AWS-account-ID:user/user-name
 
-		  Assumed role:
-		    arn:aws:sts::AWS-account-ID:assumed-role/role-name/role-session-name
+	  Role:
+	    arn:aws:iam::AWS-account-ID:role/role-name
+
+	  Assumed role:
+	    arn:aws:sts::AWS-account-ID:assumed-role/role-name/role-session-name
 	`)
 	accountSpecHelp(w)
 }
 
-func (cmd *authz) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	op.StringPtrVar(fs, &cmd.Desc, "desc",
-		"Set role `description`")
-	fs.StringVar(&cmd.Policy, "policy", "",
-		"Set attached role policy `ARN` (default is AdministratorAccess)")
-	fs.StringVar(&cmd.Principal, "principal", "",
-		"Set principal `ARN` for AssumeRole policy (default is current user or gateway account)")
-	fs.BoolVar(&cmd.Tmp, "tmp", false,
-		"Delete this role automatically when the account is freed")
+func (cmd *authzCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
-func (cmd *authz) Run(ctx *op.Ctx, args []string) error {
+func (cmd *authzCmd) Run(ctx *op.Ctx, args []string) error {
 	cmd.Spec = args[0]
 	cmd.Roles = args[1:]
 	out, err := ctx.Call(cmd)
@@ -90,7 +78,7 @@ func (cmd *authz) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err
@@ -161,7 +149,7 @@ func (cmd *authz) Call(ctx *op.Ctx) (interface{}, error) {
 	return out, nil
 }
 
-func (cmd *authz) newRole(pathName string, user awsx.ARN) *role {
+func (cmd *authzCmd) newRole(pathName string, user awsx.ARN) *role {
 	arn := (awsx.NilARN + "role/").WithPathName(pathName)
 	path, name := arn.Path(), arn.Name()
 	if cmd.Tmp {

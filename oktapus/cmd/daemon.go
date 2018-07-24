@@ -7,23 +7,25 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"daemon"},
-		Summary: "Persistent daemon process",
-		Usage:   "[options] addr",
-		MinArgs: 1,
-		MaxArgs: 1,
-		Hidden:  true,
-		New:     func() op.Cmd { return daemonCmd{Name: "daemon"} },
-	})
-}
+var daemonCli = register(&cli.Info{
+	Name:    "daemon",
+	Usage:   "[options] addr",
+	Summary: "Persistent daemon process",
+	MinArgs: 1,
+	MaxArgs: 1,
+	Hide:    true,
+	New:     func() cli.Cmd { return daemonCmd{} },
+})
 
-type daemonCmd struct {
-	Name
-	noFlags
+type daemonCmd struct{}
+
+func (daemonCmd) Info() *cli.Info { return daemonCli }
+
+func (daemonCmd) Main(args []string) error {
+	return daemonCmd{}.Run(op.NewCtx(), args)
 }
 
 func (daemonCmd) Run(ctx *op.Ctx, args []string) error {

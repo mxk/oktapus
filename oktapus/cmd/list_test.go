@@ -8,7 +8,7 @@ import (
 )
 
 func TestList(t *testing.T) {
-	cmd := newCmd("list", "-refresh").(*list)
+	cmd := listCmd{Refresh: true}
 	ctx := newCtx("1")
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)

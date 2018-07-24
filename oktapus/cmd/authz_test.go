@@ -9,9 +9,7 @@ import (
 
 func TestAuthz(t *testing.T) {
 	ctx := newCtx("1", "2")
-	cmd := newCmd("authz").(*authz)
-	cmd.Spec = "test1"
-	cmd.Roles = []string{"user1"}
+	cmd := authzCmd{Spec: "test1", Roles: []string{"user1"}}
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*roleOutput{{

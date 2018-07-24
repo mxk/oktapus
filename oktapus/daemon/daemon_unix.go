@@ -7,15 +7,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 )
 
-// fdEnv is an environment variable containing daemon's socket file descriptor.
-var fdEnv = strings.ToUpper(internal.AppName) + "_DAEMON_FD"
+const (
+	fdEnv      = "OKTAPUS_DAEMON_FD"
+	sockPrefix = "oktapus."
+)
 
 var (
 	callTimeout   = 15 * time.Second
@@ -32,7 +33,7 @@ type msg struct {
 // Addr returns the address of the daemon process for the given context.
 func Addr(ctx Ctx) string {
 	m := ctx.EnvMap()
-	return filepath.Join(os.TempDir(), internal.AppName+"."+sig(m))
+	return filepath.Join(os.TempDir(), sockPrefix+sig(m))
 }
 
 // Call executes cmd remotely and returns the result.

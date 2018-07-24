@@ -17,8 +17,7 @@ func TestCreds(t *testing.T) {
 	defer internal.SetTime(time.Time{})
 
 	ctx := newCtx()
-	cmd := newCmd("creds").(*creds)
-	cmd.Spec = "test1,test2"
+	cmd := credsCmd{Spec: "test1,test2"}
 
 	// Get temporary creds
 	out, err := cmd.Call(ctx)

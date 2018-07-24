@@ -1,57 +1,53 @@
 package cmd
 
 import (
-	"bufio"
-	"flag"
-
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"update", "tag"},
-		Summary: "Update account tags and/or description",
-		Usage:   "[options] account-spec [tags]",
-		MinArgs: 1,
-		MaxArgs: 2,
-		New:     func() op.Cmd { return &update{Name: "update"} },
-	})
-}
+var updateCli = register(&cli.Info{
+	Name:    "update|tag",
+	Usage:   "[options] account-spec [tags]",
+	Summary: "Update account tags and/or description",
+	MinArgs: 1,
+	MaxArgs: 2,
+	New:     func() cli.Cmd { return &updateCmd{} },
+})
 
-type update struct {
-	Name
-	PrintFmt
-	Desc *string
+type updateCmd struct {
+	OutFmt
+	Desc *string `flag:"Set account <description>"`
 	Spec string
 	Set  op.Tags
 	Clr  op.Tags
 }
 
-func (cmd *update) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Update account tags and/or description.
+func (cmd *updateCmd) Info() *cli.Info { return updateCli }
 
-		To set or clear tags, specify them as a comma-separated list after the
-		account-spec. Use the '!' prefix to clear existing tags. You may need to
-		escape the '!' character with a backslash, or quote the entire argument,
-		to inhibit shell expansion.
+func (cmd *updateCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Update account tags and/or description.
+
+	To set or clear tags, specify them as a comma-separated list after the
+	account-spec. Use the '!' prefix to clear existing tags. You may need to
+	escape the '!' character with a backslash, or quote the entire argument, to
+	inhibit shell expansion.
 	`)
 	accountSpecHelp(w)
 }
 
-func (cmd *update) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	op.StringPtrVar(fs, &cmd.Desc, "desc", "Set account `description`")
+func (cmd *updateCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
-func (cmd *update) Run(ctx *op.Ctx, args []string) error {
+func (cmd *updateCmd) Run(ctx *op.Ctx, args []string) error {
 	padArgs(cmd, &args)
 	set, clr, err := op.ParseTags(args[1])
 	if err != nil {
 		return err
 	}
 	if cmd.Desc == nil && len(set)+len(clr) == 0 {
-		op.UsageErrf(cmd, "either description or tags must be specified")
+		return cli.Error("either description or tags must be specified")
 	}
 	cmd.Spec, cmd.Set, cmd.Clr = args[0], set, clr
 	out, err := ctx.Call(cmd)
@@ -61,7 +57,7 @@ func (cmd *update) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *update) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *updateCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err

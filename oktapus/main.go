@@ -3,10 +3,13 @@ package main
 import (
 	"os"
 
+	"github.com/LuminalHQ/cloudcover/x/cli"
+
+	// CLI registration
 	_ "github.com/LuminalHQ/cloudcover/oktapus/cmd"
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
 )
 
 func main() {
-	op.Run(os.Args[1:])
+	cli.Main.Summary = "AWS account management and creation tool"
+	cli.Main.Run(os.Args[1:])
 }

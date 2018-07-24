@@ -14,23 +14,22 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/iam"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"mutex-test"},
-		Summary: "Test account owner mutex",
-		Usage:   "[options] num-workers",
-		MinArgs: 1,
-		MaxArgs: 1,
-		Hidden:  true,
-		New:     func() op.Cmd { return &mutexTest{Name: "mutex-test"} },
-	})
-}
+var mutextTestCli = register(&cli.Info{
+	Name:    "mutex-test",
+	Usage:   "[options] num-workers",
+	Summary: "Test account owner mutex",
+	MinArgs: 1,
+	MaxArgs: 1,
+	Hide:    true,
+	New:     func() cli.Cmd { return mutexTestCmd{} },
+})
 
 const reportBatch = 10
 
@@ -40,10 +39,7 @@ var (
 	freeDelay    = 10 * time.Second
 )
 
-type mutexTest struct {
-	Name
-	noFlags
-}
+type mutexTestCmd struct{}
 
 type delaySummary struct {
 	Workers  int
@@ -65,10 +61,16 @@ type testResult struct {
 	Pass         bool
 }
 
-func (cmd *mutexTest) Run(_ *op.Ctx, args []string) error {
+func (mutexTestCmd) Info() *cli.Info { return mutextTestCli }
+
+func (mutexTestCmd) Main(args []string) error {
+	return mutexTestCmd{}.Run(nil, args)
+}
+
+func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if n < 1 || err != nil {
-		op.UsageErrf(cmd, "number of workers must be > 0")
+		return cli.Error("number of workers must be > 0")
 	}
 
 	// Create verification IAM client

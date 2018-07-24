@@ -17,7 +17,7 @@ func TestMasterSetup(t *testing.T) {
 		&iam.CreatePolicyOutput{},
 		&iam.PutRolePolicyOutput{},
 	))
-	cmd := newCmd("master-setup", "-exec")
+	cmd := masterSetupCmd{Exec: true}
 	prev := log.SetWriter(ioutil.Discard)
 	defer log.SetWriter(prev)
 	require.NoError(t, cmd.Run(ctx, nil))

@@ -1,34 +1,36 @@
 package cmd
 
 import (
-	"flag"
-
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"list", "ls"},
-		Summary: "List accounts",
-		Usage:   "[options] [account-spec]",
-		MaxArgs: 1,
-		New:     func() op.Cmd { return &list{Name: "list"} },
-	})
-}
+var listCli = register(&cli.Info{
+	Name:    "list|ls",
+	Usage:   "[options] [account-spec]",
+	Summary: "List accounts",
+	MaxArgs: 1,
+	New:     func() cli.Cmd { return &listCmd{} },
+})
 
-type list struct {
-	Name
-	PrintFmt
-	Refresh bool
+type listCmd struct {
+	OutFmt
+	Refresh bool `flag:"Refresh account information"`
 	Spec    string
 }
 
-func (cmd *list) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.Refresh, "refresh", false, "Refresh account information")
+func (cmd *listCmd) Info() *cli.Info { return listCli }
+
+func (cmd *listCmd) Help(w *cli.Writer) {
+	w.Text("List accounts.")
+	accountSpecHelp(w)
 }
 
-func (cmd *list) Run(ctx *op.Ctx, args []string) error {
+func (cmd *listCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
+}
+
+func (cmd *listCmd) Run(ctx *op.Ctx, args []string) error {
 	padArgs(cmd, &args)
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
@@ -38,7 +40,7 @@ func (cmd *list) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *list) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *listCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Refresh {
 		ctx.All = nil
 	}

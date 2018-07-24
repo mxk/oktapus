@@ -9,11 +9,10 @@ import (
 )
 
 func TestUpdate(t *testing.T) {
-	cmd := newCmd("update", "-desc=desc").(*update)
+	desc := "desc"
+	cmd := updateCmd{Desc: &desc, Set: op.Tags{"set"}, Spec: "test1"}
 	ctx := newCtx("1")
 
-	cmd.Set = op.Tags{"set"}
-	cmd.Spec = "test1"
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*listOutput{{

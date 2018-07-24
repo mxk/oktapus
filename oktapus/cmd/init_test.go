@@ -8,9 +8,8 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	cmd := newCmd("init").(*initCmd)
+	cmd := initCmd{Spec: "test1,test2"}
 	ctx := newCtx("1")
-	cmd.Spec = "test1,test2"
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*resultsOutput{{

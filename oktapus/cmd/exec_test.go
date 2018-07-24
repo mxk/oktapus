@@ -45,7 +45,7 @@ func TestExec(t *testing.T) {
 			w.Close()
 			close(done)
 		}(os.Stdout, os.Stderr)
-		cmd := newCmd("exec").(*execCmd)
+		cmd := execCmd{}
 		args := []string{"test1,test2", os.Args[0], "-test.run=TestExec"}
 		os.Stdout, os.Stderr = w, w
 		runErr = cmd.Run(ctx, args)

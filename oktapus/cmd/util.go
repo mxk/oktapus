@@ -4,75 +4,41 @@ import (
 	"bufio"
 	"encoding/gob"
 	"encoding/json"
-	"flag"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 var log = internal.Log
 
-// Name provides common Cmd method implementations.
-type Name string
-
-// Info returns command information.
-func (n Name) Info() *op.CmdInfo {
-	return op.GetCmdInfo(string(n))
+func init() {
+	gob.Register([]*credsOutput{})
+	gob.Register([]*listOutput{})
+	gob.Register([]*newAccountsOutput{})
+	gob.Register([]*resultsOutput{})
+	gob.Register([]*rmOutput{})
 }
 
-// Help provides a default help implementation based on command summary.
-func (n Name) Help(w *bufio.Writer) {
-	ci := op.GetCmdInfo(string(n))
-	w.WriteString(ci.Summary)
-	w.WriteString(".\n")
-	if strings.Contains(ci.Usage, "account-spec") {
-		accountSpecHelp(w)
-	}
-}
-
-// noFlags provides a no-op FlagCfg method.
-type noFlags struct{}
-
-func (noFlags) FlagCfg(fs *flag.FlagSet) {}
-
-// PrintFmt implements the -out flag for commands that print table or JSON
+// OutFmt implements the -out flag for commands that print table or JSON
 // output.
-type PrintFmt string
-
-// String implements flag.Value.String method.
-func (f PrintFmt) String() string { return string(f) }
-
-// Set implements flag.Value.Set method.
-func (f *PrintFmt) Set(s string) error {
-	*f = PrintFmt(s)
-	return nil
-}
-
-// FlagCfg adds -out flag to fs.
-func (f *PrintFmt) FlagCfg(fs *flag.FlagSet) {
-	out := "json"
-	if terminal.IsTerminal(syscall.Stdout) {
-		out = "text"
-	}
-	*f = PrintFmt(out)
-	fs.Var(f, "out", "Output `format`: text|json")
+type OutFmt struct {
+	Out string `flag:",Output <format> (choice: text, json)"`
 }
 
 // Print writes command output to stdout. When text format is used, cfg and fn
 // are forwarded to the printer.
-func (f PrintFmt) Print(v interface{}) error {
+func (f OutFmt) Print(v interface{}) error {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
-	if f == "text" {
+	if f.Out == "" || f.Out == "text" {
 		internal.NewPrinter(v).Print(w, nil)
 		return nil
 	}
@@ -80,12 +46,6 @@ func (f PrintFmt) Print(v interface{}) error {
 	enc.SetIndent("", "\t")
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
-}
-
-func init() {
-	gob.Register([]*resultsOutput{})
-	gob.Register([]*credsOutput{})
-	gob.Register([]*listOutput{})
 }
 
 // resultsOutput is the result of an account operation that does not provide any
@@ -220,8 +180,18 @@ func (t expTime) String() string {
 	return t.Sub(internal.Time()).Truncate(time.Second).String()
 }
 
+// register registers a new CLI command.
+func register(ci *cli.Info) *cli.Info {
+	cli.Main.Add(ci)
+	cmd := ci.New()
+	if _, ok := cmd.(op.CallableCmd); ok {
+		gob.Register(cmd)
+	}
+	return ci
+}
+
 // padArgs grows args to cmd's maximum number of arguments.
-func padArgs(cmd op.Cmd, args *[]string) {
+func padArgs(cmd cli.Cmd, args *[]string) {
 	max := cmd.Info().MaxArgs
 	if n := len(*args); n < max {
 		if cap(*args) >= max {

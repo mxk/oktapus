@@ -1,49 +1,44 @@
 package cmd
 
 import (
-	"bufio"
-	"flag"
-
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-func init() {
-	op.Register(&op.CmdInfo{
-		Names:   []string{"free"},
-		Summary: "Release accounts",
-		Usage:   "[options] [account-spec]",
-		MinArgs: 0,
-		MaxArgs: 1,
-		New:     func() op.Cmd { return &free{Name: "free"} },
-	})
-}
+var freeCli = register(&cli.Info{
+	Name:    "free",
+	Usage:   "[options] [account-spec]",
+	Summary: "Release accounts",
+	MinArgs: 0,
+	MaxArgs: 1,
+	New:     func() cli.Cmd { return &freeCmd{} },
+})
 
-type free struct {
-	Name
-	PrintFmt
-	Force bool
+type freeCmd struct {
+	OutFmt
+	Force bool `flag:"Release account even if you are not the owner"`
 	Spec  string
 }
 
-func (cmd *free) Help(w *bufio.Writer) {
-	op.WriteHelp(w, `
-		Release owned accounts.
+func (cmd *freeCmd) Info() *cli.Info { return freeCli }
 
-		Freeing an account allows someone else to allocate it. If the account
-		contains any temporary IAM users or roles, those are deleted (see authz
-		and creds commands for more info).
+func (cmd *freeCmd) Help(w *cli.Writer) {
+	w.Text(`
+	Release owned accounts.
+
+	Freeing an account allows someone else to allocate it. If the account
+	contains any temporary IAM users or roles, those are deleted (see authz and
+	creds commands for more info).
 	`)
 	accountSpecHelp(w)
 }
 
-func (cmd *free) FlagCfg(fs *flag.FlagSet) {
-	cmd.PrintFmt.FlagCfg(fs)
-	fs.BoolVar(&cmd.Force, "force", false,
-		"Release account even if you are not the owner")
+func (cmd *freeCmd) Main(args []string) error {
+	return cmd.Run(op.NewCtx(), args)
 }
 
-func (cmd *free) Run(ctx *op.Ctx, args []string) error {
+func (cmd *freeCmd) Run(ctx *op.Ctx, args []string) error {
 	padArgs(cmd, &args)
 	cmd.Spec = args[0]
 	out, err := ctx.Call(cmd)
@@ -53,7 +48,7 @@ func (cmd *free) Run(ctx *op.Ctx, args []string) error {
 	return err
 }
 
-func (cmd *free) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *freeCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs, err := ctx.Accounts(cmd.Spec)
 	if err != nil {
 		return nil, err
