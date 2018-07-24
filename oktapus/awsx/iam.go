@@ -1,7 +1,7 @@
 package awsx
 
 import (
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
@@ -20,7 +20,7 @@ func DeleteUsers(c iamiface.IAMAPI, path string) error {
 	if err := c.ListUsersPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(users), 0, func(i int) error {
+	return fast.ForEachIO(len(users), func(i int) error {
 		return DeleteUser(c, users[i])
 	})
 }
@@ -28,12 +28,10 @@ func DeleteUsers(c iamiface.IAMAPI, path string) error {
 // DeleteUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
 func DeleteUser(c iamiface.IAMAPI, name string) error {
-	err := internal.GoForEach(2, 2, func(i int) error {
-		if i == 0 {
-			return detachUserPolicies(c, name)
-		}
-		return deleteAccessKeys(c, name)
-	})
+	err := fast.Call(
+		func() error { return detachUserPolicies(c, name) },
+		func() error { return deleteAccessKeys(c, name) },
+	)
 	if err == nil {
 		in := iam.DeleteUserInput{UserName: aws.String(name)}
 		_, err = c.DeleteUser(&in)
@@ -54,7 +52,7 @@ func deleteAccessKeys(c iamiface.IAMAPI, user string) error {
 	if err := c.ListAccessKeysPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(ids), 0, func(i int) error {
+	return fast.ForEachIO(len(ids), func(i int) error {
 		in := iam.DeleteAccessKeyInput{
 			AccessKeyId: aws.String(ids[i]),
 			UserName:    aws.String(user),
@@ -77,7 +75,7 @@ func detachUserPolicies(c iamiface.IAMAPI, user string) error {
 	if err := c.ListAttachedUserPoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(arns), 0, func(i int) error {
+	return fast.ForEachIO(len(arns), func(i int) error {
 		in := iam.DetachUserPolicyInput{
 			PolicyArn: aws.String(arns[i]),
 			UserName:  aws.String(user),
@@ -100,7 +98,7 @@ func DeleteRoles(c iamiface.IAMAPI, path string) error {
 	if err := c.ListRolesPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(roles), 0, func(i int) error {
+	return fast.ForEachIO(len(roles), func(i int) error {
 		return DeleteRole(c, roles[i])
 	})
 }
@@ -108,12 +106,10 @@ func DeleteRoles(c iamiface.IAMAPI, path string) error {
 // DeleteRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
 func DeleteRole(c iamiface.IAMAPI, role string) error {
-	err := internal.GoForEach(2, 2, func(i int) error {
-		if i == 0 {
-			return detachRolePolicies(c, role)
-		}
-		return deleteRolePolicies(c, role)
-	})
+	err := fast.Call(
+		func() error { return detachRolePolicies(c, role) },
+		func() error { return deleteRolePolicies(c, role) },
+	)
 	if err == nil {
 		in := iam.DeleteRoleInput{RoleName: aws.String(role)}
 		_, err = c.DeleteRole(&in)
@@ -134,7 +130,7 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 	if err := c.ListAttachedRolePoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(arns), 0, func(i int) error {
+	return fast.ForEachIO(len(arns), func(i int) error {
 		in := iam.DetachRolePolicyInput{
 			PolicyArn: aws.String(arns[i]),
 			RoleName:  aws.String(role),
@@ -157,7 +153,7 @@ func deleteRolePolicies(c iamiface.IAMAPI, role string) error {
 	if err := c.ListRolePoliciesPages(&in, pager); err != nil {
 		return err
 	}
-	return internal.GoForEach(len(names), 0, func(i int) error {
+	return fast.ForEachIO(len(names), func(i int) error {
 		in := iam.DeleteRolePolicyInput{
 			PolicyName: aws.String(names[i]),
 			RoleName:   aws.String(role),

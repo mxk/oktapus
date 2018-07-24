@@ -14,6 +14,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -198,7 +199,7 @@ func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 	// Open all AWS apps
 	all := make(op.Accounts, len(links))
 	role := arn.ARN(ctx.Env[op.OktaAWSRoleEnv])
-	internal.GoForEach(len(links), 40, func(i int) error {
+	fast.ForEach(len(links), 40, func(i int) error {
 		auth := getAWSAuth(c, links[i], role)
 		if auth != nil && (part == "" || auth.Roles[0].Role.Partition() == part) {
 			all[i] = getAccount(links[i], auth, ctx.Sess)

@@ -5,9 +5,9 @@ import (
 	"sort"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 )
 
@@ -88,7 +88,7 @@ func (cmd *rmCmd) Call(ctx *op.Ctx) (interface{}, error) {
 
 	// Remove resources
 	names := cmd.Names
-	err = internal.GoForEach(len(res), 0, func(i int) error {
+	err = fast.ForEachIO(len(res), func(i int) error {
 		ac, name, r := acs[i/len(names)], names[i%len(names)], "OK"
 		if err := fn(ac.IAM(), name); err != nil {
 			r = "ERROR: " + explainError(err)

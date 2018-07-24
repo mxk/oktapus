@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -168,7 +168,7 @@ func (s Accounts) Save() Accounts {
 
 // Apply executes fn on each account concurrently.
 func (s Accounts) Apply(fn func(i int, ac *Account)) Accounts {
-	internal.GoForEach(len(s), 0, func(i int) error {
+	fast.ForEachIO(len(s), func(i int) error {
 		fn(i, s[i])
 		return nil
 	})
