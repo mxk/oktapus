@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -61,7 +61,7 @@ func (r STSRouter) assumeRole(q *request.Request) {
 	}
 	q.Data.(*sts.AssumeRoleOutput).Credentials = &sts.Credentials{
 		AccessKeyId:     aws.String(AccessKeyID),
-		Expiration:      aws.Time(internal.Time().Add(time.Hour)),
+		Expiration:      aws.Time(fast.Time().Add(time.Hour)),
 		SecretAccessKey: aws.String(SecretAccessKey),
 		SessionToken:    aws.String(sessArn),
 	}

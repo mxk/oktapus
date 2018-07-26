@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 )
 
 var allocCli = register(&cli.Info{
@@ -118,7 +118,7 @@ func (cmd *allocCmd) Call(ctx *op.Ctx) (interface{}, error) {
 		})
 
 		// Delay determined by running 1,100 mutex-test trials with 50 threads
-		internal.Sleep(10 * time.Second)
+		fast.Sleep(10 * time.Second)
 
 		// Verify owner
 		batch.RefreshCtl().Filter(func(ac *op.Account) bool {

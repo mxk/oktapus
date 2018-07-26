@@ -3,14 +3,14 @@ package cmd
 import (
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreate(t *testing.T) {
-	internal.NoSleep(true)
-	defer internal.NoSleep(false)
+	fast.MockSleep(-1)
+	defer fast.MockSleep(0)
 
 	cmd := createCmd{
 		Num:      3,

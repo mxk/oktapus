@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -14,9 +14,8 @@ import (
 )
 
 func TestStaticCreds(t *testing.T) {
-	exp := internal.Time().Add(time.Minute)
-	internal.SetTime(exp.Add(-time.Minute))
-	defer internal.SetTime(time.Time{})
+	exp := fast.MockTime(fast.Time()).Add(time.Minute)
+	defer fast.MockTime(time.Time{})
 
 	v := credsVal("StaticCreds")
 	c := NewStaticCreds(v.AccessKeyID, v.SecretAccessKey, v.SessionToken)
@@ -53,9 +52,8 @@ func TestStaticCreds(t *testing.T) {
 }
 
 func TestStaticCredsExp(t *testing.T) {
-	exp := internal.Time().Add(time.Minute)
-	internal.SetTime(exp.Add(-time.Minute))
-	defer internal.SetTime(time.Time{})
+	exp := fast.MockTime(fast.Time()).Add(time.Minute)
+	defer fast.MockTime(time.Time{})
 
 	v := credsVal("StaticCreds")
 	c := &StaticCreds{Value: v, Exp: exp}
@@ -67,7 +65,7 @@ func TestStaticCredsExp(t *testing.T) {
 	assert.Equal(t, v, rv)
 
 	// Expired
-	internal.SetTime(exp)
+	fast.MockTime(exp)
 	rv, err = c.retrieve()
 	assert.True(t, err == ErrCredsExpired)
 	assert.Equal(t, nilVal("StaticCreds"), rv)
@@ -77,8 +75,8 @@ func TestStaticCredsExp(t *testing.T) {
 }
 
 func TestSAMLCreds(t *testing.T) {
-	internal.SetTime(internal.Time())
-	defer internal.SetTime(time.Time{})
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
 
 	api := func(in *sts.AssumeRoleWithSAMLInput) (*sts.AssumeRoleWithSAMLOutput, error) {
 		assert.Equal(t, "principal", *in.PrincipalArn)
@@ -87,7 +85,7 @@ func TestSAMLCreds(t *testing.T) {
 		return &sts.AssumeRoleWithSAMLOutput{
 			Credentials: &sts.Credentials{
 				AccessKeyId:     aws.String("ID"),
-				Expiration:      aws.Time(internal.Time().Add(5 * time.Minute)),
+				Expiration:      aws.Time(fast.Time().Add(5 * time.Minute)),
 				SecretAccessKey: aws.String("SECRET"),
 				SessionToken:    aws.String("TOKEN"),
 			},
@@ -110,7 +108,7 @@ func TestSAMLCreds(t *testing.T) {
 	assert.False(t, c.mustRetrieve())
 
 	// Expire
-	internal.SetTime(c.Expires())
+	fast.MockTime(c.Expires())
 	assert.True(t, c.mustRetrieve())
 
 	// Renew
@@ -139,8 +137,8 @@ func TestSAMLCreds(t *testing.T) {
 }
 
 func TestAssumeRoleCreds(t *testing.T) {
-	internal.SetTime(internal.Time())
-	defer internal.SetTime(time.Time{})
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
 
 	api := func(in *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
 		assert.Equal(t, "role", *in.RoleArn)
@@ -148,7 +146,7 @@ func TestAssumeRoleCreds(t *testing.T) {
 		return &sts.AssumeRoleOutput{
 			Credentials: &sts.Credentials{
 				AccessKeyId:     aws.String("ID"),
-				Expiration:      aws.Time(internal.Time().Add(5 * time.Minute)),
+				Expiration:      aws.Time(fast.Time().Add(5 * time.Minute)),
 				SecretAccessKey: aws.String("SECRET"),
 				SessionToken:    aws.String("TOKEN"),
 			},
@@ -169,8 +167,8 @@ func TestAssumeRoleCreds(t *testing.T) {
 }
 
 func TestAssumeRoleErr(t *testing.T) {
-	internal.SetTime(internal.Time())
-	defer internal.SetTime(time.Time{})
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
 
 	nextErr := errors.New("call failed")
 	api := func(in *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
@@ -180,7 +178,7 @@ func TestAssumeRoleErr(t *testing.T) {
 		return &sts.AssumeRoleOutput{
 			Credentials: &sts.Credentials{
 				AccessKeyId:     aws.String("ID"),
-				Expiration:      aws.Time(internal.Time().Add(5 * time.Minute)),
+				Expiration:      aws.Time(fast.Time().Add(5 * time.Minute)),
 				SecretAccessKey: aws.String("SECRET"),
 				SessionToken:    aws.String("TOKEN"),
 			},
@@ -204,7 +202,7 @@ func TestAssumeRoleErr(t *testing.T) {
 	assert.True(t, c.mustRetrieve())
 
 	// Error expired
-	internal.SetTime(c.Expires())
+	fast.MockTime(c.Expires())
 	v, err = c.retrieve()
 	assert.NoError(t, err)
 	assert.Equal(t, credsVal("AssumeRoleCreds"), v)

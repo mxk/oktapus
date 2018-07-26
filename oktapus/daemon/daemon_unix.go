@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 )
 
 const (
@@ -46,7 +47,7 @@ func Call(ctx Ctx, cmd interface{}) (interface{}, error) {
 	}
 	dec := gob.NewDecoder(cn)
 	for {
-		cn.SetReadDeadline(internal.Time().Add(callTimeout))
+		cn.SetReadDeadline(fast.Time().Add(callTimeout))
 		var m msg
 		if err := dec.Decode(&m); err != nil {
 			panic(err)

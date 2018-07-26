@@ -4,17 +4,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreds(t *testing.T) {
-	now := internal.Time()
+	now := fast.MockTime(fast.Time())
 	exp := expTime{now.Add(time.Hour - time.Minute).Truncate(time.Second)}
-	internal.SetTime(now)
-	defer internal.SetTime(time.Time{})
+	defer fast.MockTime(time.Time{})
 
 	ctx := newCtx()
 	cmd := credsCmd{Spec: "test1,test2"}

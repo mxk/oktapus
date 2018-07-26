@@ -6,6 +6,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -100,7 +101,7 @@ func (c *StaticCreds) retrieve() (credentials.Value, error) {
 // valid returns true until c expires.
 func (c *StaticCreds) valid() bool {
 	if c.Err != ErrCredsExpired {
-		if !c.Exp.IsZero() && c.Exp.After(internal.Time()) {
+		if !c.Exp.IsZero() && c.Exp.After(fast.Time()) {
 			return true
 		}
 		*c = StaticCreds{Err: ErrCredsExpired, creds: c.creds}
@@ -217,7 +218,7 @@ func (c *stsCreds) stsRetrieve(name string, fn func() (*sts.Credentials, error))
 		// TODO: Error expiration time should be reduced for temporary errors
 		c.s.Value = credentials.Value{ProviderName: name}
 		c.s.Err = err
-		c.s.Exp = internal.Time().Add(2 * time.Hour).Truncate(time.Second)
+		c.s.Exp = fast.Time().Add(2 * time.Hour).Truncate(time.Second)
 	}
 	return c.s.Value, c.s.Err
 }

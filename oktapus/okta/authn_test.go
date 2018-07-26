@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -170,8 +170,8 @@ func TestMultiFactorPush(t *testing.T) {
 			Status:       "SUCCESS",
 		})
 	}
-	internal.NoSleep(true)
-	defer internal.NoSleep(false)
+	fast.MockSleep(-1)
+	defer fast.MockSleep(0)
 	assert.NoError(t, c.Authenticate(auth))
 }
 

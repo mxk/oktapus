@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	orgs "github.com/aws/aws-sdk-go/service/organizations"
 	orgsif "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
@@ -12,8 +12,8 @@ import (
 )
 
 func TestCreateAccounts(t *testing.T) {
-	internal.NoSleep(true)
-	defer internal.NoSleep(false)
+	fast.MockSleep(-1)
+	defer fast.MockSleep(0)
 	in := []*orgs.CreateAccountInput{{
 		AccountName: aws.String("a"),
 		Email:       aws.String("test@example.com"),

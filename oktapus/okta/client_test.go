@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,7 +174,7 @@ type auth struct {
 
 func newAuth(s *mock.Server) *auth {
 	if s != nil {
-		now := internal.Time().Truncate(time.Second)
+		now := fast.Time().Truncate(time.Second)
 		s.Response["/api/v1/authn"] = &result{
 			SessionToken: "token",
 			Status:       "SUCCESS",

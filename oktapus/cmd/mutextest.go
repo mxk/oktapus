@@ -15,6 +15,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -119,7 +120,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 		fmt.Printf("\nTest #%d in...", t.Num)
 		for i := 3; i > 0; i-- {
 			fmt.Printf(" %d", i)
-			internal.Sleep(time.Second)
+			fast.Sleep(time.Second)
 		}
 		fmt.Println(" 0")
 		run.Broadcast()
@@ -160,7 +161,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 			t.AssumedOwner = r.name
 			fmt.Printf("Owner is %s, will verify in %v... ",
 				r.name, confirmDelay)
-			internal.Sleep(confirmDelay)
+			fast.Sleep(confirmDelay)
 			if err := r.Get(c); err != nil {
 				panic(err)
 			}
@@ -183,7 +184,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 		} else if t.Setters < n/2 && freeDelay < time.Minute {
 			freeDelay += 5 * time.Second
 		}
-		internal.Sleep(freeDelay)
+		fast.Sleep(freeDelay)
 
 		// Update summary
 		s := summary[len(summary)-1]
@@ -253,7 +254,7 @@ func worker(name string, c *iam.IAM, run *sync.Cond, ch chan<- *workerResult) {
 		}
 
 		r.step = stepVerify
-		internal.Sleep(verifyDelay)
+		fast.Sleep(verifyDelay)
 		r.err = r.Get(c)
 		ch <- r
 	}

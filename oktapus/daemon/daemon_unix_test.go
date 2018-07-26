@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,18 +214,18 @@ func echo(r *Request) bool {
 }
 
 func fastTime() chan<- struct{} {
-	internal.SetTime(time.Now())
+	fast.MockTime(time.Now())
 	stop := make(chan struct{})
 	tick := time.NewTicker(time.Millisecond)
 	go func() {
 		defer func() {
 			tick.Stop()
-			internal.SetTime(time.Time{})
+			fast.MockTime(time.Time{})
 		}()
 		for {
 			select {
 			case t := <-tick.C:
-				internal.SetTime(t)
+				fast.MockTime(t)
 			case <-stop:
 				return
 			}

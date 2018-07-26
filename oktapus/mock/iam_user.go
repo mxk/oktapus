@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -66,7 +66,7 @@ func (r UserRouter) createAccessKey(q *request.Request) {
 	if user := r.get(in.UserName, q); user != nil {
 		ak := &iam.AccessKey{
 			AccessKeyId:     aws.String(AccessKeyID),
-			CreateDate:      aws.Time(internal.Time()),
+			CreateDate:      aws.Time(fast.Time()),
 			SecretAccessKey: aws.String(SecretAccessKey),
 			Status:          aws.String(iam.StatusTypeActive),
 			UserName:        in.UserName,

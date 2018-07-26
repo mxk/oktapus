@@ -2,85 +2,16 @@ package internal
 
 import (
 	"bytes"
-	crand "crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"sync"
-	"sync/atomic"
-	"time"
-)
 
-var (
-	timeMu sync.Mutex
-	now    atomic.Value
-	stop   bool
+	"github.com/LuminalHQ/cloudcover/x/fast"
 )
 
 func init() {
-	store := func(t time.Time) {
-		timeMu.Lock()
-		defer timeMu.Unlock()
-		if !stop {
-			now.Store(t)
-		}
-	}
-	t := time.Now()
-	store(t)
-	go func() {
-		t := time.Now()
-		d := t.Truncate(time.Second).Add(time.Second).Sub(t)
-		if d < 250*time.Millisecond {
-			d += time.Second
-		}
-		store(<-time.After(d))
-		for t := range time.Tick(time.Second) {
-			store(t)
-		}
-	}()
-	var b [8]byte
-	if _, err := crand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	rand.Seed(int64(binary.LittleEndian.Uint64(b[:])) ^ t.UnixNano())
-}
-
-// Time returns the current time. It is much faster than time.Now(), but has a
-// resolution of 1 second.
-func Time() time.Time {
-	return now.Load().(time.Time)
-}
-
-// SetTime causes all subsequent Time() calls to return t. If t is the zero
-// time, the clock is restarted. This is only used for testing.
-func SetTime(t time.Time) {
-	zero := t.IsZero()
-	timeMu.Lock()
-	defer timeMu.Unlock()
-	if stop = !zero; zero {
-		t = time.Now()
-	}
-	now.Store(t)
-}
-
-var noSleep int32
-
-// Sleep pauses the current goroutine for at least the duration d.
-func Sleep(d time.Duration) {
-	if atomic.LoadInt32(&noSleep) == 0 {
-		time.Sleep(d)
-	}
-}
-
-// NoSleep enables or disables the Sleep function.
-func NoSleep(b bool) {
-	var v int32
-	if b {
-		v = 1
-	}
-	atomic.StoreInt32(&noSleep, v)
+	rand.Seed(int64(fast.RandUint64()))
 }
 
 // CloseBody attempts to drain http.Response body before closing it to allow

@@ -16,6 +16,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 )
 
 // ErrRateLimit is returned when too many requests are sent.
@@ -71,7 +72,7 @@ func (c *Client) Authenticate(authn Authenticator) error {
 // Session returns current session information or nil if the client is not
 // authenticated.
 func (c *Client) Session() *Session {
-	if c.sidCookie != "" && internal.Time().Before(c.session.ExpiresAt) {
+	if c.sidCookie != "" && fast.Time().Before(c.session.ExpiresAt) {
 		s := c.session
 		return &s
 	}

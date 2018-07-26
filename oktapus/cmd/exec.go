@@ -230,7 +230,7 @@ func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 
 // getAWSAuth returns authentication data for an AWS app in Okta.
 func getAWSAuth(c *okta.Client, app *okta.AppLink, role arn.ARN) *okta.AWSAuth {
-	timeout := internal.Time().Add(time.Minute)
+	timeout := fast.Time().Add(time.Minute)
 	for {
 		auth, err := c.OpenAWS(app.LinkURL, role)
 		if err != okta.ErrRateLimit {
@@ -240,13 +240,13 @@ func getAWSAuth(c *okta.Client, app *okta.AppLink, role arn.ARN) *okta.AWSAuth {
 			log.E("Failed to open AWS app %q: %v", app.Label, err)
 			return nil
 		}
-		if !internal.Time().Before(timeout) {
+		if !fast.Time().Before(timeout) {
 			log.E("Okta rate limit timeout for AWS app %q", app.Label)
 			return nil
 		}
 		// Limit is 40 requests per 10 seconds
 		// https://support.okta.com/help/Documentation/Knowledge_Article/API-54325410
-		internal.Sleep(11 * time.Second)
+		fast.Sleep(11 * time.Second)
 	}
 }
 

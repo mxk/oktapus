@@ -14,6 +14,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
@@ -177,7 +178,7 @@ func (t expTime) String() string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Sub(internal.Time()).Truncate(time.Second).String()
+	return t.Sub(fast.Time()).Truncate(time.Second).String()
 }
 
 // register registers a new CLI command.

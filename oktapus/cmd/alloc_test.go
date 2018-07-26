@@ -4,20 +4,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAlloc(t *testing.T) {
-	now := internal.Time()
+	now := fast.MockTime(fast.Time())
 	exp := expTime{now.Add(time.Hour - time.Minute).Truncate(time.Second)}
-	internal.SetTime(now)
-	defer internal.SetTime(time.Time{})
+	defer fast.MockTime(time.Time{})
 
-	internal.NoSleep(true)
-	defer internal.NoSleep(false)
+	fast.MockSleep(-1)
+	defer fast.MockSleep(0)
 
 	cmd := allocCmd{Num: 1, Spec: "test1"}
 	ctx := newCtx("1", "2", "3")

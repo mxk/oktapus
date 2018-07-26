@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 )
 
 // Authenticator implements the user interface for multi-factor authentication.
@@ -290,7 +290,7 @@ func (push) run(f *Factor, c *authnClient, r *result) (*result, error) {
 	r, err := c.nav(f.Links.Verify, &in)
 	c.Notify("Waiting for approval from your %s... ", f.Profile.Name)
 	for err == nil && r.FactorResult == "WAITING" {
-		internal.Sleep(2 * time.Second)
+		fast.Sleep(2 * time.Second)
 		r, err = c.nav(r.Links.Next, &in)
 	}
 	c.Notify("%s\n", r.FactorResult)

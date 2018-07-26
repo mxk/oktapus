@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
@@ -268,14 +268,14 @@ func setCounters(acs []*awsx.Account, name, email *counter) {
 
 // waitForCreds blocks until account credentials become valid.
 func waitForCreds(ac *op.Account) error {
-	timeout := internal.Time().Add(time.Minute)
+	timeout := fast.Time().Add(time.Minute)
 	for {
 		_, err := ac.Creds(true)
 		if err == nil || !awsx.IsStatus(err, http.StatusForbidden) ||
-			!internal.Time().Before(timeout) {
+			!fast.Time().Before(timeout) {
 			return err
 		}
-		internal.Sleep(time.Second)
+		fast.Sleep(time.Second)
 	}
 }
 
@@ -300,7 +300,7 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 	}
 	// New credentials for a new account sometimes result in
 	// InvalidClientTokenId error for the first few seconds.
-	timeout := internal.Time().Add(30 * time.Second)
+	timeout := fast.Time().Add(30 * time.Second)
 	for {
 		_, err := c.CreateRole(&role)
 		if err == nil {
@@ -308,10 +308,10 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 			return err
 		}
 		if !awsx.IsCode(err, "InvalidClientTokenId") ||
-			!internal.Time().Before(timeout) {
+			!fast.Time().Before(timeout) {
 			return err
 		}
-		internal.Sleep(time.Second)
+		fast.Sleep(time.Second)
 	}
 }
 

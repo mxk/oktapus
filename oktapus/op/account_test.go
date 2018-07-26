@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ func TestAccountCreds(t *testing.T) {
 		SecretAccessKey: "secret",
 		SessionToken:    "token",
 	}
-	exp := internal.Time().Add(time.Minute)
+	exp := fast.Time().Add(time.Minute)
 	ac.Init(mock.NewSession(), &awsx.StaticCreds{Value: v, Exp: exp})
 	assert.NotNil(t, ac.IAM())
 
