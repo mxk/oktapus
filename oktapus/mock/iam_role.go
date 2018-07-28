@@ -4,10 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 // Role is a mock IAM role.
@@ -21,31 +20,31 @@ type Role struct {
 type RoleRouter map[string]*Role
 
 // Route implements the Router interface.
-func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
-	switch api {
-	case "iam:AttachRolePolicy":
+func (r RoleRouter) Route(q *aws.Request) bool {
+	switch q.Params.(type) {
+	case *iam.AttachRolePolicyInput:
 		r.attachRolePolicy(q)
-	case "iam:CreateRole":
+	case *iam.CreateRoleInput:
 		r.createRole(q)
-	case "iam:DeleteRole":
+	case *iam.DeleteRoleInput:
 		r.deleteRole(q)
-	case "iam:DeleteRolePolicy":
+	case *iam.DeleteRolePolicyInput:
 		r.deleteRolePolicy(q)
-	case "iam:DetachRolePolicy":
+	case *iam.DetachRolePolicyInput:
 		r.detachRolePolicy(q)
-	case "iam:GetRole":
+	case *iam.GetRoleInput:
 		r.getRole(q)
-	case "iam:ListAttachedRolePolicies":
+	case *iam.ListAttachedRolePoliciesInput:
 		r.listAttachedRolePolicies(q)
-	case "iam:ListRolePolicies":
+	case *iam.ListRolePoliciesInput:
 		r.listRolePolicies(q)
-	case "iam:ListRoles":
+	case *iam.ListRolesInput:
 		r.listRoles(q)
-	case "iam:PutRolePolicy":
+	case *iam.PutRolePolicyInput:
 		r.putRolePolicy(q)
-	case "iam:UpdateAssumeRolePolicy":
+	case *iam.UpdateAssumeRolePolicyInput:
 		r.updateAssumeRolePolicy(q)
-	case "iam:UpdateRoleDescription":
+	case *iam.UpdateRoleDescriptionInput:
 		r.updateRoleDescription(q)
 	default:
 		return false
@@ -53,7 +52,7 @@ func (r RoleRouter) Route(s *Session, q *request.Request, api string) bool {
 	return true
 }
 
-func (r RoleRouter) attachRolePolicy(q *request.Request) {
+func (r RoleRouter) attachRolePolicy(q *aws.Request) {
 	in := q.Params.(*iam.AttachRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		if role.AttachedPolicies == nil {
@@ -64,7 +63,7 @@ func (r RoleRouter) attachRolePolicy(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) createRole(q *request.Request) {
+func (r RoleRouter) createRole(q *aws.Request) {
 	in := q.Params.(*iam.CreateRoleInput)
 	name := aws.StringValue(in.RoleName)
 	if _, ok := r[name]; ok {
@@ -83,7 +82,7 @@ func (r RoleRouter) createRole(q *request.Request) {
 	q.Data.(*iam.CreateRoleOutput).Role = &cpy
 }
 
-func (r RoleRouter) deleteRole(q *request.Request) {
+func (r RoleRouter) deleteRole(q *aws.Request) {
 	in := q.Params.(*iam.DeleteRoleInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		if len(role.AttachedPolicies) != 0 {
@@ -96,7 +95,7 @@ func (r RoleRouter) deleteRole(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) deleteRolePolicy(q *request.Request) {
+func (r RoleRouter) deleteRolePolicy(q *aws.Request) {
 	in := q.Params.(*iam.DeleteRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		name := aws.StringValue(in.PolicyName)
@@ -107,7 +106,7 @@ func (r RoleRouter) deleteRolePolicy(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) detachRolePolicy(q *request.Request) {
+func (r RoleRouter) detachRolePolicy(q *aws.Request) {
 	in := q.Params.(*iam.DetachRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		arn := aws.StringValue(in.PolicyArn)
@@ -118,7 +117,7 @@ func (r RoleRouter) detachRolePolicy(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) getRole(q *request.Request) {
+func (r RoleRouter) getRole(q *aws.Request) {
 	in := q.Params.(*iam.GetRoleInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		cpy := role.Role
@@ -126,12 +125,12 @@ func (r RoleRouter) getRole(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) listAttachedRolePolicies(q *request.Request) {
+func (r RoleRouter) listAttachedRolePolicies(q *aws.Request) {
 	in := q.Params.(*iam.ListAttachedRolePoliciesInput)
 	if role := r.get(in.RoleName, q); role != nil {
-		pols := make([]*iam.AttachedPolicy, 0, len(r))
+		pols := make([]iam.AttachedPolicy, 0, len(r))
 		for arn, name := range role.AttachedPolicies {
-			pols = append(pols, &iam.AttachedPolicy{
+			pols = append(pols, iam.AttachedPolicy{
 				PolicyArn:  aws.String(arn),
 				PolicyName: aws.String(name),
 			})
@@ -140,31 +139,29 @@ func (r RoleRouter) listAttachedRolePolicies(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) listRolePolicies(q *request.Request) {
+func (r RoleRouter) listRolePolicies(q *aws.Request) {
 	in := q.Params.(*iam.ListRolePoliciesInput)
 	if role := r.get(in.RoleName, q); role != nil {
-		names := make([]*string, 0, len(r))
+		names := make([]string, 0, len(r))
 		for name := range role.InlinePolicies {
-			names = append(names, aws.String(name))
+			names = append(names, name)
 		}
 		q.Data.(*iam.ListRolePoliciesOutput).PolicyNames = names
 	}
 }
 
-func (r RoleRouter) listRoles(q *request.Request) {
+func (r RoleRouter) listRoles(q *aws.Request) {
 	prefix := aws.StringValue(q.Params.(*iam.ListRolesInput).PathPrefix)
-	roles := make([]*iam.Role, 0, len(r))
+	roles := make([]iam.Role, 0, len(r))
 	for _, role := range r {
-		if !strings.HasPrefix(aws.StringValue(role.Path), prefix) {
-			continue
+		if strings.HasPrefix(aws.StringValue(role.Path), prefix) {
+			roles = append(roles, role.Role)
 		}
-		cpy := role.Role
-		roles = append(roles, &cpy)
 	}
 	q.Data.(*iam.ListRolesOutput).Roles = roles
 }
 
-func (r RoleRouter) putRolePolicy(q *request.Request) {
+func (r RoleRouter) putRolePolicy(q *aws.Request) {
 	in := q.Params.(*iam.PutRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		if role.InlinePolicies == nil {
@@ -175,14 +172,14 @@ func (r RoleRouter) putRolePolicy(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) updateAssumeRolePolicy(q *request.Request) {
+func (r RoleRouter) updateAssumeRolePolicy(q *aws.Request) {
 	in := q.Params.(*iam.UpdateAssumeRolePolicyInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		role.AssumeRolePolicyDocument = in.PolicyDocument
 	}
 }
 
-func (r RoleRouter) updateRoleDescription(q *request.Request) {
+func (r RoleRouter) updateRoleDescription(q *aws.Request) {
 	in := q.Params.(*iam.UpdateRoleDescriptionInput)
 	if role := r.get(in.RoleName, q); role != nil {
 		role.Description = in.Description
@@ -191,7 +188,7 @@ func (r RoleRouter) updateRoleDescription(q *request.Request) {
 	}
 }
 
-func (r RoleRouter) get(name *string, q *request.Request) *Role {
+func (r RoleRouter) get(name *string, q *aws.Request) *Role {
 	if name != nil {
 		if role := r[*name]; role != nil {
 			return role

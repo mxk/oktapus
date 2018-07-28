@@ -3,30 +3,31 @@ package mock
 import (
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOrg(t *testing.T) {
-	out, err := organizations.New(NewSession()).DescribeOrganization(nil)
+	out, err := orgs.New(NewSession().Config).DescribeOrganizationRequest(nil).Send()
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
 }
 
 func TestSTS(t *testing.T) {
-	out, err := sts.New(NewSession()).GetCallerIdentity(nil)
+	out, err := sts.New(NewSession().Config).GetCallerIdentityRequest(nil).Send()
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
 }
 
 func TestIAM(t *testing.T) {
-	out, err := iam.New(NewSession()).CreateRole(new(iam.CreateRoleInput).
-		SetAssumeRolePolicyDocument("{}").
-		SetRoleName("testrole"))
+	out, err := iam.New(NewSession().Config).CreateRoleRequest(&iam.CreateRoleInput{
+		AssumeRolePolicyDocument: aws.String("{}"),
+		RoleName:                 aws.String("testrole"),
+	}).Send()
 	require.NoError(t, err)
 	assert.Equal(t, "testrole", aws.StringValue(out.Role.RoleName))
 }

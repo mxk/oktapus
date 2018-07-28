@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 const (
@@ -33,11 +32,11 @@ func NewSTSRouter(gwAccountID string) STSRouter {
 }
 
 // Route implements the Router interface.
-func (r STSRouter) Route(_ *Session, q *request.Request, api string) bool {
-	switch api {
-	case "sts:AssumeRole":
+func (r STSRouter) Route(q *aws.Request) bool {
+	switch q.Params.(type) {
+	case *sts.AssumeRoleInput:
 		r.assumeRole(q)
-	case "sts:GetCallerIdentity":
+	case *sts.GetCallerIdentityInput:
 		r.getCallerIdentity(q)
 	default:
 		return false
@@ -45,7 +44,7 @@ func (r STSRouter) Route(_ *Session, q *request.Request, api string) bool {
 	return true
 }
 
-func (r STSRouter) assumeRole(q *request.Request) {
+func (r STSRouter) assumeRole(q *aws.Request) {
 	in := q.Params.(*sts.AssumeRoleInput)
 	role, err := arn.Parse(aws.StringValue(in.RoleArn))
 	if err != nil {
@@ -67,8 +66,8 @@ func (r STSRouter) assumeRole(q *request.Request) {
 	}
 }
 
-func (r STSRouter) getCallerIdentity(q *request.Request) {
-	v, err := q.Config.Credentials.Get()
+func (r STSRouter) getCallerIdentity(q *aws.Request) {
+	v, err := q.Config.Credentials.Retrieve()
 	if err != nil {
 		panic(err)
 	}

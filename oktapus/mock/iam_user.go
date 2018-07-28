@@ -5,10 +5,9 @@ import (
 	"strings"
 
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 // User is a mock IAM user.
@@ -22,27 +21,27 @@ type User struct {
 type UserRouter map[string]*User
 
 // Route implements the Router interface.
-func (r UserRouter) Route(s *Session, q *request.Request, api string) bool {
-	switch api {
-	case "iam:AttachUserPolicy":
+func (r UserRouter) Route(q *aws.Request) bool {
+	switch q.Params.(type) {
+	case *iam.AttachUserPolicyInput:
 		r.attachUserPolicy(q)
-	case "iam:CreateAccessKey":
+	case *iam.CreateAccessKeyInput:
 		r.createAccessKey(q)
-	case "iam:CreateUser":
+	case *iam.CreateUserInput:
 		r.createUser(q)
-	case "iam:DeleteAccessKey":
+	case *iam.DeleteAccessKeyInput:
 		r.deleteAccessKey(q)
-	case "iam:DeleteUser":
+	case *iam.DeleteUserInput:
 		r.deleteUser(q)
-	case "iam:DetachUserPolicy":
+	case *iam.DetachUserPolicyInput:
 		r.detachUserPolicy(q)
-	case "iam:GetUser":
+	case *iam.GetUserInput:
 		r.getUser(q)
-	case "iam:ListAccessKeys":
+	case *iam.ListAccessKeysInput:
 		r.listAccessKeys(q)
-	case "iam:ListAttachedUserPolicies":
+	case *iam.ListAttachedUserPoliciesInput:
 		r.listAttachedUserPolicies(q)
-	case "iam:ListUsers":
+	case *iam.ListUsersInput:
 		r.listUsers(q)
 	default:
 		return false
@@ -50,7 +49,7 @@ func (r UserRouter) Route(s *Session, q *request.Request, api string) bool {
 	return true
 }
 
-func (r UserRouter) attachUserPolicy(q *request.Request) {
+func (r UserRouter) attachUserPolicy(q *aws.Request) {
 	in := q.Params.(*iam.AttachUserPolicyInput)
 	if user := r.get(in.UserName, q); user != nil {
 		if user.AttachedPolicies == nil {
@@ -61,27 +60,27 @@ func (r UserRouter) attachUserPolicy(q *request.Request) {
 	}
 }
 
-func (r UserRouter) createAccessKey(q *request.Request) {
+func (r UserRouter) createAccessKey(q *aws.Request) {
 	in := q.Params.(*iam.CreateAccessKeyInput)
 	if user := r.get(in.UserName, q); user != nil {
 		ak := &iam.AccessKey{
 			AccessKeyId:     aws.String(AccessKeyID),
 			CreateDate:      aws.Time(fast.Time()),
 			SecretAccessKey: aws.String(SecretAccessKey),
-			Status:          aws.String(iam.StatusTypeActive),
+			Status:          iam.StatusTypeActive,
 			UserName:        in.UserName,
 		}
 		user.AccessKeys = append(user.AccessKeys, &iam.AccessKeyMetadata{
 			AccessKeyId: ak.AccessKeyId,
 			CreateDate:  ak.CreateDate,
 			Status:      ak.Status,
-			UserName:    ak.Status,
+			UserName:    ak.UserName,
 		})
 		q.Data.(*iam.CreateAccessKeyOutput).AccessKey = ak
 	}
 }
 
-func (r UserRouter) createUser(q *request.Request) {
+func (r UserRouter) createUser(q *aws.Request) {
 	in := q.Params.(*iam.CreateUserInput)
 	name := aws.StringValue(in.UserName)
 	if _, ok := r[name]; ok {
@@ -99,7 +98,7 @@ func (r UserRouter) createUser(q *request.Request) {
 	q.Data.(*iam.CreateUserOutput).User = &cpy
 }
 
-func (r UserRouter) deleteAccessKey(q *request.Request) {
+func (r UserRouter) deleteAccessKey(q *aws.Request) {
 	in := q.Params.(*iam.DeleteAccessKeyInput)
 	if user := r.get(in.UserName, q); user != nil {
 		id := aws.StringValue(in.AccessKeyId)
@@ -114,7 +113,7 @@ func (r UserRouter) deleteAccessKey(q *request.Request) {
 	}
 }
 
-func (r UserRouter) deleteUser(q *request.Request) {
+func (r UserRouter) deleteUser(q *aws.Request) {
 	in := q.Params.(*iam.DeleteUserInput)
 	if user := r.get(in.UserName, q); user != nil {
 		if len(user.AttachedPolicies) != 0 {
@@ -127,7 +126,7 @@ func (r UserRouter) deleteUser(q *request.Request) {
 	}
 }
 
-func (r UserRouter) detachUserPolicy(q *request.Request) {
+func (r UserRouter) detachUserPolicy(q *aws.Request) {
 	in := q.Params.(*iam.DetachUserPolicyInput)
 	if user := r.get(in.UserName, q); user != nil {
 		arn := aws.StringValue(in.PolicyArn)
@@ -138,7 +137,7 @@ func (r UserRouter) detachUserPolicy(q *request.Request) {
 	}
 }
 
-func (r UserRouter) getUser(q *request.Request) {
+func (r UserRouter) getUser(q *aws.Request) {
 	in := q.Params.(*iam.GetUserInput)
 	if user := r.get(in.UserName, q); user != nil {
 		cpy := user.User
@@ -146,24 +145,23 @@ func (r UserRouter) getUser(q *request.Request) {
 	}
 }
 
-func (r UserRouter) listAccessKeys(q *request.Request) {
+func (r UserRouter) listAccessKeys(q *aws.Request) {
 	in := q.Params.(*iam.ListAccessKeysInput)
 	if user := r.get(in.UserName, q); user != nil {
-		pols := make([]*iam.AccessKeyMetadata, 0, len(r))
+		pols := make([]iam.AccessKeyMetadata, 0, len(r))
 		for _, pol := range user.AccessKeys {
-			cpy := *pol
-			pols = append(pols, &cpy)
+			pols = append(pols, *pol)
 		}
 		q.Data.(*iam.ListAccessKeysOutput).AccessKeyMetadata = pols
 	}
 }
 
-func (r UserRouter) listAttachedUserPolicies(q *request.Request) {
+func (r UserRouter) listAttachedUserPolicies(q *aws.Request) {
 	in := q.Params.(*iam.ListAttachedUserPoliciesInput)
 	if user := r.get(in.UserName, q); user != nil {
-		pols := make([]*iam.AttachedPolicy, 0, len(r))
+		pols := make([]iam.AttachedPolicy, 0, len(r))
 		for arn, name := range user.AttachedPolicies {
-			pols = append(pols, &iam.AttachedPolicy{
+			pols = append(pols, iam.AttachedPolicy{
 				PolicyArn:  aws.String(arn),
 				PolicyName: aws.String(name),
 			})
@@ -172,20 +170,18 @@ func (r UserRouter) listAttachedUserPolicies(q *request.Request) {
 	}
 }
 
-func (r UserRouter) listUsers(q *request.Request) {
+func (r UserRouter) listUsers(q *aws.Request) {
 	prefix := aws.StringValue(q.Params.(*iam.ListUsersInput).PathPrefix)
-	users := make([]*iam.User, 0, len(r))
+	users := make([]iam.User, 0, len(r))
 	for _, user := range r {
-		if !strings.HasPrefix(aws.StringValue(user.Path), prefix) {
-			continue
+		if strings.HasPrefix(aws.StringValue(user.Path), prefix) {
+			users = append(users, user.User)
 		}
-		cpy := user.User
-		users = append(users, &cpy)
 	}
 	q.Data.(*iam.ListUsersOutput).Users = users
 }
 
-func (r UserRouter) get(name *string, q *request.Request) *User {
+func (r UserRouter) get(name *string, q *aws.Request) *User {
 	if name != nil {
 		if user := r[*name]; user != nil {
 			return user

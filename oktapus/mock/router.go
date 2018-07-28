@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 // Router populates request Data and Error fields, simulating an AWS response.
@@ -14,7 +14,7 @@ import (
 // session. The Session mutex is acquired while processing a request, so routers
 // are allowed to modify the Session.
 type Router interface {
-	Route(s *Session, q *request.Request, api string) bool
+	Route(q *aws.Request) bool
 }
 
 // ServerResult contains values that are assigned to request Data and Error
@@ -83,9 +83,9 @@ func (r ChainRouter) Find(v interface{}) bool {
 }
 
 // Route implements the Router interface.
-func (r ChainRouter) Route(s *Session, q *request.Request, api string) bool {
+func (r ChainRouter) Route(q *aws.Request) bool {
 	for i := len(r) - 1; i >= 0; i-- {
-		if r[i].Route(s, q, api) {
+		if r[i].Route(q) {
 			return true
 		}
 	}
@@ -135,7 +135,7 @@ func (r DataTypeRouter) Get(out interface{}) error {
 }
 
 // Route implements the Router interface.
-func (r DataTypeRouter) Route(_ *Session, q *request.Request, _ string) bool {
+func (r DataTypeRouter) Route(_ *Session, q *aws.Request, _ string) bool {
 	_, ok := r[reflect.TypeOf(q.Data)]
 	if ok {
 		if err := r.Get(q.Data); err != nil {

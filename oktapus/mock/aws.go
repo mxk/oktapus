@@ -1,17 +1,11 @@
 package mock
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/corehandlers"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/defaults"
-	"github.com/aws/aws-sdk-go/aws/endpoints"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/LuminalHQ/cloudcover/x/awsmock"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 // Example access key.
@@ -26,57 +20,29 @@ var LogLevel = aws.LogOff
 // Session is a client.ConfigProvider that uses routers and server functions to
 // simulate AWS responses.
 type Session struct {
-	session.Session
-	sync.Mutex
+	aws.Config
 	ChainRouter
+	mu sync.Mutex
 }
 
 // NewSession returns a mock client.ConfigProvider configured with default
 // routers request routers.
 func NewSession() *Session {
-	creds := credentials.NewStaticCredentials(AccessKeyID, SecretAccessKey, "")
-	cfg := &aws.Config{
-		Credentials:      creds,
-		EndpointResolver: endpoints.DefaultResolver(),
-		LogLevel:         &LogLevel,
-		Logger:           aws.NewDefaultLogger(),
-		MaxRetries:       aws.Int(0),
-	}
-	//noinspection GoStructInitializationWithoutFieldNames
 	s := &Session{
-		Session: session.Session{
-			Config:   cfg,
-			Handlers: defaults.Handlers(),
-		},
 		ChainRouter: ChainRouter{NewSTSRouter(""), NewOrgsRouter()},
 	}
-	s.Session = *s.Session.Copy() // Run initHandlers
-
-	// Remove/disable all data-related handlers
-	s.Handlers.Send.Remove(corehandlers.SendHandler)
-	s.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)
-	s.Handlers.ValidateResponse.Remove(corehandlers.ValidateResponseHandler)
-	disableHandlerList("Unmarshal", &s.Handlers.Unmarshal)
-	disableHandlerList("UnmarshalMeta", &s.Handlers.UnmarshalMeta)
-	disableHandlerList("UnmarshalError", &s.Handlers.UnmarshalError)
-
-	// Install mock handler
-	s.Handlers.Send.PushBackNamed(request.NamedHandler{
-		Name: "mock.SendHandler",
-		Fn:   s.sendHandler,
+	s.Config = awsmock.Config(func(q *aws.Request) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !s.Route(q) {
+			api := q.Metadata.ServiceName + ":" + q.Operation.Name
+			panic("mock: " + api + " not implemented")
+		}
 	})
+	s.Config.LogLevel = LogLevel
+	s.Config.Credentials = aws.NewStaticCredentialsProvider(
+		AccessKeyID, SecretAccessKey, "")
 	return s
-}
-
-// sendHandler passes request q through the router chain.
-func (s *Session) sendHandler(q *request.Request) {
-	s.Lock()
-	defer s.Unlock()
-	q.Retryable = aws.Bool(false)
-	api := q.ClientInfo.ServiceName + ":" + q.Operation.Name
-	if !s.Route(s, q, api) {
-		panic("mock: " + api + " not implemented")
-	}
 }
 
 // AccountID returns the 12-digit account ID from id, which may an account ID
@@ -97,13 +63,10 @@ func AccountID(id string) string {
 		return string(buf[:])
 	}
 	orig := id
-	for i := 4; i > 0; i-- {
-		id = id[strings.IndexByte(id, ':')+1:]
-	}
-	if strings.IndexByte(id, ':') != 12 {
+	if id = arn.ARN(id).Account(); len(id) != 12 {
 		panic("mock: invalid arn: " + orig)
 	}
-	return id[:12]
+	return id
 }
 
 // AssumedRoleARN returns an STS assumed role ARN.
@@ -133,22 +96,13 @@ func iamARN(account, typ, name string) string {
 }
 
 // reqAccountID returns the account ID for request q.
-func reqAccountID(q *request.Request) string {
-	v, err := q.Config.Credentials.Get()
+func reqAccountID(q *aws.Request) string {
+	cr, err := q.Config.Credentials.Retrieve()
 	if err != nil {
 		panic(err)
 	}
-	if v.SessionToken != "" {
-		return AccountID(v.SessionToken)
+	if cr.SessionToken != "" {
+		return AccountID(cr.SessionToken)
 	}
 	return "000000000000"
-}
-
-// disableHandlerList prevents a HandlerList from executing any handlers.
-func disableHandlerList(name string, hl *request.HandlerList) {
-	hl.PushFrontNamed(request.NamedHandler{
-		Name: fmt.Sprintf("mock.%sHandler", name),
-		Fn:   func(*request.Request) {},
-	})
-	hl.AfterEachFn = func(request.HandlerListRunItem) bool { return false }
 }
