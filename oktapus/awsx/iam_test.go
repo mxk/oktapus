@@ -4,15 +4,15 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDelTmpUsers(t *testing.T) {
 	s := mock.NewSession()
-	c := iam.New(s)
+	c := iam.New(s.Config)
 
 	path := "/test/"
 	require.NoError(t, DeleteUsers(c, path))
@@ -34,7 +34,7 @@ func TestDelTmpUsers(t *testing.T) {
 		},
 		AccessKeys: []*iam.AccessKeyMetadata{{
 			AccessKeyId: aws.String(mock.AccessKeyID),
-			Status:      aws.String(iam.StatusTypeActive),
+			Status:      iam.StatusTypeActive,
 			UserName:    aws.String("b"),
 		}},
 	}
@@ -46,7 +46,7 @@ func TestDelTmpUsers(t *testing.T) {
 
 func TestDelTmpRoles(t *testing.T) {
 	s := mock.NewSession()
-	c := iam.New(s)
+	c := iam.New(s.Config)
 
 	path := "/temp/"
 	require.NoError(t, DeleteRoles(c, path))

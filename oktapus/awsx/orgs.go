@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	orgs "github.com/aws/aws-sdk-go/service/organizations"
-	orgsif "github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
+	orgsif "github.com/aws/aws-sdk-go-v2/service/organizations/organizationsiface"
 )
 
 // CreateAccountResult contains the values returned by createAccount. If err is
@@ -54,7 +53,7 @@ func CreateAccounts(c orgsif.OrganizationsAPI, in []*orgs.CreateAccountInput) <-
 
 // createAccount creates a new account in the organization.
 func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*orgs.Account, error) {
-	out, err := c.CreateAccount(in)
+	out, err := c.CreateAccountRequest(in).Send()
 	if err != nil {
 		return nil, err
 	}
@@ -63,20 +62,20 @@ func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*org
 		CreateAccountRequestId: s.Id,
 	}
 	for {
-		switch aws.StringValue(s.State) {
+		switch s.State {
 		case orgs.CreateAccountStateInProgress:
 			fast.Sleep(time.Second)
-			out, err := c.DescribeCreateAccountStatus(&reqID)
+			out, err := c.DescribeCreateAccountStatusRequest(&reqID).Send()
 			if err != nil {
 				return nil, err
 			}
 			s = out.CreateAccountStatus
 		case orgs.CreateAccountStateSucceeded:
 			in := orgs.DescribeAccountInput{AccountId: s.AccountId}
-			out, err := c.DescribeAccount(&in)
+			out, err := c.DescribeAccountRequest(&in).Send()
 			return out.Account, err
 		default:
-			return nil, awserr.New(aws.StringValue(s.FailureReason),
+			return nil, awserr.New(string(s.FailureReason),
 				"account creation failed", nil)
 		}
 	}
