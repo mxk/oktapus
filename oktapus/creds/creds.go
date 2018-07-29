@@ -21,6 +21,21 @@ const ProxyProvider = "ProxyCredentialsProvider"
 // requested validity duration after successful renewal.
 var ErrUnable = errors.New("creds: unable to satisfy minimum expiration time")
 
+// FromSTS converts STS credentials to client credentials.
+func FromSTS(src *sts.Credentials) aws.Credentials {
+	if src == nil {
+		return aws.Credentials{}
+	}
+	return aws.Credentials{
+		AccessKeyID:     aws.StringValue(src.AccessKeyId),
+		SecretAccessKey: aws.StringValue(src.SecretAccessKey),
+		SessionToken:    aws.StringValue(src.SessionToken),
+		Source:          "STS",
+		CanExpire:       true,
+		Expires:         aws.TimeValue(src.Expiration),
+	}
+}
+
 // Ident contains the results of sts:GetCallerIdentity API call.
 type Ident struct {
 	arn.ARN
@@ -54,8 +69,8 @@ type Proxy struct {
 }
 
 // NewProxy creates a new credentials proxy.
-func NewProxy(c *aws.Config) (*Proxy, error) {
-	p := &Proxy{Client: *sts.New(*c)}
+func NewProxy(cfg *aws.Config) (*Proxy, error) {
+	p := &Proxy{Client: *sts.New(*cfg)}
 	out, err := p.Client.GetCallerIdentityRequest(nil).Send()
 	if err != nil {
 		return nil, err
@@ -91,18 +106,13 @@ func (p *Proxy) AssumeRole(role arn.ARN, d time.Duration) *Provider {
 // Provider returns a new Provider that calls AssumeRole with the specified
 // input.
 func (p *Proxy) Provider(in *sts.AssumeRoleInput) *Provider {
-	return RenewableProvider(func() (aws.Credentials, error) {
+	return RenewableProvider(func() (cr aws.Credentials, err error) {
 		out, err := p.Client.AssumeRoleRequest(in).Send()
-		cr := aws.Credentials{Source: ProxyProvider}
 		if err == nil {
-			src := out.Credentials
-			cr.AccessKeyID = aws.StringValue(src.AccessKeyId)
-			cr.SecretAccessKey = aws.StringValue(src.SecretAccessKey)
-			cr.SessionToken = aws.StringValue(src.SessionToken)
-			cr.CanExpire = true
-			cr.Expires = aws.TimeValue(src.Expiration)
+			cr = FromSTS(out.Credentials)
 		}
-		return cr, err
+		cr.Source = ProxyProvider
+		return
 	})
 }
 
