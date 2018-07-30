@@ -14,8 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
-// ProxyProvider is the source name of Proxy credentials.
-const ProxyProvider = "ProxyCredentialsProvider"
+// Source names of credentials providers.
+const (
+	ProxyProviderName  = "ProxyCredentialsProvider"
+	StaticProviderName = "StaticCredentialsProvider"
+)
 
 // ErrUnable is returned by Provider if the credentials do not satisfy the
 // requested validity duration after successful renewal.
@@ -111,7 +114,7 @@ func (p *Proxy) Provider(in *sts.AssumeRoleInput) *Provider {
 		if err == nil {
 			cr = FromSTS(out.Credentials)
 		}
-		cr.Source = ProxyProvider
+		cr.Source = ProxyProviderName
 		return
 	})
 }
@@ -129,6 +132,17 @@ type Provider struct {
 	cr    atomic.Value
 	mu    sync.Mutex
 	renew RenewFunc
+}
+
+// StaticProvider returns an aws.CredentialsProvider that provides static
+// credentials or an error.
+func StaticProvider(cr aws.Credentials, err error) *Provider {
+	p := new(Provider)
+	if cr.Source == "" {
+		cr.Source = StaticProviderName
+	}
+	p.cr.Store(&creds{cr, err})
+	return p
 }
 
 // RenewableProvider returns an aws.CredentialsProvider that automatically

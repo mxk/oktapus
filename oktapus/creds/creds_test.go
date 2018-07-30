@@ -52,10 +52,40 @@ func TestProxy(t *testing.T) {
 		AccessKeyID:     "tempkey",
 		SecretAccessKey: "secret",
 		SessionToken:    "token",
-		Source:          ProxyProvider,
+		Source:          ProxyProviderName,
 		CanExpire:       true,
 		Expires:         now.Add(time.Hour),
 	}
+	assert.Equal(t, want, cr)
+}
+
+func TestStaticProvider(t *testing.T) {
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
+
+	want := aws.Credentials{
+		AccessKeyID:     "key",
+		SecretAccessKey: "secret",
+		SessionToken:    "token",
+		CanExpire:       true,
+		Expires:         fast.Time().Add(time.Hour),
+	}
+	p := StaticProvider(want, nil)
+	cr, err := p.Retrieve()
+	assert.NoError(t, err)
+	want.Source = StaticProviderName
+	assert.Equal(t, want, cr)
+
+	fast.MockTime(fast.Time().Add(time.Hour - time.Minute))
+	cr, err = p.Retrieve()
+	assert.Equal(t, ErrUnable, err)
+	assert.Equal(t, want, cr)
+
+	want = aws.Credentials{Source: "BadCreds"}
+	e := errors.New("bad creds")
+	p = StaticProvider(want, e)
+	cr, err = p.Retrieve()
+	assert.Equal(t, e, err)
 	assert.Equal(t, want, cr)
 }
 
