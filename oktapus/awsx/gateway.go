@@ -17,8 +17,8 @@ import (
 // Gateway provides access to multiple AWS accounts via one gateway account. It
 // is not safe to use the client concurrently from multiple goroutines.
 type Gateway struct {
-	MasterRole string // Master account role with ListAccounts permission
-	CommonRole string // Role to assume when accessing other accounts
+	MasterRole arn.ARN // Master account role with ListAccounts permission
+	CommonRole arn.ARN // Role to assume when accessing other accounts
 
 	proxy     *creds.Proxy
 	orgClient *orgs.Organizations
@@ -56,15 +56,19 @@ func (gw *Gateway) Connect() error {
 	}
 
 	gw.orgInfo.Set(org)
-	gw.CommonRole = gw.proxy.SessName
+	gw.CommonRole = arn.New(gw.proxy.Ident.Partition(), "iam", "", "",
+		"role/", gw.proxy.SessName)
 
 	// If gateway account isn't master, change org client credentials
 	if !gw.IsMaster() {
 		if gw.MasterRole == "" {
 			return errors.New("awsx: gateway master role not set")
 		}
+		gw.MasterRole = arn.New(gw.proxy.Ident.Partition(), "iam", "",
+			gw.orgInfo.MasterID, "role", gw.MasterRole.Path(),
+			gw.MasterRole.Name())
 		gw.orgClient.Credentials = gw.proxy.Provider(&sts.AssumeRoleInput{
-			RoleArn:         arn.String(gw.proxy.Role(gw.orgInfo.MasterID, gw.MasterRole)),
+			RoleArn:         arn.String(gw.MasterRole),
 			RoleSessionName: aws.String(gw.proxy.SessName),
 			ExternalId:      aws.String(ProxyExternalID(&gw.orgInfo)),
 		})
@@ -155,7 +159,7 @@ func (gw *Gateway) CredsProvider(accountID string) *creds.Provider {
 		if !IsAccountID(accountID) {
 			panic("awsx: invalid account id: " + accountID)
 		}
-		cp = gw.AssumeRole(gw.proxy.Role(accountID, gw.CommonRole))
+		cp = gw.AssumeRole(gw.CommonRole.WithAccount(accountID))
 		if gw.creds == nil {
 			gw.creds = make(map[string]*creds.Provider)
 		}
