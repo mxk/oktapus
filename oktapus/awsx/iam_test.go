@@ -12,7 +12,7 @@ import (
 
 func TestDelTmpUsers(t *testing.T) {
 	s := mock.NewSession()
-	c := iam.New(s.Config)
+	c := *iam.New(s.Config)
 
 	path := "/test/"
 	require.NoError(t, DeleteUsers(c, path))
@@ -46,7 +46,7 @@ func TestDelTmpUsers(t *testing.T) {
 
 func TestDelTmpRoles(t *testing.T) {
 	s := mock.NewSession()
-	c := iam.New(s.Config)
+	c := *iam.New(s.Config)
 
 	path := "/temp/"
 	require.NoError(t, DeleteRoles(c, path))

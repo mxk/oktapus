@@ -4,11 +4,10 @@ import (
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/aws/aws-sdk-go-v2/service/iam/iamiface"
 )
 
 // DeleteUsers deletes all users under the specified IAM path.
-func DeleteUsers(c iamiface.IAMAPI, path string) error {
+func DeleteUsers(c iam.IAM, path string) error {
 	in := iam.ListUsersInput{PathPrefix: aws.String(path)}
 	r := c.ListUsersRequest(&in)
 	p := r.Paginate()
@@ -28,7 +27,7 @@ func DeleteUsers(c iamiface.IAMAPI, path string) error {
 
 // DeleteUser deletes the specified user, ensuring that all prerequisites for
 // deletion are met.
-func DeleteUser(c iamiface.IAMAPI, name string) error {
+func DeleteUser(c iam.IAM, name string) error {
 	err := fast.Call(
 		func() error { return detachUserPolicies(c, name) },
 		func() error { return deleteAccessKeys(c, name) },
@@ -41,7 +40,7 @@ func DeleteUser(c iamiface.IAMAPI, name string) error {
 }
 
 // deleteAccessKeys deletes all user access keys.
-func deleteAccessKeys(c iamiface.IAMAPI, user string) error {
+func deleteAccessKeys(c iam.IAM, user string) error {
 	in := iam.ListAccessKeysInput{UserName: aws.String(user)}
 	r := c.ListAccessKeysRequest(&in)
 	p := r.Paginate()
@@ -65,7 +64,7 @@ func deleteAccessKeys(c iamiface.IAMAPI, user string) error {
 }
 
 // detachUserPolicies detaches all user policies.
-func detachUserPolicies(c iamiface.IAMAPI, user string) error {
+func detachUserPolicies(c iam.IAM, user string) error {
 	in := iam.ListAttachedUserPoliciesInput{UserName: aws.String(user)}
 	r := c.ListAttachedUserPoliciesRequest(&in)
 	p := r.Paginate()
@@ -89,7 +88,7 @@ func detachUserPolicies(c iamiface.IAMAPI, user string) error {
 }
 
 // DeleteRoles deletes all roles under the specified IAM path.
-func DeleteRoles(c iamiface.IAMAPI, path string) error {
+func DeleteRoles(c iam.IAM, path string) error {
 	in := iam.ListRolesInput{PathPrefix: aws.String(path)}
 	r := c.ListRolesRequest(&in)
 	p := r.Paginate()
@@ -109,7 +108,7 @@ func DeleteRoles(c iamiface.IAMAPI, path string) error {
 
 // DeleteRole deletes the specified role, ensuring that all prerequisites for
 // deletion are met.
-func DeleteRole(c iamiface.IAMAPI, role string) error {
+func DeleteRole(c iam.IAM, role string) error {
 	err := fast.Call(
 		func() error { return detachRolePolicies(c, role) },
 		func() error { return deleteRolePolicies(c, role) },
@@ -122,7 +121,7 @@ func DeleteRole(c iamiface.IAMAPI, role string) error {
 }
 
 // detachRolePolicies detaches all role policies.
-func detachRolePolicies(c iamiface.IAMAPI, role string) error {
+func detachRolePolicies(c iam.IAM, role string) error {
 	in := iam.ListAttachedRolePoliciesInput{RoleName: aws.String(role)}
 	r := c.ListAttachedRolePoliciesRequest(&in)
 	p := r.Paginate()
@@ -146,7 +145,7 @@ func detachRolePolicies(c iamiface.IAMAPI, role string) error {
 }
 
 // deleteRolePolicies deletes all inline role policies.
-func deleteRolePolicies(c iamiface.IAMAPI, role string) error {
+func deleteRolePolicies(c iam.IAM, role string) error {
 	in := iam.ListRolePoliciesInput{RoleName: aws.String(role)}
 	r := c.ListRolePoliciesRequest(&in)
 	p := r.Paginate()

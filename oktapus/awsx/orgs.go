@@ -7,7 +7,6 @@ import (
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
-	orgsif "github.com/aws/aws-sdk-go-v2/service/organizations/organizationsiface"
 )
 
 // CreateAccountResult contains the values returned by createAccount. If err is
@@ -18,7 +17,7 @@ type CreateAccountResult struct {
 }
 
 // CreateAccounts creates multiple accounts concurrently.
-func CreateAccounts(c orgsif.OrganizationsAPI, in []*orgs.CreateAccountInput) <-chan CreateAccountResult {
+func CreateAccounts(c orgs.Organizations, in []*orgs.CreateAccountInput) <-chan CreateAccountResult {
 	workers := 5 // Only 5 accounts may be created at the same time
 	ich := make(chan *orgs.CreateAccountInput)
 	rch := make(chan CreateAccountResult)
@@ -52,7 +51,7 @@ func CreateAccounts(c orgsif.OrganizationsAPI, in []*orgs.CreateAccountInput) <-
 }
 
 // createAccount creates a new account in the organization.
-func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*orgs.Account, error) {
+func createAccount(c orgs.Organizations, in *orgs.CreateAccountInput) (*orgs.Account, error) {
 	out, err := c.CreateAccountRequest(in).Send()
 	if err != nil {
 		return nil, err

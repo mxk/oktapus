@@ -28,7 +28,7 @@ func TestCreateAccounts(t *testing.T) {
 		Email:       aws.String("test@example.com"),
 	}}
 	var a, b, c *orgs.Account
-	for r := range CreateAccounts(orgs.New(s.Config), in) {
+	for r := range CreateAccounts(*orgs.New(s.Config), in) {
 		switch aws.StringValue(r.Name) {
 		case "a":
 			assert.NoError(t, r.Err)
