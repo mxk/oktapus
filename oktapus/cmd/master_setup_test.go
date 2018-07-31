@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMasterSetup(t *testing.T) {
-	ctx := newCtx()
-	s := ctx.Sess.(*mock.Session)
+	ctx, s := newCtx()
 	s.ChainRouter = append(s.ChainRouter, mock.NewDataTypeRouter(
 		&iam.CreatePolicyOutput{},
 		&iam.PutRolePolicyOutput{},

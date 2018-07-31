@@ -7,14 +7,16 @@ import (
 
 // newCtx returns a Ctx for testing commands, optionally initializing account
 // control information for the specified account IDs.
-func newCtx(init ...string) *op.Ctx {
-	ctx := &op.Ctx{Sess: mock.NewSession()}
+func newCtx(init ...string) (*op.Ctx, *mock.Session) {
+	s := mock.NewSession()
+	ctx := new(op.Ctx)
+	*ctx.Cfg() = s.Config
 	if len(init) > 0 {
 		if err := initCtl(ctx, nil, init...); err != nil {
 			panic(err)
 		}
 	}
-	return ctx
+	return ctx, s
 }
 
 // initCtl initializes account control information for unit tests.
@@ -27,8 +29,8 @@ func initCtl(ctx *op.Ctx, ctl *op.Ctl, ids ...string) error {
 	for _, id := range ids {
 		id = mock.AccountID(id)
 		ac := op.NewAccount(id, "")
-		ac.Init(gw, gw.CredsProvider(id))
-		if err := ctl.Init(ac.IAM()); err != nil {
+		ac.Init(ctx.Cfg(), gw.CredsProvider(id))
+		if err := ctl.Init(*ac.IAM()); err != nil {
 			return err
 		}
 	}

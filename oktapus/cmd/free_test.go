@@ -9,7 +9,7 @@ import (
 
 func TestFree(t *testing.T) {
 	cmd := freeCmd{Spec: "test1,test2,test3"}
-	ctx := newCtx("1", "2")
+	ctx, _ := newCtx("1", "2")
 
 	acs, err := ctx.Accounts("test1")
 	require.NoError(t, err)

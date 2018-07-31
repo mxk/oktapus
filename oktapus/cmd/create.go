@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
-	orgs "github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
 )
 
 // accountSetupRole is the name of a temporary role created by CreateAccount.
@@ -102,7 +102,7 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	gw := ctx.Gateway()
 	if !gw.IsMaster() {
 		return nil, fmt.Errorf("gateway account (%s) is not org master (%s)",
-			gw.Ident().AccountID, gw.Org().MasterID)
+			gw.Ident().Account, gw.Org().MasterID)
 	}
 
 	// Configure name/email counters
@@ -144,7 +144,7 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 		}
 		return out, nil
 	}
-	out := awsx.CreateAccounts(gw.OrgsClient(), in)
+	out := awsx.CreateAccounts(*gw.OrgsClient(), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup
@@ -163,19 +163,19 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 		ac := op.NewAccount(info.ID, info.Name)
 		acs = append(acs, ac)
 		wg.Add(1)
-		go func(ac *op.Account, setupCreds, commonCreds awsx.CredsProvider) {
+		go func(ac *op.Account, setupCreds, commonCreds *creds.Provider) {
 			defer wg.Done()
 
 			// Wait for setup credentials to become valid
-			ac.Init(gw, setupCreds)
+			ac.Init(ctx.Cfg(), setupCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
 
 			// Create admin and common roles
-			orgRoleErr := createOrgAccessRole(ac.IAM(), masterID)
+			orgRoleErr := createOrgAccessRole(*ac.IAM(), masterID)
 			crPath, crName := gw.CommonRole.Path(), gw.CommonRole.Name()
-			ac.Err = createCommonRole(ac.IAM(), masterID, crPath, crName)
+			ac.Err = createCommonRole(*ac.IAM(), masterID, crPath, crName)
 			if ac.Err != nil {
 				return
 			} else if orgRoleErr != nil {
@@ -184,20 +184,20 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Switch to common role credentials
-			ac.Init(gw, commonCreds)
+			ac.Init(ctx.Cfg(), commonCreds)
 			if ac.Err = waitForCreds(ac); ac.Err != nil {
 				return
 			}
 
 			// Delete setup role
-			if err := awsx.DeleteRole(ac.IAM(), accountSetupRole); err != nil {
+			if err := awsx.DeleteRole(*ac.IAM(), accountSetupRole); err != nil {
 				log.W("Failed to delete %s role in account %s: %v",
 					accountSetupRole, ac.ID, err)
 			}
 
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
-			ac.Err = ac.Ctl.Init(ac.IAM())
+			ac.Err = ac.Ctl.Init(*ac.IAM())
 		}(ac, gw.AssumeRole(setupRoleARN.WithAccount(ac.ID)), gw.CredsProvider(ac.ID))
 	}
 	wg.Wait()
@@ -270,7 +270,7 @@ func setCounters(acs []*awsx.Account, name, email *counter) {
 func waitForCreds(ac *op.Account) error {
 	timeout := fast.Time().Add(time.Minute)
 	for {
-		_, err := ac.Creds(true)
+		err := ac.CredsProvider().Ensure(-1)
 		if err == nil || !awsx.IsStatus(err, http.StatusForbidden) ||
 			!fast.Time().Before(timeout) {
 			return err
@@ -282,7 +282,7 @@ func waitForCreds(ac *op.Account) error {
 // createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
-func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
+func createOrgAccessRole(c iam.IAM, masterAccountID string) error {
 	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
 	accessPolicy := op.Policy{Statement: []*op.Statement{{
 		Effect:   "Allow",
@@ -302,9 +302,9 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 	// InvalidClientTokenId error for the first few seconds.
 	timeout := fast.Time().Add(30 * time.Second)
 	for {
-		_, err := c.CreateRole(&role)
+		_, err := c.CreateRoleRequest(&role).Send()
 		if err == nil {
-			_, err = c.PutRolePolicy(&policy)
+			_, err = c.PutRolePolicyRequest(&policy).Send()
 			return err
 		}
 		if !awsx.IsCode(err, "InvalidClientTokenId") ||
@@ -316,7 +316,7 @@ func createOrgAccessRole(c iamiface.IAMAPI, masterAccountID string) error {
 }
 
 // createCommonRole creates the common role that replaces accountSetupRole.
-func createCommonRole(c iamiface.IAMAPI, masterAccountID, path, name string) error {
+func createCommonRole(c iam.IAM, masterAccountID, path, name string) error {
 	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
 	role := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
@@ -327,9 +327,9 @@ func createCommonRole(c iamiface.IAMAPI, masterAccountID, path, name string) err
 		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
 		RoleName:  role.RoleName,
 	}
-	_, err := c.CreateRole(&role)
+	_, err := c.CreateRoleRequest(&role).Send()
 	if err == nil {
-		_, err = c.AttachRolePolicy(&policy)
+		_, err = c.AttachRolePolicyRequest(&policy).Send()
 	}
 	return err
 }

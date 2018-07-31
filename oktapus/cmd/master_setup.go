@@ -11,10 +11,9 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 var masterSetupCli = register(&cli.Info{
@@ -77,7 +76,7 @@ func (cmd *masterSetupCmd) Run(ctx *op.Ctx, args []string) error {
 	gw := ctx.Gateway()
 	org := gw.Org()
 	log.I("Master account is: %s", org.MasterID)
-	log.I("Authenticated as: %s", gw.Ident().UserARN)
+	log.I("Authenticated as: %s", gw.Ident().ARN)
 	if !gw.IsMaster() {
 		ignore := ""
 		if !cmd.Exec {
@@ -90,18 +89,14 @@ func (cmd *masterSetupCmd) Run(ctx *op.Ctx, args []string) error {
 	}
 
 	// Create policies
-	var ic iamiface.IAMAPI
+	var ic iamIface
 	if cmd.CLI {
 		if cmd.Exec {
 			return errors.New("-cli and -exec are mutually exclusive")
 		}
 		ic = newCLIWriter(args...)
 	} else if cmd.Exec {
-		var cfg aws.Config
-		if gw.Creds != nil {
-			cfg.Credentials = gw.Creds.Creds()
-		}
-		ic = iam.New(gw, &cfg)
+		ic = newIAMClient(ctx.Cfg())
 	}
 	err := createPolicy(ic, op.IAMPath, gatewayAccessName, gatewayAccessDesc, &gatewayAccess)
 	if err != nil {
@@ -195,7 +190,7 @@ var (
 	}}}
 )
 
-func createPolicy(c iamiface.IAMAPI, path, name, desc string, pol *op.Policy) error {
+func createPolicy(c iamIface, path, name, desc string, pol *op.Policy) error {
 	in := iam.CreatePolicyInput{
 		Description:    aws.String(desc),
 		Path:           aws.String(path),
@@ -211,7 +206,7 @@ func createPolicy(c iamiface.IAMAPI, path, name, desc string, pol *op.Policy) er
 	return ignoreExists("Policy", err)
 }
 
-func createRole(c iamiface.IAMAPI, path, name, desc string, assumeRolePol *op.Policy) error {
+func createRole(c iamIface, path, name, desc string, assumeRolePol *op.Policy) error {
 	in := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: assumeRolePol.Doc(),
 		Description:              aws.String(desc),
@@ -227,7 +222,7 @@ func createRole(c iamiface.IAMAPI, path, name, desc string, assumeRolePol *op.Po
 	return ignoreExists("Role", err)
 }
 
-func createInlinePolicy(c iamiface.IAMAPI, role, name string, pol *op.Policy) error {
+func createInlinePolicy(c iamIface, role, name string, pol *op.Policy) error {
 	in := iam.PutRolePolicyInput{
 		PolicyDocument: pol.Doc(),
 		PolicyName:     aws.String(name),
@@ -259,32 +254,51 @@ func ignoreExists(what string, err error) error {
 	return err
 }
 
-type cliWriter struct {
-	iamiface.IAMAPI
-	cmd string
+type iamIface interface {
+	CreatePolicy(in *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
+	CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error)
+	PutRolePolicy(in *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error)
 }
 
-func newCLIWriter(opts ...string) *cliWriter {
+type iamClient struct{ c iam.IAM }
+
+func newIAMClient(cfg *aws.Config) iamIface { return iamClient{*iam.New(*cfg)} }
+
+func (c iamClient) CreatePolicy(in *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
+	return c.c.CreatePolicyRequest(in).Send()
+}
+
+func (c iamClient) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
+	return c.c.CreateRoleRequest(in).Send()
+}
+
+func (c iamClient) PutRolePolicy(in *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error) {
+	return c.c.PutRolePolicyRequest(in).Send()
+}
+
+type cliWriter struct{ cmd string }
+
+func newCLIWriter(opts ...string) iamIface {
 	cmd := "aws"
 	if len(opts) > 0 {
 		cmd += " " + strings.Join(opts, " ")
 	}
-	return &cliWriter{cmd: cmd}
+	return &cliWriter{cmd}
 }
 
-func (w *cliWriter) CreatePolicy(in *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
+func (w cliWriter) CreatePolicy(in *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
 	return nil, w.write("iam", "create-policy", in)
 }
 
-func (w *cliWriter) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
+func (w cliWriter) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
 	return nil, w.write("iam", "create-role", in)
 }
 
-func (w *cliWriter) PutRolePolicy(in *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error) {
+func (w cliWriter) PutRolePolicy(in *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error) {
 	return nil, w.write("iam", "put-role-policy", in)
 }
 
-func (w *cliWriter) write(service, api string, in interface{}) error {
+func (w cliWriter) write(service, api string, in interface{}) error {
 	if runtime.GOOS == "windows" {
 		// On Windows arguments must use double quotes with non-trivial escape
 		// rules, so leaving this for another day.

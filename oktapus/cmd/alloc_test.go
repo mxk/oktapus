@@ -12,14 +12,14 @@ import (
 
 func TestAlloc(t *testing.T) {
 	now := fast.MockTime(fast.Time())
-	exp := expTime{now.Add(time.Hour - time.Minute).Truncate(time.Second)}
+	exp := expTime{now.Add(time.Hour)}
 	defer fast.MockTime(time.Time{})
 
 	fast.MockSleep(-1)
 	defer fast.MockSleep(0)
 
 	cmd := allocCmd{Num: 1, Spec: "test1"}
-	ctx := newCtx("1", "2", "3")
+	ctx, _ := newCtx("1", "2", "3")
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*credsOutput{{

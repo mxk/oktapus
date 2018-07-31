@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 )
 
 var log = internal.Log
@@ -87,13 +87,19 @@ type credsOutput struct {
 func listCreds(acs op.Accounts, renew bool) []*credsOutput {
 	out := make([]*credsOutput, len(acs))
 	acs.Apply(func(i int, ac *op.Account) {
-		var cr *awsx.StaticCreds
+		var cr aws.Credentials
 		err := ac.Err
 		// Credentials do not require account control information
 		if err == nil || err == op.ErrNoCtl {
-			if cr, err = ac.Creds(renew); err != nil {
+			cp := ac.CredsProvider()
+			d := 10 * time.Minute
+			if renew {
+				d = -1
+			}
+			if err = cp.Ensure(d); err != nil {
 				ac.Err = err
 			}
+			cr, _ = cp.Creds()
 		}
 		co := &credsOutput{
 			AccountID: ac.ID,
@@ -101,7 +107,7 @@ func listCreds(acs op.Accounts, renew bool) []*credsOutput {
 			Error:     explainError(err),
 		}
 		if err == nil {
-			co.Expires = expTime{cr.Exp}
+			co.Expires = expTime{cr.Expires}
 			co.AccessKeyID = cr.AccessKeyID
 			co.SecretAccessKey = cr.SecretAccessKey
 			co.SessionToken = cr.SessionToken

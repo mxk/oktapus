@@ -8,7 +8,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 var rmCli = register(&cli.Info{
@@ -52,7 +52,7 @@ func (cmd *rmCmd) Run(ctx *op.Ctx, args []string) error {
 }
 
 func (cmd *rmCmd) Call(ctx *op.Ctx) (interface{}, error) {
-	var fn func(c iamiface.IAMAPI, name string) error
+	var fn func(c iam.IAM, name string) error
 	switch cmd.Type {
 	case "role":
 		fn = awsx.DeleteRole
@@ -69,7 +69,7 @@ func (cmd *rmCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	// Filter out inaccessible accounts
 	out := make([]*rmOutput, 0, len(acs)*len(cmd.Names))
 	acs = acs.Filter(func(ac *op.Account) bool {
-		if _, err := ac.Creds(false); err != nil {
+		if _, err := ac.CredsProvider().Creds(); err != nil {
 			out = append(out, &rmOutput{
 				AccountID: ac.ID,
 				Name:      ac.Name,
@@ -90,7 +90,7 @@ func (cmd *rmCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	names := cmd.Names
 	err = fast.ForEachIO(len(res), func(i int) error {
 		ac, name, r := acs[i/len(names)], names[i%len(names)], "OK"
-		if err := fn(ac.IAM(), name); err != nil {
+		if err := fn(*ac.IAM(), name); err != nil {
 			r = "ERROR: " + explainError(err)
 		}
 		res[i] = &rmOutput{

@@ -7,9 +7,8 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 var credsCli = register(&cli.Info{
@@ -75,7 +74,7 @@ func (cmd *credsCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 	policy := arn.ARN(cmd.Policy)
 	if policy == "" {
-		part := ctx.Gateway().Ident().UserARN.Partition()
+		part := ctx.Gateway().Ident().Partition()
 		policy = adminAccess.WithPartition(part)
 	}
 	km := newKeyMaker(user, policy)
@@ -88,7 +87,7 @@ func (cmd *credsCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			AccountID: c.AccountID,
 			Name:      c.Name,
 		}
-		if out, err := km.newKey(ac.IAM()); err == nil {
+		if out, err := km.newKey(*ac.IAM()); err == nil {
 			c.AccessKeyID = aws.StringValue(out.AccessKey.AccessKeyId)
 			c.SecretAccessKey = aws.StringValue(out.AccessKey.SecretAccessKey)
 		} else {
@@ -114,14 +113,14 @@ func newKeyMaker(user, policy arn.ARN) *keyMaker {
 	}
 }
 
-func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error) {
-	if _, err := c.CreateUser(&m.user); err != nil {
+func (m *keyMaker) newKey(c iam.IAM) (*iam.CreateAccessKeyOutput, error) {
+	if _, err := c.CreateUserRequest(&m.user).Send(); err != nil {
 		if !awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 			return nil, err
 		}
 		// Existing user path must match to create a new access key
 		in := iam.GetUserInput{UserName: m.user.UserName}
-		u, err := c.GetUser(&in)
+		u, err := c.GetUserRequest(&in).Send()
 		if err != nil {
 			return nil, err
 		}
@@ -129,8 +128,8 @@ func (m *keyMaker) newKey(c iamiface.IAMAPI) (*iam.CreateAccessKeyOutput, error)
 			return nil, errors.New("user already exists under a different path")
 		}
 	}
-	if _, err := c.AttachUserPolicy(&m.pol); err != nil {
+	if _, err := c.AttachUserPolicyRequest(&m.pol).Send(); err != nil {
 		return nil, err
 	}
-	return c.CreateAccessKey(&m.key)
+	return c.CreateAccessKeyRequest(&m.key).Send()
 }

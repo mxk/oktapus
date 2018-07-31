@@ -8,22 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/endpoints"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 )
 
 // TODO: Parallel execution (close stdin, capture stdout/stderr)?
 // TODO: Need to pass partition/region to command?
+// TODO: Pass creds expiration time
 
 var execCli = register(&cli.Info{
 	Name:    "exec",
@@ -97,11 +94,6 @@ func (cmd *execCmd) Run(ctx *op.Ctx, args []string) error {
 	spec, args := args[0], args[1:]
 	var credsOut []*credsOutput
 	if cmd.OktaApps {
-		if ctx.Sess == nil {
-			if ctx.Sess, err = op.NewSession(nil); err != nil {
-				return err
-			}
-		}
 		if ctx.All, err = oktaAccounts(ctx, cmd.Partition, spec); err != nil {
 			return err
 		}
@@ -202,7 +194,7 @@ func oktaAccounts(ctx *op.Ctx, part, spec string) (op.Accounts, error) {
 	fast.ForEach(len(links), 40, func(i int) error {
 		auth := getAWSAuth(c, links[i], role)
 		if auth != nil && (part == "" || auth.Roles[0].Role.Partition() == part) {
-			all[i] = getAccount(links[i], auth, ctx.Sess)
+			all[i] = getAccount(links[i], auth, ctx.Cfg())
 		}
 		return nil
 	})
@@ -251,7 +243,7 @@ func getAWSAuth(c *okta.Client, app *okta.AppLink, role arn.ARN) *okta.AWSAuth {
 }
 
 // getAccount returns a new Account for an AWS app in Okta.
-func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cp client.ConfigProvider) *op.Account {
+func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cfg *aws.Config) *op.Account {
 	r := auth.Roles[0]
 	if len(auth.Roles) > 1 {
 		log.W("Multiple AWS roles available for %q, using %q",
@@ -259,13 +251,14 @@ func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cp client.ConfigProvider)
 	}
 
 	// Exchange SAML assertion for temporary security credentials
-	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
 	if r.Role.Partition() == endpoints.AwsUsGovPartitionID {
-		cp = awsx.GovCloudConfigProvider{ConfigProvider: cp}
+		// TODO: Clean this up
+		tmp := *cfg
+		tmp.EndpointResolver = endpoints.AwsUsGovPartition().Resolver()
+		cfg = &tmp
 	}
-	stsc := sts.New(cp, &cfg)
-	cr := auth.Creds(stsc.AssumeRoleWithSAML, r)
-	if _, err := cr.Creds().Get(); err != nil {
+	cp := auth.Creds(cfg, r)
+	if _, err := cp.Retrieve(); err != nil {
 		log.E("Failed to get credentials for %q: %v", app.Label, err)
 		return nil
 	}
@@ -273,14 +266,14 @@ func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cp client.ConfigProvider)
 	// Create account
 	ac := op.NewAccount(r.Role.Account(), app.Label)
 	ac.Ctl = &op.Ctl{Desc: app.Label}
-	ac.Init(cp, cr)
-	out, err := ac.IAM().ListAccountAliases(nil)
-	if len(out.AccountAliases) > 0 {
-		if name := aws.StringValue(out.AccountAliases[0]); name != "" {
+	ac.Init(cfg, cp)
+	out, err := ac.IAM().ListAccountAliasesRequest(nil).Send()
+	if err != nil {
+		log.W("Failed to get account alias for %q: %v", app.Label, err)
+	} else if len(out.AccountAliases) > 0 {
+		if name := out.AccountAliases[0]; name != "" {
 			ac.Name = name
 		}
-	} else if err != nil {
-		log.W("Failed to get account alias for %q: %v", app.Label, err)
 	}
 	return ac
 }

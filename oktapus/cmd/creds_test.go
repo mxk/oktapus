@@ -12,10 +12,10 @@ import (
 
 func TestCreds(t *testing.T) {
 	now := fast.MockTime(fast.Time())
-	exp := expTime{now.Add(time.Hour - time.Minute).Truncate(time.Second)}
+	exp := expTime{now.Add(time.Hour)}
 	defer fast.MockTime(time.Time{})
 
-	ctx := newCtx()
+	ctx, _ := newCtx()
 	cmd := credsCmd{Spec: "test1,test2"}
 
 	// Get temporary creds

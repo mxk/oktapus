@@ -62,8 +62,8 @@ func (cmd *freeCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs.Apply(func(_ int, ac *op.Account) {
 		ac.Owner = ""
 		ch := make(chan error, 1)
-		go func() { ch <- awsx.DeleteRoles(ac.IAM(), op.TmpIAMPath) }()
-		ac.Err = awsx.DeleteUsers(ac.IAM(), op.TmpIAMPath)
+		go func() { ch <- awsx.DeleteRoles(*ac.IAM(), op.TmpIAMPath) }()
+		ac.Err = awsx.DeleteUsers(*ac.IAM(), op.TmpIAMPath)
 		if err := <-ch; ac.Err == nil {
 			ac.Err = err
 		}

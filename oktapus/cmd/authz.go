@@ -11,9 +11,8 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 var authzCli = register(&cli.Info{
@@ -86,7 +85,7 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	}
 
 	// Validate principal
-	user := ctx.Gateway().Ident().UserARN
+	user := ctx.Gateway().Ident().ARN
 	if cmd.Principal == "" {
 		if t := user.Type(); t != "user" && t != "assumed-role" {
 			return nil, errors.New("-principal required")
@@ -122,7 +121,7 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 			return
 		}
-		c := ac.IAM()
+		c := *ac.IAM()
 		for _, r := range roles {
 			create, err := r.createOrUpdate(c)
 			out := &roleOutput{
@@ -197,15 +196,16 @@ type role struct {
 	assume *op.Statement
 }
 
-func (r *role) createOrUpdate(c iamiface.IAMAPI) (create bool, err error) {
-	out, err := c.GetRole(&r.get)
+func (r *role) createOrUpdate(c iam.IAM) (create bool, err error) {
+	out, err := c.GetRoleRequest(&r.get).Send()
 	if err != nil {
 		if !awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 			return false, err
 		}
 		attachPol := aws.StringValue(r.attach.PolicyArn) != ""
-		if _, err = c.CreateRole(&r.create); err == nil && attachPol {
-			_, err = c.AttachRolePolicy(&r.attach)
+		_, err = c.CreateRoleRequest(&r.create).Send()
+		if err == nil && attachPol {
+			_, err = c.AttachRolePolicyRequest(&r.attach).Send()
 		}
 		return true, err
 	}
@@ -241,6 +241,6 @@ update:
 		PolicyDocument: pol.Doc(),
 		RoleName:       out.Role.RoleName,
 	}
-	_, err = c.UpdateAssumeRolePolicy(&in)
+	_, err = c.UpdateAssumeRolePolicyRequest(&in).Send()
 	return false, err
 }

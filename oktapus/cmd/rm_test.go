@@ -5,18 +5,18 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRmFilter(t *testing.T) {
-	ctx := newCtx()
+	ctx, s := newCtx()
 	cmd := rmCmd{Spec: "test1", Type: "role", Names: []string{"a"}}
 
 	dt := mock.NewDataTypeRouter()
 	dt.Set(new(sts.AssumeRoleOutput), errors.New("access denied"))
-	ctx.Sess.(*mock.Session).OrgsRouter().Account("").Add(dt)
+	s.OrgsRouter().Account("").Add(dt)
 
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
@@ -28,10 +28,10 @@ func TestRmFilter(t *testing.T) {
 }
 
 func TestRmRole(t *testing.T) {
-	ctx := newCtx()
+	ctx, s := newCtx()
 	cmd := rmCmd{Spec: "test1", Type: "role", Names: []string{"a", "b", "c"}}
 
-	r := ctx.Sess.(*mock.Session).OrgsRouter().Account("1").RoleRouter()
+	r := s.OrgsRouter().Account("1").RoleRouter()
 	r["a"] = &mock.Role{}
 	r["b"] = &mock.Role{}
 
@@ -57,10 +57,10 @@ func TestRmRole(t *testing.T) {
 }
 
 func TestRmUser(t *testing.T) {
-	ctx := newCtx()
+	ctx, s := newCtx()
 	cmd := rmCmd{Spec: "test2", Type: "user", Names: []string{"a"}}
 
-	r := ctx.Sess.(*mock.Session).OrgsRouter().Account("2").UserRouter()
+	r := s.OrgsRouter().Account("2").UserRouter()
 	r["a"] = &mock.User{}
 
 	out, err := cmd.Call(ctx)

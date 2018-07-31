@@ -9,7 +9,7 @@ import (
 
 func TestList(t *testing.T) {
 	cmd := listCmd{Refresh: true}
-	ctx := newCtx("1")
+	ctx, _ := newCtx("1")
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*listOutput{{

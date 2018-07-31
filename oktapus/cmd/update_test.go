@@ -11,7 +11,7 @@ import (
 func TestUpdate(t *testing.T) {
 	desc := "desc"
 	cmd := updateCmd{Desc: &desc, Set: op.Tags{"set"}, Spec: "test1"}
-	ctx := newCtx("1")
+	ctx, _ := newCtx("1")
 
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)

@@ -17,7 +17,7 @@ func TestCreate(t *testing.T) {
 		EmailTpl: "test{}@example.com",
 		NameTpl:  "test{00}",
 	}
-	ctx := newCtx()
+	ctx, _ := newCtx()
 	out, err := cmd.Call(ctx)
 	require.NoError(t, err)
 	want := []*newAccountsOutput{
