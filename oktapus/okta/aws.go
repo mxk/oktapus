@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // Possible errors returned when parsing AWS SAML assertion.
@@ -65,13 +65,28 @@ func newAWSAuth(sa samlAssertion, role arn.ARN) (*AWSAuth, error) {
 
 // Creds returns credentials that derive from the SAML assertion and the
 // specified role.
-func (a *AWSAuth) Creds(fn awsx.AssumeRoleWithSAMLFunc, r awsRole) *awsx.SAMLCreds {
-	saml := base64.StdEncoding.EncodeToString(a.SAML)
-	return awsx.NewSAMLCreds(fn, r.Principal, r.Role, saml)
+func (a *AWSAuth) Creds(cfg *aws.Config, r awsRole) *creds.Provider {
+	c := sts.New(*cfg)
+	c.Credentials = aws.AnonymousCredentials
+	in := &sts.AssumeRoleWithSAMLInput{
+		DurationSeconds: aws.Int64(int64(a.SessionDuration.Seconds())),
+		PrincipalArn:    arn.String(r.Principal),
+		RoleArn:         arn.String(r.Role),
+		SAMLAssertion:   aws.String(base64.StdEncoding.EncodeToString(a.SAML)),
+	}
+	return creds.RenewableProvider(func() (cr aws.Credentials, err error) {
+		out, err := c.AssumeRoleWithSAMLRequest(in).Send()
+		if err == nil {
+			cr = creds.FromSTS(out.Credentials)
+		}
+		cr.Source = "Okta"
+		return
+	})
 }
 
 // Use configures in to use the SAML assertion and the specified role.
 func (a *AWSAuth) Use(r awsRole, in *sts.AssumeRoleWithSAMLInput) {
+	// TODO: Duration?
 	in.PrincipalArn = arn.String(r.Principal)
 	in.RoleArn = arn.String(r.Role)
 	in.SAMLAssertion = aws.String(base64.StdEncoding.EncodeToString(a.SAML))
