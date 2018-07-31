@@ -73,7 +73,10 @@ func createAccount(c orgsif.OrganizationsAPI, in *orgs.CreateAccountInput) (*org
 		case orgs.CreateAccountStateSucceeded:
 			in := orgs.DescribeAccountInput{AccountId: s.AccountId}
 			out, err := c.DescribeAccountRequest(&in).Send()
-			return out.Account, err
+			if err != nil {
+				return nil, err
+			}
+			return out.Account, nil
 		default:
 			return nil, awserr.New(string(s.FailureReason),
 				"account creation failed", nil)
