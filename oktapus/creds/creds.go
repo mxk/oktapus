@@ -39,6 +39,13 @@ func FromSTS(src *sts.Credentials) aws.Credentials {
 	}
 }
 
+// Set is a convenience function to set client credentials. SDK v2 is a bit
+// confused about which field to use for this purpose.
+func Set(c *aws.Client, cr aws.CredentialsProvider) {
+	c.Credentials = cr
+	c.Config.Credentials = cr
+}
+
 // Ident contains the results of sts:GetCallerIdentity API call.
 type Ident struct {
 	arn.ARN

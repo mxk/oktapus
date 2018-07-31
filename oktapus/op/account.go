@@ -30,7 +30,7 @@ func NewAccount(id, name string) *Account {
 // Init initializes the account IAM client.
 func (ac *Account) Init(cfg *aws.Config, cp *creds.Provider) {
 	ac.iam = *iam.New(*cfg)
-	ac.iam.Credentials = cp
+	creds.Set(ac.iam.Client, cp)
 }
 
 // IAM returns the account IAM client.

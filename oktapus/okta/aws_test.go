@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LuminalHQ/cloudcover/x/awsmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,8 @@ func TestNewAWSAuth(t *testing.T) {
 		SessionDuration: 43200 * time.Second,
 	}
 	assert.Equal(t, want, auth)
-	assert.NotNil(t, auth.Creds(nil, auth.Roles[0]))
+	cfg := awsmock.Config(nil)
+	assert.NotNil(t, auth.Creds(&cfg, auth.Roles[0]))
 
 	_, err = newAWSAuth(samlAssertion(assertion), "InvalidRole")
 	assert.Equal(t, ErrInvalidAWSRole, err)

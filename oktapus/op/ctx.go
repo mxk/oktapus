@@ -245,7 +245,7 @@ func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 // from Okta and exchanges it for temporary security credentials.
 func (ctx *Ctx) newOktaCreds(cfg *aws.Config) *creds.Provider {
 	c := sts.New(*cfg)
-	c.Credentials = aws.AnonymousCredentials
+	creds.Set(c.Client, aws.AnonymousCredentials)
 	awsAppLink := ctx.Env[OktaAWSAppEnv]
 	return creds.RenewableProvider(func() (aws.Credentials, error) {
 		var cr aws.Credentials

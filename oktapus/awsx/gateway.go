@@ -67,11 +67,11 @@ func (gw *Gateway) Connect() error {
 		gw.MasterRole = arn.New(gw.proxy.Ident.Partition(), "iam", "",
 			gw.orgInfo.MasterID, "role", gw.MasterRole.Path(),
 			gw.MasterRole.Name())
-		gw.orgClient.Credentials = gw.proxy.Provider(&sts.AssumeRoleInput{
+		creds.Set(gw.orgClient.Client, gw.proxy.Provider(&sts.AssumeRoleInput{
 			RoleArn:         arn.String(gw.MasterRole),
 			RoleSessionName: aws.String(gw.proxy.SessName),
 			ExternalId:      aws.String(ProxyExternalID(&gw.orgInfo)),
-		})
+		}))
 	}
 	return nil
 }

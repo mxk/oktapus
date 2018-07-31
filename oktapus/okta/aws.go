@@ -67,7 +67,7 @@ func newAWSAuth(sa samlAssertion, role arn.ARN) (*AWSAuth, error) {
 // specified role.
 func (a *AWSAuth) Creds(cfg *aws.Config, r awsRole) *creds.Provider {
 	c := sts.New(*cfg)
-	c.Credentials = aws.AnonymousCredentials
+	creds.Set(c.Client, aws.AnonymousCredentials)
 	in := &sts.AssumeRoleWithSAMLInput{
 		DurationSeconds: aws.Int64(int64(a.SessionDuration.Seconds())),
 		PrincipalArn:    arn.String(r.Principal),
