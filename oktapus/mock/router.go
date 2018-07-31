@@ -117,7 +117,7 @@ func (r DataTypeRouter) Set(out interface{}, err error) {
 		panic(fmt.Sprintf("mock: %T is not a pointer", out))
 	} else if s := t.Elem(); s.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("mock: %T is not a struct", s))
-	} else if !strings.Contains(s.PkgPath(), "/aws-sdk-go/") ||
+	} else if !strings.Contains(s.PkgPath(), "/aws-sdk-go-v2/") ||
 		!strings.HasSuffix(s.Name(), "Output") {
 		panic(fmt.Sprintf("mock: %T is not an AWS output struct", s))
 	}
@@ -135,7 +135,7 @@ func (r DataTypeRouter) Get(out interface{}) error {
 }
 
 // Route implements the Router interface.
-func (r DataTypeRouter) Route(_ *Session, q *aws.Request, _ string) bool {
+func (r DataTypeRouter) Route(q *aws.Request) bool {
 	_, ok := r[reflect.TypeOf(q.Data)]
 	if ok {
 		if err := r.Get(q.Data); err != nil {
