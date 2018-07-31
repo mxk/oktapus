@@ -11,9 +11,8 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 // CtlRole is the IAM role that stores account control information in its
@@ -34,27 +33,30 @@ type Ctl struct {
 }
 
 // Init creates account control information in an uncontrolled account.
-func (ctl *Ctl) Init(c iamiface.IAMAPI) error {
-	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
+func (ctl *Ctl) Init(c iam.IAM) error {
+	return ctl.exec(c, func(c iam.IAM, b64 string) (*iam.Role, error) {
 		in := iam.CreateRoleInput{
 			AssumeRolePolicyDocument: NewAssumeRolePolicy("").Doc(),
 			Description:              aws.String(b64),
 			Path:                     aws.String(IAMPath),
 			RoleName:                 aws.String(CtlRole),
 		}
-		out, err := c.CreateRole(&in)
-		if err == nil && out.Role.Description == nil {
+		out, err := c.CreateRoleRequest(&in).Send()
+		if err != nil {
+			return nil, err
+		}
+		if out.Role.Description == nil {
 			// Probably a bug, but CreateRole does not return the description
 			out.Role.Description = in.Description
 		}
-		return out.Role, err
+		return out.Role, nil
 	})
 }
 
 // Get retrieves current account control information.
-func (ctl *Ctl) Get(c iamiface.IAMAPI) error {
+func (ctl *Ctl) Get(c iam.IAM) error {
 	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
-	out, err := c.GetRole(&in)
+	out, err := c.GetRoleRequest(&in).Send()
 	if err == nil {
 		return ctl.decode(out.Role.Description)
 	}
@@ -65,17 +67,20 @@ func (ctl *Ctl) Get(c iamiface.IAMAPI) error {
 }
 
 // Set stores account control information.
-func (ctl *Ctl) Set(c iamiface.IAMAPI) error {
-	return ctl.exec(c, func(b64 string) (*iam.Role, error) {
+func (ctl *Ctl) Set(c iam.IAM) error {
+	return ctl.exec(c, func(c iam.IAM, b64 string) (*iam.Role, error) {
 		in := iam.UpdateRoleDescriptionInput{
 			Description: aws.String(b64),
 			RoleName:    aws.String(CtlRole),
 		}
-		out, err := c.UpdateRoleDescription(&in)
+		out, err := c.UpdateRoleDescriptionRequest(&in).Send()
+		if err == nil {
+			return out.Role, nil
+		}
 		if awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 			err = ErrNoCtl
 		}
-		return out.Role, err
+		return nil, err
 	})
 }
 
@@ -116,12 +121,12 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 }
 
 // exec executes init or set operations.
-func (ctl *Ctl) exec(c iamiface.IAMAPI, fn func(b64 string) (*iam.Role, error)) error {
+func (ctl *Ctl) exec(c iam.IAM, fn func(c iam.IAM, b64 string) (*iam.Role, error)) error {
 	b64, err := ctl.encode()
 	if err != nil {
 		return err
 	}
-	r, err := fn(b64)
+	r, err := fn(c, b64)
 	if err == nil && aws.StringValue(r.Description) != b64 {
 		err = errCtlUpdate
 	}

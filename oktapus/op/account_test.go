@@ -4,34 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestAccountCreds(t *testing.T) {
-	ac := NewAccount("ID", "Name")
-	_, err := ac.Creds(false)
-	assert.Error(t, err)
-
-	v := credentials.Value{
-		AccessKeyID:     "id",
-		SecretAccessKey: "secret",
-		SessionToken:    "token",
-	}
-	exp := fast.Time().Add(time.Minute)
-	ac.Init(mock.NewSession(), &awsx.StaticCreds{Value: v, Exp: exp})
-	assert.NotNil(t, ac.IAM())
-
-	cr, err := ac.Creds(true)
-	require.NoError(t, err)
-	assert.Equal(t, v, cr.Value)
-}
 
 func TestAccountFilter(t *testing.T) {
 	acs := Accounts{
@@ -99,7 +75,7 @@ func TestAccountCtl(t *testing.T) {
 	acs := make(Accounts, len(tests))
 	for i, test := range tests {
 		ac := NewAccount(test.name, test.name)
-		ac.iam = new(ctlIAM)
+		ac.iam = newCtlIAM().iam
 		acs[i] = ac
 		require.NoError(t, test.ctl.Init(ac.iam))
 	}
@@ -128,9 +104,10 @@ func TestAccountCtl(t *testing.T) {
 }
 
 func TestAccountCtlErr(t *testing.T) {
-	c := &ctlIAM{err: errors.New("inaccessible")}
+	c := newCtlIAM()
+	c.err = errors.New("inaccessible")
 	ac := NewAccount("", "error")
-	ac.iam = c
+	ac.iam = c.iam
 
 	acs := Accounts{ac}
 	acs.Save()
@@ -152,7 +129,7 @@ func TestAccountCtlErr(t *testing.T) {
 	assert.Equal(t, ac.Ctl, &ac.ref)
 
 	other := &Ctl{Owner: "other"}
-	require.NoError(t, other.Set(c))
+	require.NoError(t, other.Set(c.iam))
 	ac.Owner = "me"
 	acs.Save()
 	assert.Equal(t, ac.Err, errCtlUpdate)

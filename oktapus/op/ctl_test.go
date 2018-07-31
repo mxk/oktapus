@@ -3,53 +3,53 @@ package op
 import (
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/LuminalHQ/cloudcover/x/awsmock"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCtl(t *testing.T) {
-	c := new(ctlIAM)
+	c := newCtlIAM()
 	var set, get Ctl
 
-	require.NoError(t, get.Get(c))
+	require.NoError(t, get.Get(c.iam))
 	assert.Equal(t, set, get)
 	c.desc = aws.String("")
-	require.NoError(t, get.Get(c))
+	require.NoError(t, get.Get(c.iam))
 	assert.Equal(t, set, get)
 
 	set = Ctl{Owner: "owner", Desc: "desc", Tags: Tags{"init"}}
-	require.NoError(t, set.Init(c))
-	require.NoError(t, get.Get(c))
+	require.NoError(t, set.Init(c.iam))
+	require.NoError(t, get.Get(c.iam))
 	assert.Equal(t, set, get)
 
 	set = Ctl{Tags: Tags{"tag"}}
-	require.NoError(t, set.Set(c))
-	require.NoError(t, get.Get(c))
+	require.NoError(t, set.Set(c.iam))
+	require.NoError(t, get.Get(c.iam))
 	assert.Equal(t, set, get)
 
 	c.err = awserr.New(iam.ErrCodeNoSuchEntityException, "", nil)
-	require.Error(t, ErrNoCtl, get.Get(c))
-	require.Error(t, ErrNoCtl, set.Set(c))
+	require.Error(t, ErrNoCtl, get.Get(c.iam))
+	require.Error(t, ErrNoCtl, set.Set(c.iam))
 	assert.Equal(t, Ctl{}, get)
 
 	set = Ctl{Owner: "owner"}
 	get = set
 	c.err = errCtlUpdate
-	require.EqualError(t, set.Set(c), errCtlUpdate.Error())
+	require.EqualError(t, set.Set(c.iam), errCtlUpdate.Error())
 	assert.Equal(t, set, get)
 
 	c.err = nil
 	c.desc = aws.String(ctlVer)
-	assert.Error(t, get.Get(c))
+	assert.Error(t, get.Get(c.iam))
 	assert.Equal(t, Ctl{}, get)
 
 	get = set
 	c.desc = aws.String("abc=")
-	assert.Error(t, get.Get(c))
+	assert.Error(t, get.Get(c.iam))
 	assert.Equal(t, Ctl{}, get)
 }
 
@@ -136,12 +136,29 @@ func TestCtlAlias(t *testing.T) {
 }
 
 type ctlIAM struct {
-	iamiface.IAMAPI
+	iam  iam.IAM
 	desc *string
 	err  error
 }
 
-func (c *ctlIAM) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
+func newCtlIAM() *ctlIAM {
+	c := new(ctlIAM)
+	c.iam = *iam.New(awsmock.Config(func(q *aws.Request) {
+		switch in := q.Params.(type) {
+		case *iam.CreateRoleInput:
+			q.Data, q.Error = c.createRole(in)
+		case *iam.GetRoleInput:
+			q.Data, q.Error = c.getRole(in)
+		case *iam.UpdateRoleDescriptionInput:
+			q.Data, q.Error = c.updateRoleDescription(in)
+		default:
+			panic("unsupported api: " + q.Operation.Name)
+		}
+	}))
+	return c
+}
+
+func (c *ctlIAM) createRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
 	if c.err != nil {
 		return new(iam.CreateRoleOutput), c.err
 	}
@@ -149,7 +166,7 @@ func (c *ctlIAM) CreateRole(in *iam.CreateRoleInput) (*iam.CreateRoleOutput, err
 	return &iam.CreateRoleOutput{Role: &iam.Role{}}, nil
 }
 
-func (c *ctlIAM) GetRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
+func (c *ctlIAM) getRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
 	if c.err != nil {
 		return new(iam.GetRoleOutput), c.err
 	}
@@ -158,7 +175,7 @@ func (c *ctlIAM) GetRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
 	}}, nil
 }
 
-func (c *ctlIAM) UpdateRoleDescription(in *iam.UpdateRoleDescriptionInput) (*iam.UpdateRoleDescriptionOutput, error) {
+func (c *ctlIAM) updateRoleDescription(in *iam.UpdateRoleDescriptionInput) (*iam.UpdateRoleDescriptionOutput, error) {
 	if c.err == nil {
 		c.desc = in.Description
 	} else if c.err != errCtlUpdate {

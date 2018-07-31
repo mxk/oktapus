@@ -9,17 +9,15 @@ import (
 	"strings"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/corehandlers"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/external"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 var log = internal.Log
@@ -53,12 +51,12 @@ const (
 
 // Ctx provides global configuration information.
 type Ctx struct {
-	Env  map[string]string
-	All  Accounts
-	Sess client.ConfigProvider
+	Env map[string]string
+	All Accounts
 
 	UseDaemon bool
 
+	cfg  aws.Config
 	okta *okta.Client
 	gw   *awsx.Gateway
 }
@@ -93,6 +91,20 @@ func (ctx *Ctx) InExec() bool {
 	return !ctx.UseDaemon && awsx.IsAccountID(ctx.Env[AccountIDEnv])
 }
 
+// Cfg returns current AWS configuration.
+func (ctx *Ctx) Cfg() *aws.Config {
+	if ctx.cfg.EndpointResolver == nil {
+		var err error
+		if ctx.cfg, err = LoadConfig(); err != nil {
+			log.F("Failed to load AWS config: %v", err)
+		}
+		if ctx.UseOkta() {
+			ctx.cfg.Credentials = ctx.newOktaCreds(&ctx.cfg)
+		}
+	}
+	return &ctx.cfg
+}
+
 // Okta returns an Okta client.
 func (ctx *Ctx) Okta() *okta.Client {
 	if ctx.okta != nil {
@@ -122,25 +134,7 @@ func (ctx *Ctx) Gateway() *awsx.Gateway {
 	if ctx.gw != nil {
 		return ctx.gw
 	}
-	if ctx.Sess == nil {
-		var cfg aws.Config
-		if ctx.UseOkta() {
-			// With Okta, all credentials must be explicit
-			cp := &credentials.ErrorProvider{
-				Err:          errors.New("missing credentials"),
-				ProviderName: "ErrorProvider",
-			}
-			cfg.Credentials = credentials.NewCredentials(cp)
-		}
-		var err error
-		if ctx.Sess, err = NewSession(&cfg); err != nil {
-			log.F("Failed to create AWS session: %v", err)
-		}
-	}
-	gw := awsx.NewGateway(ctx.Sess)
-	if ctx.UseOkta() {
-		gw.Creds = ctx.newOktaCreds(ctx.Sess)
-	}
+	gw := awsx.NewGateway(ctx.Cfg())
 	gw.MasterRole = arn.Base + "role" + IAMPath + "OktapusOrganizationsProxy"
 	if r := ctx.Env[MasterRoleEnv]; r != "" {
 		gw.MasterRole = gw.MasterRole.WithPathName(r)
@@ -162,12 +156,13 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 	gw := ctx.Gateway()
 	if ctx.All == nil {
 		if ctx.InExec() {
+			// TODO: Forward creds expiration time when supported
 			ac := NewAccount(ctx.Env[AccountIDEnv], ctx.Env[AccountNameEnv])
-			ac.Init(gw, awsx.NewStaticCreds(
-				ctx.Env[AccessKeyIDEnv],
-				ctx.Env[SecretKeyEnv],
-				ctx.Env[SessionTokenEnv],
-			))
+			ac.Init(ctx.Cfg(), creds.StaticProvider(aws.Credentials{
+				AccessKeyID:     ctx.Env[AccessKeyIDEnv],
+				SecretAccessKey: ctx.Env[SecretKeyEnv],
+				SessionToken:    ctx.Env[SessionTokenEnv],
+			}, nil))
 			ctx.All = Accounts{ac}
 		} else {
 			if err := gw.Refresh(); err != nil {
@@ -178,7 +173,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 			ctx.All = make(Accounts, len(info))
 			for i, ac := range info {
 				n := NewAccount(ac.ID, ac.Name)
-				n.Init(gw, gw.CredsProvider(ac.ID))
+				n.Init(ctx.Cfg(), gw.CredsProvider(ac.ID))
 				ctx.All[i] = n
 			}
 		}
@@ -210,8 +205,8 @@ func (ctx *Ctx) EnvMap() map[string]string {
 	}
 	akid := ""
 	if !ctx.UseOkta() {
-		if sess, err := session.NewSession(); err == nil {
-			v, err := sess.Config.Credentials.Get()
+		if cfg, err := LoadConfig(); err == nil {
+			v, err := cfg.Credentials.Retrieve()
 			if err == nil && v.SessionToken == "" {
 				akid = v.AccessKeyID
 			}
@@ -246,18 +241,19 @@ func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
 	return c.Start()
 }
 
-// newOktaCreds returns a CredsProvider that obtains a SAML assertion from Okta
-// and exchanges it for temporary security credentials.
-func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
-	cfg := aws.Config{Credentials: credentials.AnonymousCredentials}
-	c := awsx.NewSAMLCreds(sts.New(sess, &cfg).AssumeRoleWithSAML, "", "", "")
+// newOktaCreds returns a credentials provider that obtains a SAML assertion
+// from Okta and exchanges it for temporary security credentials.
+func (ctx *Ctx) newOktaCreds(cfg *aws.Config) *creds.Provider {
+	c := sts.New(*cfg)
+	c.Credentials = aws.AnonymousCredentials
 	awsAppLink := ctx.Env[OktaAWSAppEnv]
-	c.Renew = func(in *sts.AssumeRoleWithSAMLInput) error {
-		c := ctx.Okta()
+	return creds.RenewableProvider(func() (aws.Credentials, error) {
+		var cr aws.Credentials
+		k := ctx.Okta()
 		if awsAppLink == "" {
-			apps, err := c.AppLinks()
+			apps, err := k.AppLinks()
 			if err != nil {
-				return err
+				return cr, err
 			}
 			var app *okta.AppLink
 			multiple := false
@@ -271,33 +267,33 @@ func (ctx *Ctx) newOktaCreds(sess client.ConfigProvider) awsx.CredsProvider {
 				}
 			}
 			if app == nil {
-				return errors.New("AWS app not found in Okta")
+				return cr, errors.New("AWS app not found in Okta")
 			} else if multiple {
 				log.W("Multiple AWS apps found in Okta, using %q", app.Label)
 			}
 			awsAppLink = app.LinkURL
 		}
-		auth, err := c.OpenAWS(awsAppLink, arn.ARN(ctx.Env[OktaAWSRoleEnv]))
+		auth, err := k.OpenAWS(awsAppLink, arn.ARN(ctx.Env[OktaAWSRoleEnv]))
 		if err != nil {
-			return err
+			return cr, err
 		}
 		if len(auth.Roles) > 1 {
 			log.W("Multiple AWS roles available, using %q", auth.Roles[0].Role)
 		}
-		auth.Use(auth.Roles[0], in)
-		return nil
-	}
-	return c
+		var in sts.AssumeRoleWithSAMLInput
+		auth.Use(auth.Roles[0], &in)
+		out, err := c.AssumeRoleWithSAMLRequest(&in).Send()
+		if err == nil {
+			cr = creds.FromSTS(out.Credentials)
+			cr.Source = "Okta"
+		}
+		return cr, err
+	})
 }
 
-// NewSession returns a new AWS session with the given config.
-func NewSession(cfg *aws.Config) (client.ConfigProvider, error) {
-	opts := session.Options{Profile: os.Getenv(AWSProfileEnv)}
-	opts.Config.MergeIn(cfg)
-	sess, err := session.NewSessionWithOptions(opts)
-	if err == nil {
-		// Remove useless handler that writes messages to stdout
-		sess.Handlers.Send.Remove(corehandlers.ValidateReqSigHandler)
-	}
-	return sess, err
+// LoadConfig loads current AWS config.
+func LoadConfig() (aws.Config, error) {
+	return external.LoadDefaultAWSConfig(
+		external.WithSharedConfigProfile(os.Getenv(AWSProfileEnv)),
+	)
 }

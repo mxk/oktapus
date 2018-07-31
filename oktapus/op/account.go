@@ -1,15 +1,12 @@
 package op
 
 import (
-	"errors"
 	"sort"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/iam/iamiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 // Account is an account in an AWS organization.
@@ -21,8 +18,7 @@ type Account struct {
 
 	// TODO: Add partition here for GovCloud support?
 
-	iam iamiface.IAMAPI
-	cp  awsx.CredsProvider
+	iam iam.IAM
 	ref Ctl
 }
 
@@ -32,30 +28,19 @@ func NewAccount(id, name string) *Account {
 }
 
 // Init initializes the account IAM client.
-func (ac *Account) Init(sess client.ConfigProvider, cp awsx.CredsProvider) {
-	cfg := aws.Config{Credentials: cp.Creds()}
-	ac.iam = iam.New(sess, &cfg)
-	ac.cp = cp
+func (ac *Account) Init(cfg *aws.Config, cp *creds.Provider) {
+	ac.iam = *iam.New(*cfg)
+	ac.iam.Credentials = cp
 }
 
 // IAM returns the account IAM client.
-func (ac *Account) IAM() iamiface.IAMAPI {
-	return ac.iam
+func (ac *Account) IAM() *iam.IAM {
+	return &ac.iam
 }
 
-// Creds returns temporary account credentials.
-func (ac *Account) Creds(renew bool) (*awsx.StaticCreds, error) {
-	if ac.cp == nil {
-		return nil, errors.New("account not initialized")
-	} else if renew {
-		if _, static := ac.cp.(*awsx.StaticCreds); !static {
-			ac.cp.Reset()
-		}
-	}
-	if _, err := ac.cp.Creds().Get(); err != nil {
-		return nil, err
-	}
-	return ac.cp.Save(), nil
+// CredsProvider returns the credentials provider for account ac.
+func (ac *Account) CredsProvider() *creds.Provider {
+	return ac.iam.Credentials.(*creds.Provider)
 }
 
 // Accounts is a group of accounts that can be operated on concurrently.
