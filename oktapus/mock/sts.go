@@ -2,12 +2,11 @@ package mock
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -46,15 +45,11 @@ func (r STSRouter) Route(q *aws.Request) bool {
 
 func (r STSRouter) assumeRole(q *aws.Request) {
 	in := q.Params.(*sts.AssumeRoleInput)
-	role, err := arn.Parse(aws.StringValue(in.RoleArn))
-	if err != nil {
-		panic(err)
-	}
-	i := strings.LastIndexByte(role.Resource, '/')
+	role := arn.Value(in.RoleArn)
 	roleSessName := aws.StringValue(in.RoleSessionName)
-	sessArn := AssumedRoleARN(role.AccountID, role.Resource[i+1:], roleSessName)
+	sessArn := AssumedRoleARN(role.Account(), role.Name(), roleSessName)
 	r[sessArn] = &sts.GetCallerIdentityOutput{
-		Account: aws.String(role.AccountID),
+		Account: aws.String(role.Account()),
 		Arn:     aws.String(sessArn),
 		UserId:  aws.String(roleID + ":" + roleSessName),
 	}
