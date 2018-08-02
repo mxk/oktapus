@@ -26,6 +26,7 @@ func init() {
 	gob.Register([]*newAccountsOutput{})
 	gob.Register([]*resultsOutput{})
 	gob.Register([]*rmOutput{})
+	gob.Register([]*roleOutput{})
 }
 
 // OutFmt implements the -out flag for commands that print table or JSON
