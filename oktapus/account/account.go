@@ -195,24 +195,33 @@ func (d *Directory) LoadAliases(file string) error {
 		if !bytes.Equal(f[0], part) {
 			continue
 		}
-		account, alias := string(f[1]), string(f[2])
-		if !isAccountID(account) {
+		id, alias := string(f[1]), string(f[2])
+		if !isAccountID(id) {
 			return fmt.Errorf("account: invalid account id at %s:%d", file, ln)
 		}
-		if aliases[account] != "" {
+		if aliases[id] != "" {
 			return fmt.Errorf("account: duplicate account id %s:%d", file, ln)
 		}
 		if alias == "" {
 			return fmt.Errorf("account: invalid account alias at %s:%d", file, ln)
 		}
-		aliases[account] = alias
+		aliases[id] = alias
 	}
 	if err = s.Err(); err == nil {
-		d.aliases = aliases
+		if d.aliases == nil {
+			d.aliases = aliases
+		} else {
+			for id, alias := range aliases {
+				d.aliases[id] = alias
+			}
+		}
 		d.applyAliases()
 	}
 	return err
 }
+
+// Account returns information for one account ID.
+func (d *Directory) Account(id string) *Info { return d.accounts[id] }
 
 // Accounts returns all known accounts sorted by ID.
 func (d *Directory) Accounts() []*Info {
@@ -222,6 +231,19 @@ func (d *Directory) Accounts() []*Info {
 	}
 	sort.Slice(acs, func(i, j int) bool { return acs[i].ID < acs[j].ID })
 	return acs
+}
+
+// SetAlias sets account alias and returns the updated info.
+func (d *Directory) SetAlias(id, alias string) *Info {
+	if !isAccountID(id) {
+		return nil
+	}
+	if d.aliases == nil {
+		d.aliases = make(map[string]string)
+	}
+	d.aliases[id] = alias
+	d.applyAliases()
+	return d.accounts[id]
 }
 
 // applyAliases updates Info.Alias fields using current account aliases map.

@@ -78,6 +78,13 @@ func TestDirectory(t *testing.T) {
 	require.NoError(t, d.LoadAliases(tmp.Name()))
 	assert.Equal(t, []*Info{{ID: "000000000003", Alias: "test3"}}, d.Accounts())
 
+	assert.Equal(t, &Info{ID: "000000000004"}, d.SetAlias("000000000004", ""))
+	want = []*Info{
+		{ID: "000000000003", Alias: "test3"},
+		{ID: "000000000004"},
+	}
+	assert.Equal(t, want, d.Accounts())
+
 	// Errors
 	assert.Equal(t, ErrNoOrg, d.Refresh())
 
