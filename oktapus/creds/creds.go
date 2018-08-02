@@ -78,16 +78,19 @@ type Proxy struct {
 	SessName string
 }
 
-// NewProxy creates a new credentials proxy.
-func NewProxy(cfg *aws.Config) (*Proxy, error) {
-	p := &Proxy{Client: *sts.New(*cfg)}
+// NewProxy returns a new credentials proxy.
+func NewProxy(cfg *aws.Config) *Proxy {
+	return &Proxy{Client: *sts.New(*cfg)}
+}
+
+// Init initializes client identity information and role session name.
+func (p *Proxy) Init() error {
 	out, err := p.Client.GetCallerIdentityRequest(nil).Send()
-	if err != nil {
-		return nil, err
+	if err == nil {
+		p.Ident.Set(out)
+		p.SessName = p.Ident.SessName()
 	}
-	p.Ident.Set(out)
-	p.SessName = p.Ident.SessName()
-	return p, nil
+	return err
 }
 
 // Role returns the ARN for the specified account and role name. Account may be

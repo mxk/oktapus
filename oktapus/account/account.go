@@ -9,11 +9,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/LuminalHQ/cloudcover/x/region"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
@@ -85,34 +86,29 @@ func (o *Org) Set(src *orgs.Organization) {
 // alias file.
 type Directory struct {
 	client   *orgs.Organizations
-	part     string
+	ident    creds.Ident
 	org      Org
 	aliases  map[string]string
 	accounts map[string]*Info
 }
 
-// NewDirectory returns a new account directory. Refresh must be called to
-// update organization info.
+// NewDirectory returns a new account directory.
 func NewDirectory(cfg *aws.Config) *Directory {
-	return &Directory{
-		client: orgs.New(*cfg),
-		part:   region.Partition(cfg.Region),
-	}
+	return &Directory{client: orgs.New(*cfg)}
 }
 
-// Refresh updates account information.
-func (d *Directory) Refresh() error {
-	if region.Subset(d.part, orgs.ServiceName) == nil {
+// Init initializes organization and client identity information.
+func (d *Directory) Init() error {
+	part := region.Partition(d.client.Config.Region)
+	if region.Subset(part, orgs.ServiceName) == nil {
 		return ErrNoOrg
 	}
-	var currentAccount string
+	var stsErr error
 	err := fast.Call(
 		func() error {
 			out, err := d.client.DescribeOrganizationRequest(nil).Send()
 			if err == nil {
 				d.org.Set(out.Organization)
-			} else if d.org = (Org{}); awsx.IsCode(err, orgs.ErrCodeAWSOrganizationsNotInUseException) {
-				err = ErrNoOrg
 			}
 			return err
 		},
@@ -120,15 +116,32 @@ func (d *Directory) Refresh() error {
 			c := sts.New(d.client.Config)
 			out, err := c.GetCallerIdentityRequest(nil).Send()
 			if err == nil {
-				currentAccount = aws.StringValue(out.Account)
+				d.ident.Set(out)
 			}
+			stsErr = err
 			return nil
 		},
 	)
-	if err != nil {
-		return err
+	if err == nil {
+		err = stsErr
+	} else if e, ok := err.(awserr.Error); ok &&
+		e.Code() == orgs.ErrCodeAWSOrganizationsNotInUseException {
+		err = ErrNoOrg
 	}
-	if currentAccount != d.org.MasterID {
+	return err
+}
+
+// Refresh updates account information.
+func (d *Directory) Refresh() error {
+	if d.ident.Account == "" {
+		if err := d.Init(); err != nil {
+			return err
+		}
+	}
+	if d.ident.Account != d.org.MasterID {
+		if d.org.MasterID == "" {
+			return ErrNoOrg
+		}
 		return ErrNotMaster
 	}
 	acs := make(map[string]*Info, len(d.accounts))
@@ -146,15 +159,16 @@ func (d *Directory) Refresh() error {
 			acs[ac.ID] = ac
 		}
 	}
-	if err = p.Err(); err == nil {
+	err := p.Err()
+	if err == nil {
 		d.accounts = acs
 		d.applyAliases()
 	}
-	return nil
+	return err
 }
 
-// Partition returns the AWS partition of directory d.
-func (d *Directory) Partition() string { return d.part }
+// Ident returns the identity of client credentials.
+func (d *Directory) Ident() creds.Ident { return d.ident }
 
 // Org returns organization information. The zero value is returned if the
 // current account is not part of an organization.
@@ -167,7 +181,7 @@ func (d *Directory) LoadAliases(file string) error {
 		return err
 	}
 	defer f.Close()
-	part := []byte(d.part)
+	part := []byte(region.Partition(d.client.Config.Region))
 	s, ln := bufio.NewScanner(f), 0
 	aliases := make(map[string]string)
 	for s.Scan() {
@@ -182,7 +196,7 @@ func (d *Directory) LoadAliases(file string) error {
 			continue
 		}
 		account, alias := string(f[1]), string(f[2])
-		if !awsx.IsAccountID(account) {
+		if !isAccountID(account) {
 			return fmt.Errorf("account: invalid account id at %s:%d", file, ln)
 		}
 		if aliases[account] != "" {
@@ -223,4 +237,18 @@ func (d *Directory) applyAliases() {
 		}
 		ac.Alias = alias
 	}
+}
+
+// isAccountID returns true if id is a valid AWS account ID. Copied from awsx to
+// avoid import cycle.
+func isAccountID(id string) bool {
+	if len(id) != 12 {
+		return false
+	}
+	for i := 11; i >= 0; i-- {
+		if c := id[i]; c < '0' || '9' < c {
+			return false
+		}
+	}
+	return true
 }

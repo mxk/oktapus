@@ -82,15 +82,20 @@ func TestDirectory(t *testing.T) {
 	assert.Equal(t, ErrNoOrg, d.Refresh())
 
 	cfg = awsmock.Config(func(q *aws.Request) {
-		switch q.Data.(type) {
+		switch out := q.Data.(type) {
 		case *sts.GetCallerIdentityOutput:
+			*out = sts.GetCallerIdentityOutput{
+				Account: aws.String("000000000000"),
+			}
 		case *orgs.DescribeOrganizationOutput:
 			q.Error = awserr.New(orgs.ErrCodeAWSOrganizationsNotInUseException, "", nil)
 		default:
 			panic("unsupported api: " + q.Operation.Name)
 		}
 	})
-	assert.Equal(t, ErrNoOrg, NewDirectory(&cfg).Refresh())
+	d = NewDirectory(&cfg)
+	assert.Equal(t, ErrNoOrg, d.Init())
+	assert.Equal(t, ErrNoOrg, d.Refresh())
 
 	cfg = awsmock.Config(func(q *aws.Request) {
 		switch out := q.Data.(type) {
