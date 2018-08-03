@@ -5,7 +5,9 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
+	"os"
 
+	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
@@ -20,145 +22,103 @@ type Gateway struct {
 	MasterRole arn.ARN // Master account role with ListAccounts permission
 	CommonRole arn.ARN // Role to assume when accessing other accounts
 
-	proxy     *creds.Proxy
-	orgClient *orgs.Organizations
-	orgInfo   Org
+	proxy *creds.Proxy
+	dir   *account.Directory
+	creds map[string]*creds.Provider
 
-	accounts map[string]*Account
-	creds    map[string]*creds.Provider
+	aliasFile string
 }
 
 // NewGateway creates a new AWS gateway client. The client is not usable until
-// Connect() is called, which should be done after restoring any saved state.
+// Init() is called.
 func NewGateway(cfg *aws.Config) *Gateway {
-	return &Gateway{orgClient: orgs.New(*cfg)}
+	return &Gateway{
+		proxy: creds.NewProxy(cfg),
+		dir:   account.NewDirectory(cfg),
+	}
 }
 
-// Connect establishes a connection to AWS, and gets client identity and
-// organization information.
-func (gw *Gateway) Connect() error {
-	if gw.proxy != nil {
-		return errors.New("awsx: already connected")
-	}
-	var org *orgs.DescribeOrganizationOutput
+// Init initializes client identity and organization information.
+func (gw *Gateway) Init(aliasFile string) error {
+	gw.aliasFile = aliasFile
 	err := fast.Call(
-		func() (err error) {
-			org, err = gw.orgClient.DescribeOrganizationRequest(nil).Send()
-			return
-		},
-		func() (err error) {
-			gw.proxy, err = creds.NewProxy(&gw.orgClient.Config)
-			return
-		},
+		func() error { return gw.proxy.Init() },
+		func() error { return gw.dir.Init() },
 	)
-	if err != nil {
-		return err
-	}
-
-	gw.orgInfo.Set(org)
-	gw.CommonRole = arn.New(gw.proxy.Ident.Partition(), "iam", "", "",
-		"role/", gw.proxy.SessName)
-
-	// If gateway account isn't master, change org client credentials
-	if !gw.IsMaster() {
+	if err == nil && !gw.IsMaster() {
 		if gw.MasterRole == "" {
 			return errors.New("awsx: gateway master role not set")
 		}
-		gw.MasterRole = arn.New(gw.proxy.Ident.Partition(), "iam", "",
-			gw.orgInfo.MasterID, "role", gw.MasterRole.Path(),
-			gw.MasterRole.Name())
-		creds.Set(gw.orgClient.Client, gw.proxy.Provider(&sts.AssumeRoleInput{
+		org := gw.dir.Org()
+		gw.MasterRole = arn.New(org.ARN.Partition(), "iam", "", org.MasterID,
+			"role", gw.MasterRole.Path(), gw.MasterRole.Name())
+		cfg := gw.proxy.Client.Config
+		cfg.Credentials = gw.proxy.Provider(&sts.AssumeRoleInput{
 			RoleArn:         arn.String(gw.MasterRole),
 			RoleSessionName: aws.String(gw.proxy.SessName),
-			ExternalId:      aws.String(ProxyExternalID(&gw.orgInfo)),
-		}))
+			ExternalId:      aws.String(ProxyExternalID(&org)),
+		})
+		gw.dir = account.NewDirectory(&cfg)
+		err = gw.dir.Init()
 	}
-	return nil
+	if gw.proxy.SessName != "" {
+		gw.CommonRole = arn.New(gw.proxy.Ident.Partition(), "iam", "", "",
+			"role/", gw.proxy.SessName)
+	}
+	if err == account.ErrNoOrg {
+		err = nil
+	}
+	return err
 }
 
 // Ident returns the identity of the gateway credentials.
-func (gw *Gateway) Ident() creds.Ident {
-	if gw.proxy != nil {
-		return gw.proxy.Ident
-	}
-	return creds.Ident{}
-}
+func (gw *Gateway) Ident() creds.Ident { return gw.proxy.Ident }
 
 // Org returns information about the organization.
-func (gw *Gateway) Org() Org { return gw.orgInfo }
+func (gw *Gateway) Org() account.Org { return gw.dir.Org() }
 
 // IsMaster returns true if the gateway account is organization master.
 func (gw *Gateway) IsMaster() bool {
-	return gw.proxy.Ident.Account == gw.orgInfo.MasterID &&
-		gw.orgInfo.MasterID != ""
-}
-
-// OrgsClient returns the organizations API client. It returns nil if the
-// gateway account is not the organization master.
-func (gw *Gateway) OrgsClient() *orgs.Organizations {
-	if gw.IsMaster() {
-		return gw.orgClient
-	}
-	return nil
+	master := gw.dir.Org().MasterID
+	return gw.proxy.Ident.Account == master && master != ""
 }
 
 // Refresh updates information about all accounts in the organization.
 func (gw *Gateway) Refresh() error {
-	valid := make(map[string]struct{}, len(gw.accounts))
-	r := gw.orgClient.ListAccountsRequest(nil)
-	p := r.Paginate()
-	for p.Next() {
-		out := p.CurrentPage()
-		for i := range out.Accounts {
-			src := &out.Accounts[i]
-			ac := gw.Account(aws.StringValue(src.Id))
-			ac.Set(src)
-			valid[ac.ID] = struct{}{}
+	if gw.aliasFile != "" {
+		err := gw.dir.LoadAliases(gw.aliasFile)
+		if err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
-	if err := p.Err(); err != nil {
-		return err
+	err := gw.dir.Refresh()
+	if err == account.ErrNoOrg || err == account.ErrNotMaster {
+		err = nil
 	}
-	for id := range gw.accounts {
-		if _, ok := valid[id]; !ok {
-			delete(gw.accounts, id)
-		}
-	}
-	return nil
+	return err
 }
 
-// Accounts returns cached information about all accounts in the organization.
-// The accounts are returned in random order.
-func (gw *Gateway) Accounts() []*Account {
-	all := make([]*Account, 0, len(gw.accounts))
-	for _, ac := range gw.accounts {
-		all = append(all, ac)
-	}
-	return all
+// Accounts returns information about all known accounts.
+func (gw *Gateway) Accounts() []*account.Info {
+	return gw.dir.Accounts()
 }
 
-// Account returns information for the specified account ID.
-func (gw *Gateway) Account(id string) *Account {
-	ac := gw.accounts[id]
-	if ac == nil {
-		if !IsAccountID(id) {
-			panic("awsx: invalid account id: " + id)
-		}
-		if ac = (&Account{ID: id}); gw.accounts == nil {
-			gw.accounts = make(map[string]*Account)
-		}
-		gw.accounts[id] = ac
-	}
-	return ac
+// Account returns information for one account ID.
+func (gw *Gateway) Account(id string) *account.Info {
+	return gw.dir.Account(id)
+}
+
+// AddAccount adds a newly created account to the directory.
+func (gw *Gateway) AddAccount(ac *orgs.Account) *account.Info {
+	info := gw.dir.SetAlias(aws.StringValue(ac.Id), "")
+	info.Set(ac)
+	return info
 }
 
 // CredsProvider returns a credentials provider for the specified account ID.
 func (gw *Gateway) CredsProvider(accountID string) *creds.Provider {
 	cp := gw.creds[accountID]
 	if cp == nil {
-		if !IsAccountID(accountID) {
-			panic("awsx: invalid account id: " + accountID)
-		}
 		cp = gw.AssumeRole(gw.CommonRole.WithAccount(accountID))
 		if gw.creds == nil {
 			gw.creds = make(map[string]*creds.Provider)
@@ -175,7 +135,7 @@ func (gw *Gateway) AssumeRole(role arn.ARN) *creds.Provider {
 
 // ProxyExternalID returns the external id for the MasterRole in the current
 // organization.
-func ProxyExternalID(org *Org) string {
+func ProxyExternalID(org *account.Org) string {
 	if org.ID == "" {
 		panic("awsx: unknown organization id")
 	}

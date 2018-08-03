@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
@@ -144,7 +145,7 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 		}
 		return out, nil
 	}
-	out := awsx.CreateAccounts(*gw.OrgsClient(), in)
+	out := awsx.CreateAccounts(*orgs.New(*ctx.Cfg()), in)
 
 	// Configure accounts
 	var wg sync.WaitGroup
@@ -158,9 +159,8 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			acs = append(acs, ac)
 			continue
 		}
-		info := gw.Account(aws.StringValue(r.Id))
-		info.Set(r.Account)
-		ac := op.NewAccount(info.ID, info.Name)
+		info := gw.AddAccount(r.Account)
+		ac := op.NewAccount(info.ID, info.DisplayName())
 		acs = append(acs, ac)
 		wg.Add(1)
 		go func(ac *op.Account, setupCreds, commonCreds *creds.Provider) {
@@ -252,7 +252,7 @@ func (c *counter) String() string {
 
 // setCounters sets initial values for name and email counters based on existing
 // account names, but only if explicit starting values were not specified.
-func setCounters(acs []*awsx.Account, name, email *counter) {
+func setCounters(acs []*account.Info, name, email *counter) {
 	if name.n == 0 {
 		for _, ac := range acs {
 			if n, ok := name.scan(ac.Name); ok && name.n < n {

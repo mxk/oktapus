@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,7 @@ const (
 	MasterRoleEnv = "OKTAPUS_MASTER_ROLE"
 	CommonRoleEnv = "OKTAPUS_COMMON_ROLE"
 	NoDaemonEnv   = "OKTAPUS_NO_DAEMON"
+	AliasEnv      = "OKTAPUS_ALIAS_FILE"
 
 	AccountIDEnv    = "AWS_ACCOUNT_ID"
 	AccountNameEnv  = "AWS_ACCOUNT_NAME"
@@ -139,8 +141,14 @@ func (ctx *Ctx) Gateway() *awsx.Gateway {
 	if r := ctx.Env[MasterRoleEnv]; r != "" {
 		gw.MasterRole = gw.MasterRole.WithPathName(r)
 	}
-	if err := gw.Connect(); err != nil {
-		log.F("AWS connection failed: %v", err)
+	aliasFile, ok := ctx.Env[AliasEnv]
+	if !ok {
+		if u, err := user.Current(); err == nil && u.HomeDir != "" {
+			aliasFile = filepath.Join(u.HomeDir, ".oktapus_accounts")
+		}
+	}
+	if err := gw.Init(aliasFile); err != nil {
+		log.F("Gateway initialization failed: %v", err)
 	}
 	if r := ctx.Env[CommonRoleEnv]; r != "" {
 		gw.CommonRole = gw.CommonRole.WithPathName(r)
@@ -172,7 +180,7 @@ func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
 			info := gw.Accounts()
 			ctx.All = make(Accounts, len(info))
 			for i, ac := range info {
-				n := NewAccount(ac.ID, ac.Name)
+				n := NewAccount(ac.ID, ac.DisplayName())
 				n.Init(ctx.Cfg(), gw.CredsProvider(ac.ID))
 				ctx.All[i] = n
 			}
