@@ -16,8 +16,8 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
-	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 var mutextTestCli = register(&cli.Info{
@@ -83,9 +83,9 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 	if err != nil {
 		panic(err)
 	}
-	c := iam.New(cfg)
+	c := iamx.New(&cfg)
 	initCtl := new(op.Ctl)
-	if err := initCtl.Get(*c); err != nil {
+	if err := initCtl.Get(c); err != nil {
 		panic(err)
 	} else if initCtl.Owner != "" {
 		return fmt.Errorf("account is currently owned by %q", initCtl.Owner)
@@ -106,7 +106,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 			ExpectContinueTimeout: 1 * time.Second,
 		}}
 		clients = append(clients, cfg.HTTPClient)
-		go worker(fmt.Sprintf("W%.3d", i+1), *iam.New(cfg), run, ch)
+		go worker(fmt.Sprintf("W%.3d", i+1), iamx.New(&cfg), run, ch)
 	}
 
 	// Run tests
@@ -165,7 +165,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 			fmt.Printf("Owner is %s, will verify in %v... ",
 				r.name, confirmDelay)
 			fast.Sleep(confirmDelay)
-			if err := r.Get(*c); err != nil {
+			if err := r.Get(c); err != nil {
 				panic(err)
 			}
 			if t.FinalOwner = r.Owner; t.AssumedOwner == t.FinalOwner {
@@ -179,7 +179,7 @@ func (mutexTestCmd) Run(_ *op.Ctx, args []string) error {
 		}
 
 		// Free account
-		if err := initCtl.Set(*c); err != nil {
+		if err := initCtl.Set(c); err != nil {
 			panic(err)
 		}
 		if freeDelay < verifyDelay {
@@ -235,7 +235,7 @@ type workerResult struct {
 	err  error
 }
 
-func worker(name string, c iam.IAM, run *sync.Cond, ch chan<- *workerResult) {
+func worker(name string, c iamx.Client, run *sync.Cond, ch chan<- *workerResult) {
 	runtime.LockOSThread()
 	for {
 		r := &workerResult{name: name}

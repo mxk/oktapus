@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/LuminalHQ/cloudcover/x/awsmock"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -136,14 +137,14 @@ func TestCtlAlias(t *testing.T) {
 }
 
 type ctlIAM struct {
-	iam  iam.IAM
+	iam  iamx.Client
 	desc *string
 	err  error
 }
 
 func newCtlIAM() *ctlIAM {
 	c := new(ctlIAM)
-	c.iam = *iam.New(awsmock.Config(func(q *aws.Request) {
+	cfg := awsmock.Config(func(q *aws.Request) {
 		switch in := q.Params.(type) {
 		case *iam.CreateRoleInput:
 			q.Data, q.Error = c.createRole(in)
@@ -154,7 +155,8 @@ func newCtlIAM() *ctlIAM {
 		default:
 			panic("unsupported api: " + q.Operation.Name)
 		}
-	}))
+	})
+	c.iam = iamx.New(&cfg)
 	return c
 }
 

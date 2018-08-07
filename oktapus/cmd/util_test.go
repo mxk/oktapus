@@ -30,7 +30,7 @@ func initCtl(ctx *op.Ctx, ctl *op.Ctl, ids ...string) error {
 		id = mock.AccountID(id)
 		ac := op.NewAccount(id, "")
 		ac.Init(ctx.Cfg(), gw.CredsProvider(id))
-		if err := ctl.Init(*ac.IAM()); err != nil {
+		if err := ctl.Init(ac.IAM()); err != nil {
 			return err
 		}
 	}

@@ -267,7 +267,8 @@ func getAccount(app *okta.AppLink, auth *okta.AWSAuth, cfg *aws.Config) *op.Acco
 	ac := op.NewAccount(r.Role.Account(), app.Label)
 	ac.Ctl = &op.Ctl{Desc: app.Label}
 	ac.Init(cfg, cp)
-	out, err := ac.IAM().ListAccountAliasesRequest(nil).Send()
+	c := ac.IAM()
+	out, err := c.ListAccountAliasesRequest(nil).Send()
 	if err != nil {
 		log.W("Failed to get account alias for %q: %v", app.Label, err)
 	} else if len(out.AccountAliases) > 0 {

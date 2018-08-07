@@ -11,6 +11,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
@@ -121,7 +122,7 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 			return
 		}
-		c := *ac.IAM()
+		c := ac.IAM()
 		for _, r := range roles {
 			create, err := r.createOrUpdate(c)
 			out := &roleOutput{
@@ -165,7 +166,7 @@ func (cmd *authzCmd) newRole(pathName string, user arn.ARN) *role {
 	if principal == "" {
 		principal = string(user.WithName(name))
 	}
-	assumeRolePolicy := op.NewAssumeRolePolicy(principal)
+	assumeRolePolicy := iamx.AssumeRolePolicy(principal)
 
 	policy := cmd.Policy
 	if policy == "" {
@@ -193,10 +194,10 @@ type role struct {
 	get    iam.GetRoleInput
 	create iam.CreateRoleInput
 	attach iam.AttachRolePolicyInput
-	assume *op.Statement
+	assume *iamx.Statement
 }
 
-func (r *role) createOrUpdate(c iam.IAM) (create bool, err error) {
+func (r *role) createOrUpdate(c iamx.Client) (create bool, err error) {
 	out, err := c.GetRoleRequest(&r.get).Send()
 	if err != nil {
 		if !awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
@@ -219,7 +220,7 @@ func (r *role) createOrUpdate(c iam.IAM) (create bool, err error) {
 	}
 
 	// Merge AssumeRole policy
-	pol, err := op.ParsePolicy(out.Role.AssumeRolePolicyDocument)
+	pol, err := iamx.ParsePolicy(out.Role.AssumeRolePolicyDocument)
 	if err != nil {
 		return false, err
 	}

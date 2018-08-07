@@ -11,6 +11,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -140,57 +141,57 @@ const (
 )
 
 var (
-	gatewayAccess = op.Policy{Statement: []*op.Statement{{
+	gatewayAccess = iamx.Policy{Statement: []*iamx.Statement{{
 		Effect: "Allow",
-		Action: op.PolicyMultiVal{
+		Action: iamx.PolicyMultiVal{
 			"organizations:DescribeOrganization",
 			"organizations:ListAccounts",
 		},
-		Resource: op.PolicyMultiVal{"*"},
+		Resource: iamx.PolicyMultiVal{"*"},
 	}, {
 		Effect:   "Allow",
-		Action:   op.PolicyMultiVal{"sts:AssumeRole"},
-		Resource: op.PolicyMultiVal{"arn:aws:iam::*:role/oktapus/${aws:username}"},
+		Action:   iamx.PolicyMultiVal{"sts:AssumeRole"},
+		Resource: iamx.PolicyMultiVal{"arn:aws:iam::*:role/oktapus/${aws:username}"},
 	}, {
 		Effect:   "Allow",
-		Action:   op.PolicyMultiVal{"sts:AssumeRole"},
-		Resource: op.PolicyMultiVal{"arn:aws:iam::*:role/oktapus/${saml:sub}"},
+		Action:   iamx.PolicyMultiVal{"sts:AssumeRole"},
+		Resource: iamx.PolicyMultiVal{"arn:aws:iam::*:role/oktapus/${saml:sub}"},
 	}}}
 
-	createAccountAccess = op.Policy{Statement: []*op.Statement{{
+	createAccountAccess = iamx.Policy{Statement: []*iamx.Statement{{
 		Effect: "Allow",
-		Action: op.PolicyMultiVal{
+		Action: iamx.PolicyMultiVal{
 			"organizations:CreateAccount",
 			"organizations:DescribeAccount",
 			"organizations:DescribeCreateAccountStatus",
 			"organizations:ListCreateAccountStatus",
 		},
-		Resource: op.PolicyMultiVal{"*"},
+		Resource: iamx.PolicyMultiVal{"*"},
 	}, {
 		Effect:   "Allow",
-		Action:   op.PolicyMultiVal{"sts:AssumeRole"},
-		Resource: op.PolicyMultiVal{"arn:aws:iam::*:role/" + accountSetupRole},
+		Action:   iamx.PolicyMultiVal{"sts:AssumeRole"},
+		Resource: iamx.PolicyMultiVal{"arn:aws:iam::*:role/" + accountSetupRole},
 	}}}
 
-	proxyAssumeRole = op.Policy{Statement: []*op.Statement{{
+	proxyAssumeRole = iamx.Policy{Statement: []*iamx.Statement{{
 		Effect:    "Allow",
-		Principal: op.NewAWSPrincipal("*"),
-		Action:    op.PolicyMultiVal{"sts:AssumeRole"},
-		Condition: op.ConditionMap{
-			"StringEquals": op.Conditions{
-				"sts:ExternalId": op.PolicyMultiVal{""},
+		Principal: iamx.NewAWSPrincipal("*"),
+		Action:    iamx.PolicyMultiVal{"sts:AssumeRole"},
+		Condition: iamx.ConditionMap{
+			"StringEquals": iamx.Conditions{
+				"sts:ExternalId": iamx.PolicyMultiVal{""},
 			},
 		},
 	}}}
 
-	proxyAccess = op.Policy{Statement: []*op.Statement{{
+	proxyAccess = iamx.Policy{Statement: []*iamx.Statement{{
 		Effect:   "Allow",
-		Action:   op.PolicyMultiVal{"organizations:ListAccounts"},
-		Resource: op.PolicyMultiVal{"*"},
+		Action:   iamx.PolicyMultiVal{"organizations:ListAccounts"},
+		Resource: iamx.PolicyMultiVal{"*"},
 	}}}
 )
 
-func createPolicy(c iamIface, path, name, desc string, pol *op.Policy) error {
+func createPolicy(c iamIface, path, name, desc string, pol *iamx.Policy) error {
 	in := iam.CreatePolicyInput{
 		Description:    aws.String(desc),
 		Path:           aws.String(path),
@@ -206,7 +207,7 @@ func createPolicy(c iamIface, path, name, desc string, pol *op.Policy) error {
 	return ignoreExists("Policy", err)
 }
 
-func createRole(c iamIface, path, name, desc string, assumeRolePol *op.Policy) error {
+func createRole(c iamIface, path, name, desc string, assumeRolePol *iamx.Policy) error {
 	in := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: assumeRolePol.Doc(),
 		Description:              aws.String(desc),
@@ -222,7 +223,7 @@ func createRole(c iamIface, path, name, desc string, assumeRolePol *op.Policy) e
 	return ignoreExists("Role", err)
 }
 
-func createInlinePolicy(c iamIface, role, name string, pol *op.Policy) error {
+func createInlinePolicy(c iamIface, role, name string, pol *iamx.Policy) error {
 	in := iam.PutRolePolicyInput{
 		PolicyDocument: pol.Doc(),
 		PolicyName:     aws.String(name),

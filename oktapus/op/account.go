@@ -5,8 +5,8 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
 // Account is an account in an AWS organization.
@@ -18,7 +18,7 @@ type Account struct {
 
 	// TODO: Add partition here for GovCloud support?
 
-	iam iam.IAM
+	iam iamx.Client
 	ref Ctl
 }
 
@@ -29,13 +29,13 @@ func NewAccount(id, name string) *Account {
 
 // Init initializes the account IAM client.
 func (ac *Account) Init(cfg *aws.Config, cp *creds.Provider) {
-	ac.iam = *iam.New(*cfg)
+	ac.iam = iamx.New(cfg)
 	creds.Set(ac.iam.Client, cp)
 }
 
 // IAM returns the account IAM client.
-func (ac *Account) IAM() *iam.IAM {
-	return &ac.iam
+func (ac *Account) IAM() iamx.Client {
+	return ac.iam
 }
 
 // CredsProvider returns the credentials provider for account ac.

@@ -14,6 +14,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
@@ -173,9 +174,9 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Create admin and common roles
-			orgRoleErr := createOrgAccessRole(*ac.IAM(), masterID)
+			orgRoleErr := createOrgAccessRole(ac.IAM(), masterID)
 			crPath, crName := gw.CommonRole.Path(), gw.CommonRole.Name()
-			ac.Err = createCommonRole(*ac.IAM(), masterID, crPath, crName)
+			ac.Err = createCommonRole(ac.IAM(), masterID, crPath, crName)
 			if ac.Err != nil {
 				return
 			} else if orgRoleErr != nil {
@@ -190,14 +191,14 @@ func (cmd *createCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 
 			// Delete setup role
-			if err := awsx.DeleteRole(*ac.IAM(), accountSetupRole); err != nil {
+			if err := ac.IAM().DeleteRole(accountSetupRole); err != nil {
 				log.W("Failed to delete %s role in account %s: %v",
 					accountSetupRole, ac.ID, err)
 			}
 
 			// Initialize account control information
 			ac.Ctl = &op.Ctl{Tags: op.Tags{"new"}}
-			ac.Err = ac.Ctl.Init(*ac.IAM())
+			ac.Err = ac.Ctl.Init(ac.IAM())
 		}(ac, gw.AssumeRole(setupRoleARN.WithAccount(ac.ID)), gw.CredsProvider(ac.ID))
 	}
 	wg.Wait()
@@ -282,12 +283,12 @@ func waitForCreds(ac *op.Account) error {
 // createOrgAccessRole creates OrganizationAccountAccessRole. Role creation
 // order is reversed because the user creating a new account may not be able to
 // assume the default OrganizationAccountAccessRole.
-func createOrgAccessRole(c iam.IAM, masterAccountID string) error {
-	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
-	accessPolicy := op.Policy{Statement: []*op.Statement{{
+func createOrgAccessRole(c iamx.Client, masterAccountID string) error {
+	assumeRolePolicy := iamx.AssumeRolePolicy(masterAccountID)
+	accessPolicy := iamx.Policy{Statement: []*iamx.Statement{{
 		Effect:   "Allow",
-		Action:   op.PolicyMultiVal{"*"},
-		Resource: op.PolicyMultiVal{"*"},
+		Action:   iamx.PolicyMultiVal{"*"},
+		Resource: iamx.PolicyMultiVal{"*"},
 	}}}
 	role := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
@@ -316,8 +317,8 @@ func createOrgAccessRole(c iam.IAM, masterAccountID string) error {
 }
 
 // createCommonRole creates the common role that replaces accountSetupRole.
-func createCommonRole(c iam.IAM, masterAccountID, path, name string) error {
-	assumeRolePolicy := op.NewAssumeRolePolicy(masterAccountID)
+func createCommonRole(c iamx.Client, masterAccountID, path, name string) error {
+	assumeRolePolicy := iamx.AssumeRolePolicy(masterAccountID)
 	role := iam.CreateRoleInput{
 		AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
 		Path:     aws.String(path),

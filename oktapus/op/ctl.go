@@ -11,6 +11,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
@@ -33,10 +34,10 @@ type Ctl struct {
 }
 
 // Init creates account control information in an uncontrolled account.
-func (ctl *Ctl) Init(c iam.IAM) error {
-	return ctl.exec(c, func(c iam.IAM, b64 string) (*iam.Role, error) {
+func (ctl *Ctl) Init(c iamx.Client) error {
+	return ctl.exec(c, func(c iamx.Client, b64 string) (*iam.Role, error) {
 		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: NewAssumeRolePolicy("").Doc(),
+			AssumeRolePolicyDocument: iamx.AssumeRolePolicy("").Doc(),
 			Description:              aws.String(b64),
 			Path:                     aws.String(IAMPath),
 			RoleName:                 aws.String(CtlRole),
@@ -54,7 +55,7 @@ func (ctl *Ctl) Init(c iam.IAM) error {
 }
 
 // Get retrieves current account control information.
-func (ctl *Ctl) Get(c iam.IAM) error {
+func (ctl *Ctl) Get(c iamx.Client) error {
 	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
 	out, err := c.GetRoleRequest(&in).Send()
 	if err == nil {
@@ -67,8 +68,8 @@ func (ctl *Ctl) Get(c iam.IAM) error {
 }
 
 // Set stores account control information.
-func (ctl *Ctl) Set(c iam.IAM) error {
-	return ctl.exec(c, func(c iam.IAM, b64 string) (*iam.Role, error) {
+func (ctl *Ctl) Set(c iamx.Client) error {
+	return ctl.exec(c, func(c iamx.Client, b64 string) (*iam.Role, error) {
 		in := iam.UpdateRoleDescriptionInput{
 			Description: aws.String(b64),
 			RoleName:    aws.String(CtlRole),
@@ -121,7 +122,7 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 }
 
 // exec executes init or set operations.
-func (ctl *Ctl) exec(c iam.IAM, fn func(c iam.IAM, b64 string) (*iam.Role, error)) error {
+func (ctl *Ctl) exec(c iamx.Client, fn func(c iamx.Client, b64 string) (*iam.Role, error)) error {
 	b64, err := ctl.encode()
 	if err != nil {
 		return err

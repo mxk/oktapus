@@ -7,6 +7,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
@@ -87,7 +88,7 @@ func (cmd *credsCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			AccountID: c.AccountID,
 			Name:      c.Name,
 		}
-		if out, err := km.newKey(*ac.IAM()); err == nil {
+		if out, err := km.newKey(ac.IAM()); err == nil {
 			c.AccessKeyID = aws.StringValue(out.AccessKey.AccessKeyId)
 			c.SecretAccessKey = aws.StringValue(out.AccessKey.SecretAccessKey)
 		} else {
@@ -113,7 +114,7 @@ func newKeyMaker(user, policy arn.ARN) *keyMaker {
 	}
 }
 
-func (m *keyMaker) newKey(c iam.IAM) (*iam.CreateAccessKeyOutput, error) {
+func (m *keyMaker) newKey(c iamx.Client) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUserRequest(&m.user).Send(); err != nil {
 		if !awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 			return nil, err

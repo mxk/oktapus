@@ -57,7 +57,7 @@ func (cmd *initCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	acs.Apply(func(_ int, ac *op.Account) {
 		if ac.Ctl == nil {
 			ac.Ctl = &op.Ctl{Tags: []string{"init"}}
-			ac.Err = ac.Ctl.Init(*ac.IAM())
+			ac.Err = ac.Ctl.Init(ac.IAM())
 			// TODO: Use errInit if role exists
 		} else if ac.Err == nil {
 			ac.Err = errInit
