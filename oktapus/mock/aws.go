@@ -45,9 +45,6 @@ func NewAWS(region string, r ...Router) *AWS {
 	if region == "" {
 		region = endpoints.UsEast1RegionID
 	}
-	if r == nil {
-		r = []Router{STSRouter{}, AccountRouter{}}
-	}
 	w := &AWS{ChainRouter: r}
 	w.Cfg = awsmock.Config(func(q *aws.Request) {
 		w.mu.Lock()
@@ -60,7 +57,10 @@ func NewAWS(region string, r ...Router) *AWS {
 	w.Cfg.Region = region
 	w.Cfg.Credentials = aws.NewStaticCredentialsProvider(
 		AccessKeyID, SecretAccessKey, "")
-	w.AccountRouter().Add(NewAccount(w.Ctx(), "0", "master"))
+	if r == nil {
+		w.ChainRouter = ChainRouter{STSRouter{}, AccountRouter{}}
+		w.AccountRouter().Add(NewAccount(w.Ctx(), "0", "master"))
+	}
 	return w
 }
 
