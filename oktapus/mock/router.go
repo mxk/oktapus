@@ -5,42 +5,66 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-// Router populates request Data and Error fields, simulating an AWS response.
-// Route returns true if the request was handled or false if it should be given
-// to the next router. Routers replace Send and all Unmarshal handlers in the
-// session. The Session mutex is acquired while processing a request, so routers
-// are allowed to modify the Session.
-type Router interface {
-	Route(q *aws.Request) bool
+// Request wraps aws.Request to provide additional functionality.
+type Request struct {
+	*aws.Request
+	Ctx arn.Ctx
 }
 
-// ServerResult contains values that are assigned to request Data and Error
-// fields.
-type ServerResult struct {
-	Out interface{}
-	Err error
+// Router simulates AWS responses by populating request Data and Error fields.
+// Route returns true if the request was handled or false if it should be passed
+// to the next router.
+type Router interface {
+	Route(q *Request) bool
+}
+
+// RouteMethod uses reflection to find a method of r that matches the API name.
+// If such method is found, it handles the request. The method type must be:
+//
+//	func(q *mock.Request, in *svc.XyzInput)
+func RouteMethod(r interface{}, q *Request) bool {
+	if m := reflect.ValueOf(r).MethodByName(q.Operation.Name); m.IsValid() {
+		args := []reflect.Value{reflect.ValueOf(q), reflect.ValueOf(q.Params)}
+		if len(m.Call(args)) != 0 {
+			name := reflect.TypeOf(r).String() + "." + q.Operation.Name
+			panic("mock: unexpected return value from " + name)
+		}
+		return true
+	}
+	return false
 }
 
 // ChainRouter maintains a router chain, passing requests to each router,
 // starting with the last one, until the request is handled.
 type ChainRouter []Router
 
-// Add appends router t to the chain, giving it highest priority.
-func (r *ChainRouter) Add(t Router) {
-	*r = append(*r, t)
+// Route implements the Router interface.
+func (r ChainRouter) Route(q *Request) bool {
+	for i := len(r) - 1; i >= 0; i-- {
+		if r[i].Route(q) {
+			return true
+		}
+	}
+	return false
 }
 
-// DataTypeRouter returns the highest priority DataTypeRouter in the chain.
-func (r ChainRouter) DataTypeRouter() (t DataTypeRouter) {
+// Add appends new routers to the chain, giving them highest priority.
+func (r *ChainRouter) Add(t ...Router) {
+	*r = append(*r, t...)
+}
+
+// AccountRouter returns the highest priority AccountRouter in the chain.
+func (r ChainRouter) AccountRouter() (t AccountRouter) {
 	r.Find(&t)
 	return
 }
 
-// OrgsRouter returns the highest priority OrgsRouter in the chain.
-func (r ChainRouter) OrgsRouter() (t OrgsRouter) {
+// DataTypeRouter returns the highest priority DataTypeRouter in the chain.
+func (r ChainRouter) DataTypeRouter() (t DataTypeRouter) {
 	r.Find(&t)
 	return
 }
@@ -82,18 +106,14 @@ func (r ChainRouter) Find(v interface{}) bool {
 	return false
 }
 
-// Route implements the Router interface.
-func (r ChainRouter) Route(q *aws.Request) bool {
-	for i := len(r) - 1; i >= 0; i-- {
-		if r[i].Route(q) {
-			return true
-		}
-	}
-	return false
+// Response contains values that are assigned to request Data and Error fields.
+type Response struct {
+	Out interface{}
+	Err error
 }
 
 // DataTypeRouter handles requests based on the Data field type.
-type DataTypeRouter map[reflect.Type]ServerResult
+type DataTypeRouter map[reflect.Type]Response
 
 // NewDataTypeRouter returns a router that will serve 'out' values to all
 // requests with a matching data output type. All out values should be pointers
@@ -109,6 +129,17 @@ func NewDataTypeRouter(out ...interface{}) DataTypeRouter {
 	return r
 }
 
+// Route implements the Router interface.
+func (r DataTypeRouter) Route(q *Request) bool {
+	_, ok := r[reflect.TypeOf(q.Data)]
+	if ok {
+		if err := r.Get(q.Data); err != nil {
+			q.Error = err
+		}
+	}
+	return ok
+}
+
 // Set allows the router to handle API requests with the given output type. If
 // err is not nil, it will be used to set the request's Error field.
 func (r DataTypeRouter) Set(out interface{}, err error) {
@@ -121,7 +152,7 @@ func (r DataTypeRouter) Set(out interface{}, err error) {
 		!strings.HasSuffix(s.Name(), "Output") {
 		panic(fmt.Sprintf("mock: %T is not an AWS output struct", s))
 	}
-	r[t] = ServerResult{out, err}
+	r[t] = Response{out, err}
 }
 
 // Get copies a response value of the matching type into out and returns the
@@ -132,15 +163,4 @@ func (r DataTypeRouter) Get(out interface{}) error {
 		return v.Err
 	}
 	panic(fmt.Sprintf("mock: %T does not contain %T", r, out))
-}
-
-// Route implements the Router interface.
-func (r DataTypeRouter) Route(q *aws.Request) bool {
-	_, ok := r[reflect.TypeOf(q.Data)]
-	if ok {
-		if err := r.Get(q.Data); err != nil {
-			q.Error = err
-		}
-	}
-	return ok
 }

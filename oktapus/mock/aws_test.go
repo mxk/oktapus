@@ -12,19 +12,19 @@ import (
 )
 
 func TestOrg(t *testing.T) {
-	out, err := orgs.New(NewSession().Config).DescribeOrganizationRequest(nil).Send()
+	out, err := orgs.New(NewAWS("").Cfg).DescribeOrganizationRequest(nil).Send()
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
 }
 
 func TestSTS(t *testing.T) {
-	out, err := sts.New(NewSession().Config).GetCallerIdentityRequest(nil).Send()
+	out, err := sts.New(NewAWS("").Cfg).GetCallerIdentityRequest(nil).Send()
 	require.NoError(t, err)
 	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
 }
 
 func TestIAM(t *testing.T) {
-	out, err := iam.New(NewSession().Config).CreateRoleRequest(&iam.CreateRoleInput{
+	out, err := iam.New(NewAWS("").Cfg).CreateRoleRequest(&iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String("{}"),
 		RoleName:                 aws.String("testrole"),
 	}).Send()
@@ -33,19 +33,18 @@ func TestIAM(t *testing.T) {
 }
 
 func TestFind(t *testing.T) {
-	s := NewSession()
-	org := s.OrgsRouter()
-	require.NotNil(t, org)
-	require.NotNil(t, s.STSRouter())
+	w := NewAWS("")
+	ar := w.AccountRouter()
+	require.NotNil(t, ar)
+	require.NotNil(t, w.STSRouter())
 
-	ac := org.Account("")
+	ac := ar.Get("")
 	require.NotNil(t, ac.RoleRouter())
 	require.NotNil(t, ac.UserRouter())
 }
 
 func TestAccountID(t *testing.T) {
-	assert.Equal(t, "123456789012", AccountID("123456789012"))
 	assert.Equal(t, "000000000000", AccountID(""))
 	assert.Equal(t, "000000000123", AccountID("123"))
-	assert.Equal(t, "123456789012", AccountID(UserARN("123456789012", "user")))
+	assert.Equal(t, "123456789012", AccountID("123456789012"))
 }

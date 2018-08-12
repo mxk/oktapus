@@ -5,104 +5,81 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/awsmock"
+	"github.com/LuminalHQ/cloudcover/x/region"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 )
 
-// Example access key.
+// Mock credentials.
 const (
 	AccessKeyID     = "AKIAIOSFODNN7EXAMPLE"
 	SecretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 )
 
-// LogLevel is the log level for all mock sessions.
-var LogLevel = aws.LogOff
-
-// Session is a client.ConfigProvider that uses routers and server functions to
-// simulate AWS responses.
-type Session struct {
-	aws.Config
-	ChainRouter
-	mu sync.Mutex
-}
-
-// NewSession returns a mock client.ConfigProvider configured with default
-// routers request routers.
-func NewSession() *Session {
-	s := &Session{
-		ChainRouter: ChainRouter{NewSTSRouter(""), NewOrgsRouter()},
-	}
-	s.Config = awsmock.Config(func(q *aws.Request) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if !s.Route(q) {
-			api := q.Metadata.ServiceName + ":" + q.Operation.Name
-			panic("mock: " + api + " not implemented")
-		}
-	})
-	s.Config.LogLevel = LogLevel
-	s.Config.Credentials = aws.NewStaticCredentialsProvider(
-		AccessKeyID, SecretAccessKey, "")
-	return s
-}
-
-// AccountID returns the 12-digit account ID from id, which may an account ID
-// with or without leading zeros, or an ARN.
+// AccountID validates account id and pads it with leading zeros if required.
 func AccountID(id string) string {
-	if len(id) == 12 {
-		return id
+	for i, c := range []byte(id) {
+		if c-'0' > 9 || i == 12 {
+			panic("mock: invalid account id: " + id)
+		}
 	}
 	if len(id) < 12 {
-		for i := len(id) - 1; i >= 0; i-- {
-			if c := id[i]; c < '0' || '9' < c {
-				panic("mock: invalid account id: " + id)
-			}
-		}
-		var buf [12]byte
-		n := copy(buf[:], "000000000000"[:len(buf)-len(id)])
-		copy(buf[n:], id)
-		return string(buf[:])
-	}
-	orig := id
-	if id = arn.ARN(id).Account(); len(id) != 12 {
-		panic("mock: invalid arn: " + orig)
+		b := []byte("000000000000")
+		copy(b[12-len(id):], id)
+		id = string(b)
 	}
 	return id
 }
 
-// AssumedRoleARN returns an STS assumed role ARN.
-func AssumedRoleARN(account, role, roleSessionName string) string {
-	return "arn:aws:sts::" + AccountID(account) + ":assumed-role/" + role +
-		"/" + roleSessionName
+// AWS is a mock AWS cloud that uses routers to handle requests.
+type AWS struct {
+	ChainRouter
+	Cfg aws.Config
+	mu  sync.Mutex
 }
 
-// PolicyARN returns an IAM policy ARN.
-func PolicyARN(account, name string) string {
-	return iamARN(account, "policy", name)
+// NewAWS returns a mock AWS cloud configured with the specified region, which
+// determines the partition, and routers. STS and account routers are used by
+// default if no others are specified.
+func NewAWS(region string, r ...Router) *AWS {
+	if region == "" {
+		region = endpoints.UsEast1RegionID
+	}
+	if r == nil {
+		r = []Router{STSRouter{}, AccountRouter{}}
+	}
+	w := &AWS{ChainRouter: r}
+	w.Cfg = awsmock.Config(func(q *aws.Request) {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if !w.Route(&Request{q, ctx(&q.Config)}) {
+			api := q.Metadata.ServiceName + ":" + q.Operation.Name
+			panic("mock: " + api + " not handled")
+		}
+	})
+	w.Cfg.Region = region
+	w.Cfg.Credentials = aws.NewStaticCredentialsProvider(
+		AccessKeyID, SecretAccessKey, "")
+	w.AccountRouter().Add(NewAccount(w.Ctx(), "0", "master"))
+	return w
 }
 
-// RoleARN returns an IAM role ARN.
-func RoleARN(account, name string) string {
-	return iamARN(account, "role", name)
-}
+// Ctx returns the ARN context for the active client configuration.
+func (w *AWS) Ctx() arn.Ctx { return ctx(&w.Cfg) }
 
-// UserARN returns an IAM user ARN.
-func UserARN(account, name string) string {
-	return iamARN(account, "user", name)
-}
-
-// iamARN constructs an IAM ARN.
-func iamARN(account, typ, name string) string {
-	return "arn:aws:iam::" + AccountID(account) + ":" + typ + "/" + name
-}
-
-// reqAccountID returns the account ID for request q.
-func reqAccountID(q *aws.Request) string {
-	cr, err := q.Config.Credentials.Retrieve()
+// ctx extracts ARN context from client config.
+func ctx(c *aws.Config) arn.Ctx {
+	cr, err := c.Credentials.Retrieve()
 	if err != nil {
 		panic(err)
 	}
+	ac := "000000000000"
 	if cr.SessionToken != "" {
-		return AccountID(cr.SessionToken)
+		ac = arn.ARN(cr.SessionToken).Account()
 	}
-	return "000000000000"
+	return arn.Ctx{
+		Partition: region.Partition(c.Region),
+		Region:    c.Region,
+		Account:   ac,
+	}
 }

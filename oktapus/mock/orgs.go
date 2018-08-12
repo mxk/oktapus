@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
@@ -18,12 +19,11 @@ type Account struct {
 }
 
 // NewAccount returns a new AWS Organizations account.
-func NewAccount(id, name string) *Account {
+func NewAccount(ctx arn.Ctx, id, name string) *Account {
 	id = AccountID(id)
-	arn := "arn:aws:organizations::000000000000:account/o-test/" + id
 	return &Account{
 		Account: orgs.Account{
-			Arn:             aws.String(arn),
+			Arn:             arn.String(ctx.New("organizations", "account/o-test/", id)),
 			Email:           aws.String(name + "@example.com"),
 			Id:              aws.String(id),
 			JoinedMethod:    orgs.AccountJoinedMethodCreated,
@@ -35,29 +35,23 @@ func NewAccount(id, name string) *Account {
 	}
 }
 
-// OrgsRouter handles Organizations API calls.
-type OrgsRouter map[string]*Account
+// AccountRouter handles Organizations API calls.
+type AccountRouter map[string]*Account
 
-// NewOrgsRouter returns a router for a mock organization.
-func NewOrgsRouter() OrgsRouter {
-	acs := []*Account{
-		NewAccount("000000000000", "master"),
-		NewAccount("000000000001", "test1"),
-		NewAccount("000000000002", "test2"),
-		NewAccount("000000000003", "test3"),
-	}
-	acs[0].JoinedMethod = orgs.AccountJoinedMethodInvited
-	acs[2].Status = orgs.AccountStatusSuspended
-	acs[3].JoinedTimestamp = aws.Time(time.Unix(1, 0))
-	r := make(OrgsRouter, len(acs))
+// Route implements the Router interface.
+func (r AccountRouter) Route(q *Request) bool {
+	return RouteMethod(r, q) || r[q.Ctx.Account].Route(q)
+}
+
+// Add adds new accounts to the router.
+func (r AccountRouter) Add(acs ...*Account) {
 	for _, ac := range acs {
 		r[*ac.Id] = ac
 	}
-	return r
 }
 
-// Account returns the account with the given id.
-func (r OrgsRouter) Account(id string) *Account {
+// Get returns the account with the given id.
+func (r AccountRouter) Get(id string) *Account {
 	if ac := r[AccountID(id)]; ac != nil {
 		return ac
 	}
@@ -65,7 +59,7 @@ func (r OrgsRouter) Account(id string) *Account {
 }
 
 // AllAccounts returns all accounts sorted by account id.
-func (r OrgsRouter) AllAccounts() []orgs.Account {
+func (r AccountRouter) AllAccounts() []orgs.Account {
 	acs := make([]orgs.Account, 0, len(r))
 	for _, ac := range r {
 		acs = append(acs, ac.Account)
@@ -76,28 +70,8 @@ func (r OrgsRouter) AllAccounts() []orgs.Account {
 	return acs
 }
 
-// Route implements the Router interface.
-func (r OrgsRouter) Route(q *aws.Request) bool {
-	switch q.Params.(type) {
-	case *orgs.CreateAccountInput:
-		r.createAccount(q)
-	case *orgs.DescribeAccountInput:
-		r.describeAccount(q)
-	case *orgs.DescribeCreateAccountStatusInput:
-		r.describeCreateAccountStatus(q)
-	case *orgs.DescribeOrganizationInput:
-		r.describeOrganization(q)
-	case *orgs.ListAccountsInput:
-		r.listAccounts(q)
-	default:
-		return r[reqAccountID(q)].Route(q)
-	}
-	return true
-}
-
-func (r OrgsRouter) createAccount(q *aws.Request) {
+func (r AccountRouter) CreateAccount(q *Request, in *orgs.CreateAccountInput) {
 	requireMaster(q)
-	in := q.Params.(*orgs.CreateAccountInput)
 	var max uint64
 	for id := range r {
 		n, err := strconv.ParseUint(id, 10, 64)
@@ -109,7 +83,7 @@ func (r OrgsRouter) createAccount(q *aws.Request) {
 		}
 	}
 	id := fmt.Sprintf("%.12d", max+1)
-	ac := NewAccount(id, aws.StringValue(in.AccountName))
+	ac := NewAccount(q.Ctx, id, aws.StringValue(in.AccountName))
 	r[id] = ac
 	ac.Email = in.Email
 	role := aws.StringValue(in.RoleName)
@@ -117,7 +91,7 @@ func (r OrgsRouter) createAccount(q *aws.Request) {
 		role = "OrganizationAccountAccessRole"
 	}
 	ac.RoleRouter()[role] = &Role{Role: iam.Role{
-		Arn:      aws.String(RoleARN("", role)),
+		Arn:      arn.String(q.Ctx.New("iam", "role/", role)),
 		Path:     aws.String("/"),
 		RoleName: aws.String(role),
 	}}
@@ -127,19 +101,18 @@ func (r OrgsRouter) createAccount(q *aws.Request) {
 	}
 }
 
-func (r OrgsRouter) describeAccount(q *aws.Request) {
+func (r AccountRouter) DescribeAccount(q *Request, in *orgs.DescribeAccountInput) {
 	requireMaster(q)
-	id := aws.StringValue(q.Params.(*orgs.DescribeAccountInput).AccountId)
-	ac := r.Account(id)
+	id := aws.StringValue(in.AccountId)
+	ac := r.Get(id)
 	cpy := ac.Account
 	q.Data.(*orgs.DescribeAccountOutput).Account = &cpy
 }
 
-func (r OrgsRouter) describeCreateAccountStatus(q *aws.Request) {
+func (r AccountRouter) describeCreateAccountStatus(q *Request, in *orgs.DescribeCreateAccountStatusInput) {
 	requireMaster(q)
-	id := aws.StringValue(q.Params.(*orgs.DescribeCreateAccountStatusInput).
-		CreateAccountRequestId)
-	ac := r.Account(id)
+	id := aws.StringValue(in.CreateAccountRequestId)
+	ac := r.Get(id)
 	q.Data.(*orgs.DescribeCreateAccountStatusOutput).CreateAccountStatus = &orgs.CreateAccountStatus{
 		AccountId:   ac.Id,
 		AccountName: ac.Name,
@@ -147,7 +120,8 @@ func (r OrgsRouter) describeCreateAccountStatus(q *aws.Request) {
 	}
 }
 
-func (r OrgsRouter) describeOrganization(q *aws.Request) {
+func (r AccountRouter) DescribeOrganization(q *Request, _ *orgs.DescribeOrganizationInput) {
+	requireSupport(q)
 	q.Data.(*orgs.DescribeOrganizationOutput).Organization = &orgs.Organization{
 		Arn:                aws.String("arn:aws:organizations::000000000000:organization/o-test"),
 		FeatureSet:         orgs.OrganizationFeatureSetAll,
@@ -158,13 +132,20 @@ func (r OrgsRouter) describeOrganization(q *aws.Request) {
 	}
 }
 
-func (r OrgsRouter) listAccounts(q *aws.Request) {
+func (r AccountRouter) ListAccounts(q *Request, _ *orgs.ListAccountsInput) {
 	requireMaster(q)
 	q.Data.(*orgs.ListAccountsOutput).Accounts = r.AllAccounts()
 }
 
-func requireMaster(q *aws.Request) {
-	if reqAccountID(q) != "000000000000" {
+func requireSupport(q *Request) {
+	if q.Ctx.Partition != "aws" {
+		panic("mock: organizations api is not supported in " + q.Ctx.Partition)
+	}
+}
+
+func requireMaster(q *Request) {
+	requireSupport(q)
+	if q.Ctx.Account != "000000000000" {
 		api := q.Metadata.ServiceName + ":" + q.Operation.Name
 		panic("mock: " + api + " must be called from the master account")
 	}
