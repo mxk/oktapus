@@ -20,11 +20,13 @@ func (r STSRouter) Route(q *Request) bool { return RouteMethod(r, q) }
 func (r STSRouter) AssumeRole(q *Request, in *sts.AssumeRoleInput) {
 	role := arn.Value(in.RoleArn)
 	sessName := aws.StringValue(in.RoleSessionName)
-	sess := q.Ctx.New("sts", "assumed-role/", role.Name(), "/", sessName)
+	ctx := q.Ctx
+	ctx.Account = role.Account()
+	sess := ctx.New("sts", "assumed-role/", role.Name(), "/", sessName)
 	r[sess] = &sts.GetCallerIdentityOutput{
-		Account: aws.String(role.Account()),
+		Account: aws.String(ctx.Account),
 		Arn:     arn.String(sess),
-		UserId:  aws.String("AROA:" + sessName),
+		UserId:  aws.String("AROACKCEVSQ6C2EXAMPLE:" + sessName),
 	}
 	q.Data.(*sts.AssumeRoleOutput).Credentials = &sts.Credentials{
 		AccessKeyId:     aws.String("ASIAIOSFODNN7EXAMPLE"),
