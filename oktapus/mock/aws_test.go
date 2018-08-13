@@ -11,20 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOrg(t *testing.T) {
-	out, err := orgs.New(NewAWS("").Cfg).DescribeOrganizationRequest(nil).Send()
-	require.NoError(t, err)
-	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
-}
-
-func TestSTS(t *testing.T) {
-	out, err := sts.New(NewAWS("").Cfg).GetCallerIdentityRequest(nil).Send()
-	require.NoError(t, err)
-	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
+func TestAccountID(t *testing.T) {
+	assert.Equal(t, "000000000000", AccountID(""))
+	assert.Equal(t, "000000000123", AccountID("123"))
+	assert.Equal(t, "123456789012", AccountID("123456789012"))
+	assert.Panics(t, func() { AccountID("x") })
 }
 
 func TestIAM(t *testing.T) {
-	out, err := iam.New(NewAWS("").Cfg).CreateRoleRequest(&iam.CreateRoleInput{
+	w := NewAWS(Ctx, RoleRouter{})
+	out, err := iam.New(w.Cfg).CreateRoleRequest(&iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String("{}"),
 		RoleName:                 aws.String("testrole"),
 	}).Send()
@@ -32,19 +28,33 @@ func TestIAM(t *testing.T) {
 	assert.Equal(t, "testrole", aws.StringValue(out.Role.RoleName))
 }
 
-func TestFind(t *testing.T) {
-	w := NewAWS("")
-	ar := w.AccountRouter()
-	require.NotNil(t, ar)
-	require.NotNil(t, w.STSRouter())
-
-	ac := ar.Get("")
-	require.NotNil(t, ac.RoleRouter())
-	require.NotNil(t, ac.UserRouter())
+func TestOrg(t *testing.T) {
+	w := NewAWS(Ctx, NewOrg(Ctx, "master"))
+	out, err := orgs.New(w.Cfg).DescribeOrganizationRequest(nil).Send()
+	require.NoError(t, err)
+	assert.Equal(t, "000000000000", aws.StringValue(out.Organization.MasterAccountId))
 }
 
-func TestAccountID(t *testing.T) {
-	assert.Equal(t, "000000000000", AccountID(""))
-	assert.Equal(t, "000000000123", AccountID("123"))
-	assert.Equal(t, "123456789012", AccountID("123456789012"))
+func TestSTS(t *testing.T) {
+	w := NewAWS(Ctx)
+	out, err := sts.New(w.Cfg).GetCallerIdentityRequest(nil).Send()
+	require.NoError(t, err)
+	assert.Equal(t, "000000000000", aws.StringValue(out.Account))
+}
+
+func TestFind(t *testing.T) {
+	w := NewAWS(Ctx)
+	r := w.Root()
+	assert.NotNil(t, r.STSRouter())
+	assert.NotNil(t, r.DataTypeRouter())
+	assert.NotNil(t, r.UserRouter())
+
+	rr := r.RoleRouter()
+	assert.NotNil(t, rr)
+	rr["test"] = nil
+	assert.Equal(t, rr, r.RoleRouter())
+
+	assert.Nil(t, w.Root().OrgRouter())
+	r.Add(NewOrg(w.Ctx, "master"))
+	assert.NotNil(t, w.Root().OrgRouter())
 }

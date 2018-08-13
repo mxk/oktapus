@@ -6,14 +6,7 @@ import (
 	"strings"
 
 	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
-
-// Request wraps aws.Request to provide additional functionality.
-type Request struct {
-	*aws.Request
-	Ctx arn.Ctx
-}
 
 // Router simulates AWS responses by populating request Data and Error fields.
 // Route returns true if the request was handled or false if it should be passed
@@ -38,6 +31,83 @@ func RouteMethod(r interface{}, q *Request) bool {
 	return false
 }
 
+// RouterFunc allows using a regular function as a router.
+type RouterFunc func(q *Request) bool
+
+// Route implements the Router interface.
+func (f RouterFunc) Route(q *Request) bool { return f(q) }
+
+// CtxRouter redirects requests to other routers using the ARN context. More
+// specific context keys take priority over less specific ones. The zero value
+// context matches all requests.
+type CtxRouter map[arn.Ctx]*ChainRouter
+
+// Route implements the Router interface.
+func (r CtxRouter) Route(q *Request) bool {
+	if cr := r.match(q.Ctx); cr != nil {
+		return cr.Route(q)
+	}
+	return false
+}
+
+// Root returns the router that matches all contexts.
+func (r CtxRouter) Root() *ChainRouter {
+	return r.Get(arn.Ctx{})
+}
+
+// Account returns the router for the specified account ID.
+func (r CtxRouter) Account(id string) *ChainRouter {
+	return r.Get(arn.Ctx{Account: AccountID(id)})
+}
+
+// Get returns the router for the specified context. A new router is created if
+// one does not exist.
+func (r CtxRouter) Get(ctx arn.Ctx) *ChainRouter {
+	cr := r[ctx]
+	if cr == nil {
+		cr = new(ChainRouter)
+		r[ctx] = cr
+	}
+	return cr
+}
+
+// match returns a new ChainRouter containing other ChainRouters that are able
+// to handle the specified context.
+func (r CtxRouter) match(ctx arn.Ctx) ChainRouter {
+	cmp := func(spec, want string, flag int) int {
+		switch spec {
+		case want:
+			return flag
+		case "":
+			return 0
+		}
+		return -1
+	}
+	var matches [8]*ChainRouter
+	n := 0
+	for k, v := range r {
+		score := cmp(k.Partition, ctx.Partition, 1)
+		score |= cmp(k.Region, ctx.Region, 2)
+		score |= cmp(k.Account, ctx.Account, 4)
+		if score >= 0 {
+			matches[score] = v
+			n++
+		}
+	}
+	var cr ChainRouter
+	if n > 0 {
+		cr = make(ChainRouter, 0, n)
+		for _, m := range matches {
+			if m != nil {
+				if cr = append(cr, m); len(cr) == cap(cr) {
+					break
+				}
+			}
+		}
+	}
+	return cr
+}
+
 // ChainRouter maintains a router chain, passing requests to each router,
 // starting with the last one, until the request is handled.
 type ChainRouter []Router
@@ -57,33 +127,49 @@ func (r *ChainRouter) Add(t ...Router) {
 	*r = append(*r, t...)
 }
 
-// AccountRouter returns the highest priority AccountRouter in the chain.
-func (r ChainRouter) AccountRouter() (t AccountRouter) {
+// DataTypeRouter returns the highest priority DataTypeRouter in the chain. A
+// new router is created if one does not exist.
+func (r *ChainRouter) DataTypeRouter() (t DataTypeRouter) {
+	if !r.Find(&t) {
+		t = DataTypeRouter{}
+		r.Add(t)
+	}
+	return
+}
+
+// OrgRouter returns the highest priority OrgRouter in the chain.
+func (r ChainRouter) OrgRouter() (t *OrgRouter) {
 	r.Find(&t)
 	return
 }
 
-// DataTypeRouter returns the highest priority DataTypeRouter in the chain.
-func (r ChainRouter) DataTypeRouter() (t DataTypeRouter) {
-	r.Find(&t)
+// RoleRouter returns the highest priority RoleRouter in the chain. A new router
+// is created if one does not exist.
+func (r *ChainRouter) RoleRouter() (t RoleRouter) {
+	if !r.Find(&t) {
+		t = RoleRouter{}
+		r.Add(t)
+	}
 	return
 }
 
-// RoleRouter returns the highest priority RoleRouter in the chain.
-func (r ChainRouter) RoleRouter() (t RoleRouter) {
-	r.Find(&t)
+// STSRouter returns the highest priority STSRouter in the chain. A new router
+// is created if one does not exist.
+func (r *ChainRouter) STSRouter() (t STSRouter) {
+	if !r.Find(&t) {
+		t = STSRouter{}
+		r.Add(t)
+	}
 	return
 }
 
-// STSRouter returns the highest priority STSRouter in the chain.
-func (r ChainRouter) STSRouter() (t STSRouter) {
-	r.Find(&t)
-	return
-}
-
-// UserRouter returns the highest priority UserRouter in the chain.
-func (r ChainRouter) UserRouter() (t UserRouter) {
-	r.Find(&t)
+// UserRouter returns the highest priority UserRouter in the chain. A new router
+// is created if one does not exist.
+func (r *ChainRouter) UserRouter() (t UserRouter) {
+	if !r.Find(&t) {
+		t = UserRouter{}
+		r.Add(t)
+	}
 	return
 }
 
@@ -92,10 +178,10 @@ func (r ChainRouter) UserRouter() (t UserRouter) {
 func (r ChainRouter) Find(v interface{}) bool {
 	t := reflect.TypeOf(v)
 	if t.Kind() != reflect.Ptr {
-		panic("mock: v is not a pointer")
+		panic("mock: " + t.String() + " is not a pointer")
 	}
 	if t = t.Elem(); !t.Implements(reflect.TypeOf((*Router)(nil)).Elem()) {
-		panic("mock: *v is not a Router")
+		panic("mock: " + t.String() + " is not a Router")
 	}
 	for i := len(r) - 1; i >= 0; i-- {
 		if u := r[i]; reflect.TypeOf(u) == t {

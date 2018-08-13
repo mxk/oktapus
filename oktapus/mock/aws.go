@@ -1,22 +1,26 @@
 package mock
 
 import (
+	"fmt"
+	"path"
 	"sync"
 
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/awsmock"
 	"github.com/LuminalHQ/cloudcover/x/region"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 )
 
-// Mock credentials.
+// Mock STS credentials.
 const (
-	AccessKeyID     = "AKIAIOSFODNN7EXAMPLE"
-	SecretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+	AccessKeyID     = "ASIAIOSFODNN7EXAMPLE"
+	SecretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY"
 )
 
-// AccountID validates account id and pads it with leading zeros if required.
+// Ctx is a mock ARN context.
+var Ctx = arn.Ctx{Partition: "aws", Region: "us-east-1", Account: "000000000000"}
+
+// AccountID validates account id and pads it with leading zeros, if required.
 func AccountID(id string) string {
 	for i, c := range []byte(id) {
 		if c-'0' > 9 || i == 12 {
@@ -33,53 +37,79 @@ func AccountID(id string) string {
 
 // AWS is a mock AWS cloud that uses routers to handle requests.
 type AWS struct {
-	ChainRouter
+	CtxRouter
+	Ctx arn.Ctx
 	Cfg aws.Config
 	mu  sync.Mutex
 }
 
-// NewAWS returns a mock AWS cloud configured with the specified region, which
-// determines the partition, and routers. STS and account routers are used by
-// default if no others are specified.
-func NewAWS(region string, r ...Router) *AWS {
-	if region == "" {
-		region = endpoints.UsEast1RegionID
+// NewAWS returns a mock AWS cloud configured with the specified context and
+// custom routers. The STS router is added to the root context automatically.
+func NewAWS(ctx arn.Ctx, r ...Router) *AWS {
+	root := append(ChainRouter{STSRouter{}}, r...)
+	w := &AWS{
+		CtxRouter: CtxRouter{arn.Ctx{}: &root},
+		Ctx:       ctx,
 	}
-	w := &AWS{ChainRouter: r}
 	w.Cfg = awsmock.Config(func(q *aws.Request) {
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		if !w.Route(&Request{q, ctx(&q.Config)}) {
-			api := q.Metadata.ServiceName + ":" + q.Operation.Name
-			panic("mock: " + api + " not handled")
+		if q := w.newRequest(q); !w.Route(q) {
+			panic("mock: " + q.Name() + " not handled")
 		}
 	})
-	w.Cfg.Region = region
-	w.Cfg.Credentials = aws.NewStaticCredentialsProvider(
-		AccessKeyID, SecretAccessKey, "")
-	if r == nil {
-		w.ChainRouter = ChainRouter{STSRouter{}, AccountRouter{}}
-		w.AccountRouter().Add(NewAccount(w.Ctx(), "0", "master"))
-	}
+	w.Cfg.Region = ctx.Region
+	w.Cfg.Credentials = w.UserCreds("", "alice")
 	return w
 }
 
-// Ctx returns the ARN context for the active client configuration.
-func (w *AWS) Ctx() arn.Ctx { return ctx(&w.Cfg) }
+// UserCreds returns a mock credentials provider for the specified account/user.
+func (w *AWS) UserCreds(account, user string) aws.StaticCredentialsProvider {
+	ctx := w.Ctx
+	if account != "" {
+		ctx.Account = AccountID(account)
+	}
+	return aws.NewStaticCredentialsProvider(
+		"AKIAIOSFODNN7EXAMPLE",
+		SecretAccessKey,
+		string(ctx.New("iam", "user", path.Clean("/"+user))),
+	)
+}
 
-// ctx extracts ARN context from client config.
-func ctx(c *aws.Config) arn.Ctx {
-	cr, err := c.Credentials.Retrieve()
+// newRequest creates a new mock request and performs basic validations.
+func (w *AWS) newRequest(r *aws.Request) *Request {
+	ctx := arn.Ctx{
+		Partition: region.Partition(r.Config.Region),
+		Region:    r.Config.Region,
+		Account:   w.Ctx.Account,
+	}
+	cr, err := r.Config.Credentials.Retrieve()
 	if err != nil {
 		panic(err)
 	}
-	ac := "000000000000"
 	if cr.SessionToken != "" {
-		ac = arn.ARN(cr.SessionToken).Account()
+		ctx.Account = arn.ARN(cr.SessionToken).Account()
 	}
-	return arn.Ctx{
-		Partition: region.Partition(c.Region),
-		Region:    c.Region,
-		Account:   ac,
+	q := &Request{r, w, ctx}
+	if q.Ctx.Partition != w.Ctx.Partition {
+		panic(fmt.Sprintf("mock: %s called in partition %q (should be %q)",
+			q.Name(), ctx.Partition, w.Ctx.Partition))
 	}
+	if region.Subset(ctx.Partition, q.Metadata.ServiceName) == nil {
+		panic(fmt.Sprintf("mock: %q partition does not support %q api",
+			ctx.Partition, q.Metadata.ServiceName))
+	}
+	return q
+}
+
+// Request wraps aws.Request to provide additional information.
+type Request struct {
+	*aws.Request
+	AWS *AWS
+	Ctx arn.Ctx
+}
+
+// Name returns the service-qualified API name.
+func (q *Request) Name() string {
+	return q.Metadata.ServiceName + ":" + q.Operation.Name
 }

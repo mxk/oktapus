@@ -27,7 +27,7 @@ func (r STSRouter) AssumeRole(q *Request, in *sts.AssumeRoleInput) {
 		UserId:  aws.String("AROA:" + sessName),
 	}
 	q.Data.(*sts.AssumeRoleOutput).Credentials = &sts.Credentials{
-		AccessKeyId:     aws.String(AccessKeyID),
+		AccessKeyId:     aws.String("ASIAIOSFODNN7EXAMPLE"),
 		Expiration:      aws.Time(fast.Time().Add(time.Hour)),
 		SecretAccessKey: aws.String(SecretAccessKey),
 		SessionToken:    arn.String(sess),
@@ -39,16 +39,18 @@ func (r STSRouter) GetCallerIdentity(q *Request, _ *sts.GetCallerIdentityInput) 
 	if err != nil {
 		panic(err)
 	}
-	out := r[arn.ARN(v.SessionToken)]
+	sess := arn.ARN(v.SessionToken)
+	out := r[sess]
 	if out == nil {
-		if v.SessionToken != "" {
-			panic(fmt.Sprintf("mock: invalid session token %q", v.SessionToken))
+		if sess == "" {
+			sess = q.Ctx.New("iam", "user/alice")
+		} else if sess.Service() != "iam" || sess.Type() != "user" {
+			panic(fmt.Sprintf("mock: invalid session token %q", string(sess)))
 		}
-		sess := q.Ctx.New("iam", "user/user@example.com")
 		out = &sts.GetCallerIdentityOutput{
 			Account: aws.String(q.Ctx.Account),
 			Arn:     arn.String(sess),
-			UserId:  aws.String("AIDA"),
+			UserId:  aws.String("AIDACKCEVSQ6C2EXAMPLE"),
 		}
 	}
 	*q.Data.(*sts.GetCallerIdentityOutput) = *out
