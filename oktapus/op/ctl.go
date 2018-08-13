@@ -59,7 +59,7 @@ func (ctl *Ctl) Get(c iamx.Client) error {
 	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
 	out, err := c.GetRoleRequest(&in).Send()
 	if err == nil {
-		return ctl.decode(out.Role.Description)
+		return ctl.Decode(aws.StringValue(out.Role.Description))
 	}
 	if *ctl = (Ctl{}); awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
 		err = ErrNoCtl
@@ -83,6 +83,46 @@ func (ctl *Ctl) Set(c iamx.Client) error {
 		}
 		return nil, err
 	})
+}
+
+const ctlVer = "1#"
+
+// Encode encodes account control information into a base64 string.
+func (ctl *Ctl) Encode() (string, error) {
+	sort.Strings(ctl.Tags)
+	b, err := json.Marshal(ctl)
+	if err != nil {
+		return "", err
+	}
+	enc := base64.StdEncoding
+	b64 := make([]byte, len(ctlVer)+enc.EncodedLen(len(b)))
+	enc.Encode(b64[copy(b64, ctlVer):], b)
+	return string(b64), nil
+}
+
+// Decode decodes account control information from a base64 string.
+func (ctl *Ctl) Decode(b64 string) error {
+	if *ctl = (Ctl{}); b64 == "" {
+		return nil
+	}
+	ver := 0
+	if i := strings.IndexByte(b64, '#'); i > 0 {
+		if v, err := strconv.Atoi(b64[0:i]); err == nil {
+			b64, ver = b64[i+1:], v
+		}
+	}
+	b, err := base64.StdEncoding.DecodeString(b64)
+	if err == nil {
+		if ver == 1 {
+			if err = json.Unmarshal(b, ctl); err != nil {
+				*ctl = Ctl{}
+			}
+		} else {
+			err = fmt.Errorf("invalid account control version (%d)", ver)
+		}
+		sort.Strings(ctl.Tags)
+	}
+	return err
 }
 
 // eq returns true if ctl == other.
@@ -123,53 +163,13 @@ func (ctl *Ctl) merge(cur, ref *Ctl) {
 
 // exec executes init or set operations.
 func (ctl *Ctl) exec(c iamx.Client, fn func(c iamx.Client, b64 string) (*iam.Role, error)) error {
-	b64, err := ctl.encode()
+	b64, err := ctl.Encode()
 	if err != nil {
 		return err
 	}
 	r, err := fn(c, b64)
 	if err == nil && aws.StringValue(r.Description) != b64 {
 		err = errCtlUpdate
-	}
-	return err
-}
-
-const ctlVer = "1#"
-
-// encode encodes account control information into a base64 string.
-func (ctl *Ctl) encode() (string, error) {
-	sort.Strings(ctl.Tags)
-	b, err := json.Marshal(ctl)
-	if err != nil {
-		return "", err
-	}
-	enc := base64.StdEncoding
-	b64 := make([]byte, len(ctlVer)+enc.EncodedLen(len(b)))
-	enc.Encode(b64[copy(b64, ctlVer):], b)
-	return string(b64), nil
-}
-
-// decode decodes account control information from a base64 string.
-func (ctl *Ctl) decode(s *string) error {
-	if *ctl = (Ctl{}); s == nil || *s == "" {
-		return nil
-	}
-	b64, ver := *s, 0
-	if i := strings.IndexByte(b64, '#'); i > 0 {
-		if v, err := strconv.Atoi(b64[0:i]); err == nil {
-			b64, ver = b64[i+1:], v
-		}
-	}
-	b, err := base64.StdEncoding.DecodeString(b64)
-	if err == nil {
-		if ver == 1 {
-			if err = json.Unmarshal(b, ctl); err != nil {
-				*ctl = Ctl{}
-			}
-		} else {
-			err = fmt.Errorf("invalid account control version (%d)", ver)
-		}
-		sort.Strings(ctl.Tags)
 	}
 	return err
 }
