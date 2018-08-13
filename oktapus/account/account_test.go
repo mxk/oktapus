@@ -31,7 +31,7 @@ func TestLoadAliases(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		tmp.Close()
-		os.Remove(tmp.Name())
+		assert.NoError(t, os.Remove(tmp.Name()))
 	}()
 	tmp.WriteString(strings.Join([]string{
 		"# comment",
