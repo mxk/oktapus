@@ -236,7 +236,7 @@ func (c *Client) newReq(method string, ref *url.URL, body interface{}) (*http.Re
 		h := req.Header
 		h.Set("Accept", "application/json")
 		h.Set("Cache-Control", "no-cache")
-		h.Set("User-Agent", internal.UserAgent)
+		h.Set("User-Agent", "Oktapus/1.0")
 		if body != nil {
 			h.Set("Content-Type", "application/json;charset=UTF-8")
 		}
