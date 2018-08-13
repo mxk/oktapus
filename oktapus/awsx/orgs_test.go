@@ -12,7 +12,7 @@ import (
 )
 
 func TestCreateAccounts(t *testing.T) {
-	w := mock.NewAWS("", testOrg{})
+	w := mock.NewAWS(mock.Ctx, testOrg{})
 	fast.MockSleep(-1)
 	defer fast.MockSleep(0)
 
