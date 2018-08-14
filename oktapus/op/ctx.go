@@ -186,7 +186,7 @@ func (c *Ctx) Match(spec string) (Accounts, error) {
 			return nil, err
 		}
 	}
-	all := c.Accounts().RequireCtl()
+	all := c.Accounts().LoadCtl(false)
 	return ParseAccountSpec(spec, path.Base(c.CommonRole)).Filter(all)
 }
 

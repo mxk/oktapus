@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -47,15 +46,15 @@ func (ctl *Ctl) Init(c iamx.Client) error {
 			return nil, err
 		}
 		if out.Role.Description == nil {
-			// Probably a bug, but CreateRole does not return the description
+			// Probably an AWS bug; CreateRole does not return the description
 			out.Role.Description = in.Description
 		}
 		return out.Role, nil
 	})
 }
 
-// Get retrieves current account control information.
-func (ctl *Ctl) Get(c iamx.Client) error {
+// Load retrieves current account control information.
+func (ctl *Ctl) Load(c iamx.Client) error {
 	in := iam.GetRoleInput{RoleName: aws.String(CtlRole)}
 	out, err := c.GetRoleRequest(&in).Send()
 	if err == nil {
@@ -67,8 +66,8 @@ func (ctl *Ctl) Get(c iamx.Client) error {
 	return err
 }
 
-// Set stores account control information.
-func (ctl *Ctl) Set(c iamx.Client) error {
+// Store stores account control information.
+func (ctl *Ctl) Store(c iamx.Client) error {
 	return ctl.exec(c, func(c iamx.Client, b64 string) (*iam.Role, error) {
 		in := iam.UpdateRoleDescriptionInput{
 			Description: aws.String(b64),
@@ -89,7 +88,7 @@ const ctlVer = "1#"
 
 // Encode encodes account control information into a base64 string.
 func (ctl *Ctl) Encode() (string, error) {
-	sort.Strings(ctl.Tags)
+	ctl.Tags.Sort()
 	b, err := json.Marshal(ctl)
 	if err != nil {
 		return "", err
@@ -120,7 +119,7 @@ func (ctl *Ctl) Decode(b64 string) error {
 		} else {
 			err = fmt.Errorf("invalid account control version (%d)", ver)
 		}
-		sort.Strings(ctl.Tags)
+		ctl.Tags.Sort()
 	}
 	return err
 }

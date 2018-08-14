@@ -57,14 +57,14 @@ func ParseTags(s string) (set, clr Tags, err error) {
 		if len(t) == 0 {
 			return nil
 		}
-		sort.Strings(t)
-		return t
+		return t.Sort()
 	}
 	return norm(tags[:i:j]), norm(tags[j:]), nil
 }
 
-// Sort returns sorted tags.
+// Sort sorts tags in place and returns the original slice.
 func (t Tags) Sort() Tags {
+	// TODO: Natural sort?
 	sort.Strings(t)
 	return t
 }
@@ -114,8 +114,7 @@ func (t *Tags) Apply(set, clr Tags) {
 	for name := range m {
 		u = append(u, name)
 	}
-	sort.Strings(u)
-	*t = u
+	*t = u.Sort()
 }
 
 // alias returns true if t and u share the same backing array.

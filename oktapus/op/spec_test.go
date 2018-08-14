@@ -198,13 +198,13 @@ func (acs accounts) get() Accounts {
 			panic(err)
 		}
 		n := NewAccount(mock.AccountID(ac.id), ac.name)
-		n.Ctl = Ctl{Owner: ac.owner, Tags: tags}
-		n.HasCtl = true
-		all[i] = n
-		if ac.err != "" {
-			all[i].lostCtl()
-			all[i].Err = errors.New(ac.err)
+		if ac.err == "" {
+			n.Ctl = Ctl{Owner: ac.owner, Tags: tags}
+		} else {
+			n.Err = errors.New(ac.err)
 		}
+		n.CtlUpdate(n.Err)
+		all[i] = n
 	}
 	return all
 }

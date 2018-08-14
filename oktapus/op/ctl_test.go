@@ -16,41 +16,41 @@ func TestCtl(t *testing.T) {
 	c := newCtlIAM()
 	var set, get Ctl
 
-	require.NoError(t, get.Get(c.iam))
+	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
 	c.desc = aws.String("")
-	require.NoError(t, get.Get(c.iam))
+	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
 
 	set = Ctl{Owner: "owner", Desc: "desc", Tags: Tags{"init"}}
 	require.NoError(t, set.Init(c.iam))
-	require.NoError(t, get.Get(c.iam))
+	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
 
 	set = Ctl{Tags: Tags{"tag"}}
-	require.NoError(t, set.Set(c.iam))
-	require.NoError(t, get.Get(c.iam))
+	require.NoError(t, set.Store(c.iam))
+	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
 
 	c.err = awserr.New(iam.ErrCodeNoSuchEntityException, "", nil)
-	require.Error(t, ErrNoCtl, get.Get(c.iam))
-	require.Error(t, ErrNoCtl, set.Set(c.iam))
+	require.Error(t, ErrNoCtl, get.Load(c.iam))
+	require.Error(t, ErrNoCtl, set.Store(c.iam))
 	assert.Equal(t, Ctl{}, get)
 
 	set = Ctl{Owner: "owner"}
 	get = set
 	c.err = errCtlUpdate
-	require.EqualError(t, set.Set(c.iam), errCtlUpdate.Error())
+	require.EqualError(t, set.Store(c.iam), errCtlUpdate.Error())
 	assert.Equal(t, set, get)
 
 	c.err = nil
 	c.desc = aws.String(ctlVer)
-	assert.Error(t, get.Get(c.iam))
+	assert.Error(t, get.Load(c.iam))
 	assert.Equal(t, Ctl{}, get)
 
 	get = set
 	c.desc = aws.String("abc=")
-	assert.Error(t, get.Get(c.iam))
+	assert.Error(t, get.Load(c.iam))
 	assert.Equal(t, Ctl{}, get)
 }
 

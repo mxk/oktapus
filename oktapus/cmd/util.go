@@ -31,6 +31,7 @@ func explainError(err error) string {
 		}
 		return err.Code() + ": " + err.Message()
 	case awserr.Error:
+		// TODO: Probably no longer needed
 		if err.Code() == "NoCredentialProviders" {
 			errs := err.(awserr.BatchedErrors).OrigErrs()
 			if n := len(errs); n > 0 {

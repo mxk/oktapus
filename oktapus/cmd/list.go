@@ -59,7 +59,7 @@ func listAccounts(acs op.Accounts) []*listOutput {
 	out := make([]*listOutput, 0, len(acs))
 	for _, ac := range acs {
 		err := ac.Err
-		if err == nil && !ac.HasCtl {
+		if err == nil && !ac.CtlValid() {
 			err = op.ErrNoCtl
 		}
 		out = append(out, &listOutput{

@@ -164,7 +164,7 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 func (s *AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
 	var result Accounts
 	for _, ac := range all {
-		if !ac.HasCtl {
+		if !ac.CtlValid() {
 			if s.flags&sfErr != 0 {
 				result = append(result, ac)
 			}

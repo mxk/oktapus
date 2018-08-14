@@ -9,6 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFlags(t *testing.T) {
+	f := LoadFlag | CredsFlag | CtlFlag
+	assert.True(t, f.CredsValid())
+	assert.True(t, f.CtlValid())
+
+	f.Clear(CtlFlag)
+	assert.True(t, f.CredsValid())
+	assert.False(t, f.CtlValid())
+
+	f.Clear(LoadFlag)
+	assert.False(t, f.CredsValid())
+	assert.False(t, f.CtlValid())
+
+	f.Set(LoadFlag | CtlFlag)
+	assert.True(t, f.CredsValid())
+	assert.True(t, f.CtlValid())
+}
+
 func TestAccountFilter(t *testing.T) {
 	acs := Accounts{
 		{Name: "a"},
@@ -74,14 +92,14 @@ func TestAccountCtl(t *testing.T) {
 	}}
 	acs := make(Accounts, len(tests))
 	for i, test := range tests {
-		ac := NewAccount(test.name, test.name)
+		ac := NewAccount("000000000000", test.name)
 		ac.IAM = newCtlIAM().iam
 		acs[i] = ac
 		require.NoError(t, test.ctl.Init(ac.IAM))
 	}
 
 	// Get
-	acs.RequireCtl()
+	acs.LoadCtl(false)
 	for i, ac := range acs {
 		require.NoError(t, ac.Err)
 		want := tests[i].ctl
@@ -93,11 +111,11 @@ func TestAccountCtl(t *testing.T) {
 	acs[1].Ctl.Owner = ""
 	acs[2].Ctl.Owner = "c"
 	acs[2].Ctl.Tags[0] = "x"
-	acs.Save()
+	acs.StoreCtl()
 	for _, ac := range acs {
 		require.NoError(t, ac.Err)
 		var ctl Ctl
-		ctl.Get(ac.IAM)
+		ctl.Load(ac.IAM)
 		assert.Equal(t, ac.Ctl, ctl)
 		assert.Equal(t, ac.ref, ctl)
 	}
@@ -106,31 +124,31 @@ func TestAccountCtl(t *testing.T) {
 func TestAccountCtlErr(t *testing.T) {
 	c := newCtlIAM()
 	c.err = errors.New("inaccessible")
-	ac := NewAccount("", "error")
+	ac := NewAccount("000000000000", "error")
 	ac.IAM = c.iam
 
 	acs := Accounts{ac}
-	acs.Save()
+	acs.StoreCtl()
 	assert.Equal(t, ErrNoCtl, ac.Err)
 
-	acs.ClearErr().RequireCtl()
-	assert.False(t, ac.HasCtl)
+	acs.LoadCtl(false)
+	assert.False(t, ac.CtlValid())
 	assert.Zero(t, ac.Ctl)
 	assert.EqualError(t, ac.Err, "inaccessible")
 
-	ac.HasCtl = true
-	acs.ClearErr().Save()
+	ac.CtlUpdate(nil)
+	acs.ClearErr().StoreCtl()
 	assert.EqualError(t, ac.Err, "inaccessible")
 
-	c.err = nil
-	acs.ClearErr().Save()
+	c.err = ac.CtlUpdate(nil)
+	acs.ClearErr().StoreCtl()
 	assert.Nil(t, ac.Err)
 	assert.Equal(t, ac.Ctl, ac.ref)
 
 	other := &Ctl{Owner: "other"}
-	require.NoError(t, other.Set(c.iam))
+	require.NoError(t, other.Store(c.iam))
 	ac.Ctl.Owner = "me"
-	acs.Save()
+	acs.StoreCtl()
 	assert.Equal(t, errCtlUpdate, ac.Err)
 	assert.NotEqual(t, ac.Ctl, &ac.ref)
 	assert.Equal(t, other, &ac.ref)
