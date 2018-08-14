@@ -1,11 +1,12 @@
 package cmd
 
 import (
+	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-var listCli = register(&cli.Info{
+var listCli = cli.Main.Add(&cli.Info{
 	Name:    "list|ls",
 	Usage:   "[options] [account-spec]",
 	Summary: "List accounts",
@@ -27,23 +28,58 @@ func (cmd *listCmd) Help(w *cli.Writer) {
 }
 
 func (cmd *listCmd) Main(args []string) error {
-	return cmd.Run(op.NewCtx(), args)
-}
-
-func (cmd *listCmd) Run(ctx *op.Ctx, args []string) error {
-	padArgs(cmd, &args)
-	cmd.Spec = args[0]
-	out, err := ctx.Call(cmd)
+	cmd.Spec = get(args, 0)
+	out, err := op.Run(cmd)
 	if err == nil {
 		err = cmd.Print(out)
 	}
 	return err
 }
 
-func (cmd *listCmd) Call(ctx *op.Ctx) (interface{}, error) {
+func (cmd *listCmd) Run(ctx *op.Ctx) (interface{}, error) {
 	if cmd.Refresh {
-		ctx.All = nil
+		if err := ctx.Refresh(); err != nil {
+			return nil, err
+		}
 	}
-	acs, err := ctx.Accounts(cmd.Spec)
+	acs, err := ctx.Match(cmd.Spec)
 	return listAccounts(acs), err
+}
+
+type listOutput struct {
+	Account     string
+	Name        string
+	Owner       string
+	Description string
+	Tags        string `printer:",last"`
+	Error       string
+}
+
+func listAccounts(acs op.Accounts) []*listOutput {
+	out := make([]*listOutput, 0, len(acs))
+	for _, ac := range acs {
+		err := ac.Err
+		if err == nil && !ac.HasCtl {
+			err = op.ErrNoCtl
+		}
+		out = append(out, &listOutput{
+			Account:     ac.ID,
+			Name:        ac.Name,
+			Owner:       ac.Ctl.Owner,
+			Description: ac.Ctl.Desc,
+			Tags:        ac.Ctl.Tags.String(),
+			Error:       explainError(err),
+		})
+	}
+	return out
+}
+
+func (o *listOutput) PrintRow(p *internal.Printer) {
+	if o.Error == "" {
+		internal.PrintRow(p, o)
+	} else {
+		p.PrintCol(0, o.Account, true)
+		p.PrintCol(1, o.Name, true)
+		p.PrintErr(o.Error)
+	}
 }

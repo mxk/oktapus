@@ -3,36 +3,32 @@ package cmd
 import (
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
-// newCtx returns a Ctx for testing commands, optionally initializing account
-// control information for the specified account IDs.
-func newCtx(init ...string) (*op.Ctx, *mock.Session) {
-	s := mock.NewSession()
-	ctx := new(op.Ctx)
-	*ctx.Cfg() = s.Config
-	if len(init) > 0 {
-		if err := initCtl(ctx, nil, init...); err != nil {
-			panic(err)
-		}
+func mockOrg(ctx arn.Ctx, accounts ...string) (*op.Ctx, *mock.AWS) {
+	c := new(op.Ctx)
+	w := mock.NewAWS(ctx, mock.NewOrg(ctx, "master", accounts...))
+	for id := range w.Root().OrgRouter().Accounts {
+		*w.Account(id) = mock.ChainRouter{mock.UserRouter{}, mock.RoleRouter{}}
 	}
-	return ctx, s
+	if err := c.Init(&w.Cfg); err != nil {
+		panic(err)
+	}
+	return c, w
 }
 
-// initCtl initializes account control information for unit tests.
-func initCtl(ctx *op.Ctx, ctl *op.Ctl, ids ...string) error {
-	var empty op.Ctl
-	if ctl == nil {
-		ctl = &empty
+func setCtl(w *mock.AWS, id string, ctl op.Ctl) {
+	s, err := ctl.Encode()
+	if err != nil {
+		panic(err)
 	}
-	gw := ctx.Gateway()
-	for _, id := range ids {
-		id = mock.AccountID(id)
-		ac := op.NewAccount(id, "")
-		ac.Init(ctx.Cfg(), gw.CredsProvider(id))
-		if err := ctl.Init(ac.IAM()); err != nil {
-			return err
-		}
-	}
-	return nil
+	w.Account(id).RoleRouter()[op.CtlRole] = &mock.Role{Role: iam.Role{
+		Arn:         arn.String(w.Ctx.New("iam", "role", op.IAMPath, op.CtlRole)),
+		Description: aws.String(s),
+		Path:        aws.String(op.IAMPath),
+		RoleName:    aws.String(op.CtlRole),
+	}}
 }

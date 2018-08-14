@@ -6,7 +6,7 @@ import (
 	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
-var accountSpecCli = register(&cli.Info{
+var accountSpecCli = cli.Main.Add(&cli.Info{
 	Name:    "account-spec",
 	Summary: "Show detailed help for account-spec argument",
 	MaxArgs: -1,
