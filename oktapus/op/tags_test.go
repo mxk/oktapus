@@ -38,7 +38,7 @@ func TestParseTags(t *testing.T) {
 		assert.Equal(t, test.set, set.Sort().String(), "tags=%q", test.tags)
 		assert.Equal(t, test.clr, clr.String(), "tags=%q", test.tags)
 	}
-	for _, tags := range []string{",", "x=y", "err", "a*", "*", "!"} {
+	for _, tags := range []string{",", "x=y", "a*", "*", "!", tagAll, tagOwner} {
 		_, _, err := ParseTags(tags)
 		assert.Error(t, err, "tags=%q", tags)
 	}

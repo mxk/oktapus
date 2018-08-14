@@ -22,7 +22,7 @@ func TestCtl(t *testing.T) {
 	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
 
-	set = Ctl{Owner: "owner", Desc: "desc", Tags: Tags{"init"}}
+	set = Ctl{Owner: "alice", Desc: "desc", Tags: Tags{"init"}}
 	require.NoError(t, set.Init(c.iam))
 	require.NoError(t, get.Load(c.iam))
 	assert.Equal(t, set, get)
@@ -37,7 +37,7 @@ func TestCtl(t *testing.T) {
 	require.Error(t, ErrNoCtl, set.Store(c.iam))
 	assert.Equal(t, Ctl{}, get)
 
-	set = Ctl{Owner: "owner"}
+	set = Ctl{Owner: "bob"}
 	get = set
 	c.err = errCtlUpdate
 	require.EqualError(t, set.Store(c.iam), errCtlUpdate.Error())

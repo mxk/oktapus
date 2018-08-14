@@ -6,8 +6,11 @@ import (
 	"strings"
 )
 
-// specialTags defines tags that require special handling.
-var specialTags = map[string]struct{}{"err": {}, "owner": {}}
+// Tags that require special handling.
+const (
+	tagAll   = "all"
+	tagOwner = "owner"
+)
 
 // tagChars determines which characters are allowed in tag names.
 var tagChars [256]bool
@@ -145,6 +148,9 @@ invalid:
 
 // isSpecial returns true if tag is special. The tag must not be negated.
 func isSpecial(tag string) bool {
-	_, ok := specialTags[tag]
-	return ok
+	switch tag {
+	case tagAll, tagOwner:
+		return true
+	}
+	return false
 }

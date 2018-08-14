@@ -20,10 +20,10 @@ const (
 type specFlags byte
 
 const (
-	sfErr specFlags = 1 << iota
+	sfNoCtl specFlags = 1 << iota
 	sfFree
 	sfAlloc
-	sfAll = sfFree | sfAlloc
+	sfAny = sfFree | sfAlloc
 )
 
 // AccountSpec specifies how to filter accounts.
@@ -42,7 +42,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 	s := new(AccountSpec)
 	if spec == "" {
 		s.typ = stTags
-		s.flags = sfAll
+		s.flags = sfAny
 		return s
 	}
 	s.spec = strings.Split(spec, ",")
@@ -50,19 +50,19 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 	for i, e := range s.spec {
 		if name, val, neg := parseSpec(e); isSpecial(name) {
 			switch name {
-			case "err": // TODO: Change to "all"?
+			case tagAll:
 				if neg {
-					s.flags &^= sfErr
+					s.flags &^= sfNoCtl
 				} else {
-					s.flags |= sfErr
+					s.flags |= sfNoCtl
 				}
-			case "owner":
+			case tagOwner:
 				switch val {
 				case "":
 					if neg {
-						s.flags = s.flags&^sfAll | sfFree
+						s.flags = s.flags&^sfAny | sfFree
 					} else {
-						s.flags = s.flags&^sfAll | sfAlloc
+						s.flags = s.flags&^sfAny | sfAlloc
 					}
 				case "me":
 					val = user
@@ -86,13 +86,13 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 	if s.typ == stUnknown && len(s.spec) > 64 {
 		s.typ = stNames
 	}
-	if s.flags&sfAll == 0 {
+	if s.flags&sfAny == 0 {
 		if s.owner == nil {
-			s.flags |= sfAll
+			s.flags |= sfAny
 		} else {
 			for _, want := range s.owner {
 				if !want {
-					s.flags |= sfAll
+					s.flags |= sfAny
 					break
 				}
 			}
@@ -102,11 +102,11 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 }
 
 // IsStatic returns true if the spec uses account IDs and/or names.
-func (s *AccountSpec) IsStatic(all Accounts) bool {
+func (s *AccountSpec) IsStatic(acs Accounts) bool {
 	if s.typ != stUnknown {
 		return s.typ != stTags
 	}
-	for _, ac := range all {
+	for _, ac := range acs {
 		if _, ok := s.idx[ac.Name]; ok {
 			s.typ = stNames
 			return true
@@ -117,19 +117,19 @@ func (s *AccountSpec) IsStatic(all Accounts) bool {
 }
 
 // Filter returns only those accounts that match the spec.
-func (s *AccountSpec) Filter(all Accounts) (Accounts, error) {
-	if s.IsStatic(all) {
-		return s.filterStatic(all)
+func (s *AccountSpec) Filter(acs Accounts) (Accounts, error) {
+	if s.IsStatic(acs) {
+		return s.filterStatic(acs)
 	}
-	return s.filterDynamic(all)
+	return s.filterDynamic(acs)
 }
 
 // filterStatic filters accounts by names and/or IDs. All non-negated entries in
 // s.idx must match an account. Error status is not considered.
-func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
+func (s *AccountSpec) filterStatic(acs Accounts) (Accounts, error) {
 	var result Accounts
 	matched := make(map[string]struct{}, len(s.idx))
-	for _, ac := range all {
+	for _, ac := range acs {
 		key := ac.Name
 		if s.typ == stIds {
 			key = ac.ID
@@ -161,11 +161,11 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 }
 
 // filterDynamic filters accounts by tags.
-func (s *AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
+func (s *AccountSpec) filterDynamic(acs Accounts) (Accounts, error) {
 	var result Accounts
-	for _, ac := range all {
+	for _, ac := range acs {
 		if !ac.CtlValid() {
-			if s.flags&sfErr != 0 {
+			if s.flags&sfNoCtl != 0 {
 				result = append(result, ac)
 			}
 			continue

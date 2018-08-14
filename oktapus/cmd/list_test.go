@@ -25,7 +25,7 @@ func TestList(t *testing.T) {
 	id := *w.Root().OrgRouter().NewAccount("new").Id
 	w.Account(id).RoleRouter()
 
-	cmd = listCmd{Refresh: true, Spec: "err"}
+	cmd = listCmd{Refresh: true, Spec: "all"}
 	out, err = cmd.Run(ctx)
 	require.NoError(t, err)
 	want = []*listOutput{{

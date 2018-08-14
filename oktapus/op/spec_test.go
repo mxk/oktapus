@@ -65,16 +65,16 @@ func TestDynamic(t *testing.T) {
 		spec: "",
 		want: "1,2,3,4",
 	}, {
-		spec: "err",
+		spec: tagAll,
 		want: "1,2,3,4,5",
 	}, {
 		spec: "x",
 		want: "",
 	}, {
-		spec: "x,err=true",
+		spec: "x,all=true",
 		want: "5",
 	}, {
-		spec: "x,err,err=0",
+		spec: "x,all,all=0",
 		want: "",
 	}, {
 		spec: "a",
@@ -92,7 +92,7 @@ func TestDynamic(t *testing.T) {
 		spec: "c",
 		want: "3",
 	}, {
-		spec: "!a,d,err",
+		spec: "!a,d,all",
 		want: "4,5",
 	}}
 	for _, test := range tests {
@@ -113,7 +113,7 @@ func TestOwner(t *testing.T) {
 		spec: "",
 		want: "1,2,3,4",
 	}, {
-		spec: "owner",
+		spec: tagOwner,
 		want: "2,3,4",
 	}, {
 		spec: "!owner",

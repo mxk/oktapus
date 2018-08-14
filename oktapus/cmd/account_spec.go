@@ -61,9 +61,8 @@ func (accountSpecCmd) Help(w *cli.Writer) {
 	  "owner=user1,owner=user2"
 	      Matches accounts owned by user1 or user2.
 
-	  "err"
-	      When listing accounts, include those that cannot be accessed or are
-	      not managed by oktapus.
+	  "all"
+	      List inaccessible and uninitialized accounts.
 	`)
 }
 
