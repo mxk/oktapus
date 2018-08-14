@@ -75,31 +75,31 @@ func TestAccountCtl(t *testing.T) {
 	acs := make(Accounts, len(tests))
 	for i, test := range tests {
 		ac := NewAccount(test.name, test.name)
-		ac.iam = newCtlIAM().iam
+		ac.IAM = newCtlIAM().iam
 		acs[i] = ac
-		require.NoError(t, test.ctl.Init(ac.iam))
+		require.NoError(t, test.ctl.Init(ac.IAM))
 	}
 
 	// Get
 	acs.RequireCtl()
 	for i, ac := range acs {
 		require.NoError(t, ac.Err)
-		want := &tests[i].ctl
+		want := tests[i].ctl
 		assert.Equal(t, want, ac.Ctl)
-		assert.Equal(t, want, &ac.ref)
+		assert.Equal(t, want, ac.ref)
 	}
 
 	// Save
-	acs[1].Owner = ""
-	acs[2].Owner = "c"
-	acs[2].Tags[0] = "x"
+	acs[1].Ctl.Owner = ""
+	acs[2].Ctl.Owner = "c"
+	acs[2].Ctl.Tags[0] = "x"
 	acs.Save()
 	for _, ac := range acs {
 		require.NoError(t, ac.Err)
 		var ctl Ctl
-		ctl.Get(ac.iam)
-		assert.Equal(t, ac.Ctl, &ctl)
-		assert.Equal(t, &ac.ref, &ctl)
+		ctl.Get(ac.IAM)
+		assert.Equal(t, ac.Ctl, ctl)
+		assert.Equal(t, ac.ref, ctl)
 	}
 }
 
@@ -107,32 +107,71 @@ func TestAccountCtlErr(t *testing.T) {
 	c := newCtlIAM()
 	c.err = errors.New("inaccessible")
 	ac := NewAccount("", "error")
-	ac.iam = c.iam
+	ac.IAM = c.iam
 
 	acs := Accounts{ac}
 	acs.Save()
-	assert.Equal(t, ac.Err, ErrNoCtl)
-	ac.Err = nil
+	assert.Equal(t, ErrNoCtl, ac.Err)
 
-	acs.RequireCtl()
-	assert.Nil(t, ac.Ctl)
+	acs.ClearErr().RequireCtl()
+	assert.False(t, ac.HasCtl)
+	assert.Zero(t, ac.Ctl)
 	assert.EqualError(t, ac.Err, "inaccessible")
-	ac.Err = nil
-	ac.Ctl = new(Ctl)
 
-	acs.Save()
+	ac.HasCtl = true
+	acs.ClearErr().Save()
 	assert.EqualError(t, ac.Err, "inaccessible")
 
 	c.err = nil
-	acs.Save()
+	acs.ClearErr().Save()
 	assert.Nil(t, ac.Err)
-	assert.Equal(t, ac.Ctl, &ac.ref)
+	assert.Equal(t, ac.Ctl, ac.ref)
 
 	other := &Ctl{Owner: "other"}
 	require.NoError(t, other.Set(c.iam))
-	ac.Owner = "me"
+	ac.Ctl.Owner = "me"
 	acs.Save()
-	assert.Equal(t, ac.Err, errCtlUpdate)
+	assert.Equal(t, errCtlUpdate, ac.Err)
 	assert.NotEqual(t, ac.Ctl, &ac.ref)
 	assert.Equal(t, other, &ac.ref)
+}
+
+func TestNaturalSort(t *testing.T) {
+	tests := []*struct {
+		a, b string
+		less bool
+	}{
+		// Equal
+		{"", "", false},
+		{"a", "A", false},
+		{"1", "1", false},
+		{"01", "1", false},
+		{"a1", "A1", false},
+		{"1a2b", "01A02B", false},
+		{"a1b2", "A01B02", false},
+
+		// Less
+		{"a", "B", true},
+		{"2", "10", true},
+		{"a2", "A10", true},
+		{"a10", "b2", true},
+		{"2a", "010A", true},
+		{"a-2b", "a-10b", true},
+		{"a0b1c02", "a0b01c2", true},
+		{"a2b", "a18446744073709551615", true},
+
+		// Invalid uint64
+		{"a018446744073709551616", "a18446744073709551616", true},
+	}
+	for _, tc := range tests {
+		a := natSortKey(tc.a)
+		b := natSortKey(tc.b)
+		if tc.less {
+			assert.True(t, a.less(b), "a=%q b=%q", tc.a, tc.b)
+			assert.False(t, b.less(a), "a=%q b=%q", tc.a, tc.b)
+		} else {
+			assert.False(t, a.less(b), "a=%q b=%q", tc.a, tc.b)
+			assert.False(t, b.less(a), "a=%q b=%q", tc.a, tc.b)
+		}
+	}
 }

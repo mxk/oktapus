@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/account"
 )
 
 type specType byte
@@ -50,7 +50,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 	for i, e := range s.spec {
 		if name, val, neg := parseSpec(e); isSpecial(name) {
 			switch name {
-			case "err":
+			case "err": // TODO: Change to "all"?
 				if neg {
 					s.flags &^= sfErr
 				} else {
@@ -78,7 +78,7 @@ func ParseAccountSpec(spec, user string) *AccountSpec {
 			if s.idx[name] = uint(i); !neg {
 				s.tagMask |= uint64(1) << uint(i)
 			}
-			if s.typ == stUnknown && awsx.IsAccountID(name) {
+			if s.typ == stUnknown && account.IsID(name) {
 				s.typ = stIds
 			}
 		}
@@ -164,17 +164,17 @@ func (s *AccountSpec) filterStatic(all Accounts) (Accounts, error) {
 func (s *AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
 	var result Accounts
 	for _, ac := range all {
-		if ac.Ctl == nil {
+		if !ac.HasCtl {
 			if s.flags&sfErr != 0 {
 				result = append(result, ac)
 			}
 			continue
 		}
-		if ac.Owner == "" {
+		if ac.Ctl.Owner == "" {
 			if s.flags&sfFree == 0 {
 				continue
 			}
-		} else if want, ok := s.owner[ac.Owner]; ok {
+		} else if want, ok := s.owner[ac.Ctl.Owner]; ok {
 			if !want {
 				continue
 			}
@@ -182,7 +182,7 @@ func (s *AccountSpec) filterDynamic(all Accounts) (Accounts, error) {
 			continue
 		}
 		var tagMask uint64
-		for _, tag := range ac.Tags {
+		for _, tag := range ac.Ctl.Tags {
 			if i, ok := s.idx[tag]; ok {
 				tagMask |= uint64(1) << i
 			}

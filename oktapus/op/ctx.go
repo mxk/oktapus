@@ -1,307 +1,311 @@
 package op
 
 import (
-	"errors"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/hex"
 	"os"
-	"os/exec"
 	"os/user"
+	"path"
 	"path/filepath"
+	"reflect"
 	"strconv"
-	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
-	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
-	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
+	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/pkg/errors"
 )
 
-var log = internal.Log
-
-// IAMPath is a common path for managed IAM users and roles.
-const IAMPath = "/oktapus/"
-
-// TmpIAMPath is a path for temporary users and roles.
-const TmpIAMPath = IAMPath + "tmp/"
-
-// Environment variables that affect Ctx operation. Okta vars match those from
-// github.com/oktadeveloper/okta-aws-cli-assume-role.
+// Paths for managed IAM users and roles.
 const (
-	OktaHostEnv    = "OKTA_ORG"
-	OktaSessEnv    = "OKTA_SID"
-	OktaUserEnv    = "OKTA_USERNAME"
-	OktaAWSAppEnv  = "OKTA_AWS_APP_URL"
-	OktaAWSRoleEnv = "OKTA_AWS_ROLE_TO_ASSUME"
-
-	AWSProfileEnv = "OKTAPUS_AWS_PROFILE"
-	MasterRoleEnv = "OKTAPUS_MASTER_ROLE"
-	CommonRoleEnv = "OKTAPUS_COMMON_ROLE"
-	NoDaemonEnv   = "OKTAPUS_NO_DAEMON"
-	AliasEnv      = "OKTAPUS_ALIAS_FILE"
-
-	AccountIDEnv    = "AWS_ACCOUNT_ID"
-	AccountNameEnv  = "AWS_ACCOUNT_NAME"
-	AccessKeyIDEnv  = "AWS_ACCESS_KEY_ID"
-	SecretKeyEnv    = "AWS_SECRET_ACCESS_KEY"
-	SessionTokenEnv = "AWS_SESSION_TOKEN"
+	IAMPath    = "/oktapus/"
+	IAMTmpPath = IAMPath + "tmp/"
 )
 
-// Ctx provides global configuration information.
+// cmd is a command that runs with the given context.
+type cmd interface {
+	cli.Cmd
+	Run(ctx *Ctx) (interface{}, error)
+}
+
+// Run executes the specified command with an initialized context.
+func Run(c cmd) (interface{}, error) {
+	ctx := NewCtx()
+	if err := ctx.Init(nil); err != nil {
+		return nil, err
+	}
+	return c.Run(ctx)
+}
+
+// Ctx provides global configuration information and account access.
 type Ctx struct {
-	Env map[string]string
-	All Accounts
+	// Oktapus environment config
+	AliasFile  string `env:"OKTAPUS_ALIAS_FILE"`
+	Profile    string `env:"OKTAPUS_AWS_PROFILE"`
+	MasterRole string `env:"OKTAPUS_MASTER_ROLE"`
+	CommonRole string `env:"OKTAPUS_COMMON_ROLE"`
+	NoDaemon   bool   `env:"OKTAPUS_NO_DAEMON"`
 
-	UseDaemon bool
+	// Okta environment config using same variables as:
+	// https://github.com/oktadeveloper/okta-aws-cli-assume-role/
+	OktaHost    string `env:"OKTA_ORG"`
+	OktaSID     string `env:"OKTA_SID"`
+	OktaUser    string `env:"OKTA_USERNAME"`
+	OktaAWSApp  string `env:"OKTA_AWS_APP_URL"`
+	OktaAWSRole string `env:"OKTA_AWS_ROLE_TO_ASSUME"`
 
-	cfg  aws.Config
-	okta *okta.Client
-	gw   *awsx.Gateway
+	// AWS environment config
+	EnvCfg external.EnvConfig
+
+	cfg   aws.Config
+	proxy creds.Proxy
+	dir   account.Directory
+	creds map[string]*creds.Provider
+	acs   map[string]*Account
 }
 
-// NewCtx returns a new command execution context configured from environment
-// variables.
+// NewCtx returns a new context configured from the environment variables.
 func NewCtx() *Ctx {
-	env := make(map[string]string)
-	for _, kv := range os.Environ() {
-		if len(kv) > 4 && (kv[:4] == "OKTA" || kv[:4] == "AWS_") {
-			i := strings.IndexByte(kv, '=')
-			env[kv[:i]] = kv[i+1:]
-		}
+	c := new(Ctx)
+	if u, err := user.Current(); err == nil && u.HomeDir != "" {
+		c.AliasFile = filepath.Join(u.HomeDir, ".aws", "oktapus-accounts")
 	}
-	ctx := &Ctx{Env: env, UseDaemon: true}
-	if v, ok := ctx.Env[NoDaemonEnv]; ok {
-		no, err := strconv.ParseBool(v)
-		ctx.UseDaemon = err == nil && !no
+	if err := setEnvFields(c); err != nil {
+		panic(err)
 	}
-	return ctx
-}
-
-// UseOkta returns true if Okta is used for authentication.
-func (ctx *Ctx) UseOkta() bool {
-	return ctx.Env[OktaHostEnv] != ""
-}
-
-// InExec returns true if the process was started by the exec command. Only one
-// account is accessible in this mode, with credentials provided in environment
-// variables.
-func (ctx *Ctx) InExec() bool {
-	return !ctx.UseDaemon && awsx.IsAccountID(ctx.Env[AccountIDEnv])
-}
-
-// Cfg returns current AWS configuration.
-func (ctx *Ctx) Cfg() *aws.Config {
-	if ctx.cfg.EndpointResolver == nil {
-		var err error
-		if ctx.cfg, err = LoadConfig(); err != nil {
-			log.F("Failed to load AWS config: %v", err)
-		}
-		if ctx.UseOkta() {
-			ctx.cfg.Credentials = ctx.newOktaCreds(&ctx.cfg)
-		}
-	}
-	return &ctx.cfg
-}
-
-// Okta returns an Okta client.
-func (ctx *Ctx) Okta() *okta.Client {
-	if ctx.okta != nil {
-		return ctx.okta
-	}
-	host := ctx.Env[OktaHostEnv]
-	if host == "" {
-		log.F("Okta host not configured")
-	}
-	c := okta.NewClient(host)
-	if sid := ctx.Env[OktaSessEnv]; sid != "" {
-		if err := c.RefreshSession(sid); err != nil {
-			log.F("Failed to refresh Okta session: %v", err)
-		}
-	} else {
-		authn := newTermAuthn(ctx.Env[OktaUserEnv])
-		if err := c.Authenticate(authn); err != nil {
-			log.F("Okta authentication failed: %v", err)
-		}
-	}
-	ctx.okta = c
+	c.EnvCfg, _ = external.NewEnvConfig()
 	return c
 }
 
-// Gateway returns an AWS gateway client.
-func (ctx *Ctx) Gateway() *awsx.Gateway {
-	if ctx.gw != nil {
-		return ctx.gw
+// Init initializes the context before first use. If cfg is nil, the client
+// configuration is loaded from Ctx state and shared AWS config files.
+func (c *Ctx) Init(cfg *aws.Config) error {
+	if err := c.initClients(cfg); err != nil {
+		return err
 	}
-	gw := awsx.NewGateway(ctx.Cfg())
-	gw.MasterRole = arn.Base + "role" + IAMPath + "OktapusOrganizationsProxy"
-	if r := ctx.Env[MasterRoleEnv]; r != "" {
-		gw.MasterRole = gw.MasterRole.WithPathName(r)
+	err := fast.Call(c.proxy.Init, c.dir.Init)
+	if err != nil && !account.IsErrorNoOrg(err) {
+		return errors.WithStack(err)
 	}
-	aliasFile, ok := ctx.Env[AliasEnv]
-	if !ok {
-		if u, err := user.Current(); err == nil && u.HomeDir != "" {
-			aliasFile = filepath.Join(u.HomeDir, ".oktapus_accounts")
+	if c.CommonRole == "" {
+		c.CommonRole = IAMPath + c.proxy.SessName
+	}
+	master := c.dir.Org.MasterID
+	if master != "" && c.proxy.Ident.Account != master {
+		if c.MasterRole == "" {
+			c.MasterRole = IAMPath + "OktapusOrganizationsProxy"
+		}
+		creds.Set(c.dir.Client.Client, c.proxy.Provider(&sts.AssumeRoleInput{
+			ExternalId:      c.MasterExternalID(),
+			RoleArn:         arn.String(c.proxy.Role(master, c.MasterRole)),
+			RoleSessionName: aws.String(c.proxy.SessName),
+		}))
+	}
+	return nil
+}
+
+// Cfg returns the active AWS configuration.
+func (c *Ctx) Cfg() aws.Config { return c.cfg }
+
+// Ident returns the identity of the gateway credentials.
+func (c *Ctx) Ident() creds.Ident { return c.proxy.Ident }
+
+// Org returns organization info.
+func (c *Ctx) Org() account.Org { return c.dir.Org }
+
+// Refresh updates the list of known accounts from the alias file and AWS
+// Organizations API.
+func (c *Ctx) Refresh() error {
+	// TODO: Handle exec mode
+	c.acs = make(map[string]*Account)
+	if c.AliasFile != "" {
+		m, err := account.LoadAliases(c.AliasFile, c.proxy.Ident.Partition())
+		if err != nil && !os.IsNotExist(err) {
+			return errors.WithStack(err)
+		}
+		acs := make(Accounts, 0, len(m))
+		for id, name := range m {
+			acs = append(acs, NewAccount(id, name))
+		}
+		c.Register(acs)
+	}
+	if err := c.dir.Refresh(); err != nil && !account.IsErrorNoOrg(err) {
+		return errors.WithStack(err)
+	}
+	acs := make(Accounts, 0, len(c.dir.Accounts))
+	for _, ac := range c.dir.Accounts {
+		acs = append(acs, NewAccount(ac.ID, ac.Name))
+	}
+	c.Register(acs)
+	return nil
+}
+
+// Register adds new accounts to the context and configures their IAM clients.
+func (c *Ctx) Register(acs Accounts) Accounts {
+	if c.acs == nil {
+		if len(acs) == 0 {
+			return acs
+		}
+		c.acs = make(map[string]*Account, len(acs))
+	}
+	for _, ac := range acs {
+		if !account.IsID(ac.ID) {
+			panic("op: invalid account id: " + ac.ID)
+		}
+		ac.IAM = iamx.New(&c.cfg)
+		creds.Set(ac.IAM.Client, c.CredsProvider(ac.ID))
+		c.acs[ac.ID] = ac
+	}
+	return acs
+}
+
+// Accounts returns all registered accounts sorted by name.
+func (c *Ctx) Accounts() Accounts {
+	if len(c.acs) == 0 {
+		return nil
+	}
+	acs := make(Accounts, 0, len(c.acs))
+	for _, ac := range c.acs {
+		acs = append(acs, ac)
+	}
+	return acs.Sort()
+}
+
+// Match returns all accounts that match the spec.
+func (c *Ctx) Match(spec string) (Accounts, error) {
+	if c.acs == nil {
+		if err := c.Refresh(); err != nil {
+			return nil, err
 		}
 	}
-	if err := gw.Init(aliasFile); err != nil {
-		log.F("Gateway initialization failed: %v", err)
+	all := c.Accounts().RequireCtl()
+	return ParseAccountSpec(spec, path.Base(c.CommonRole)).Filter(all)
+}
+
+// CredsProvider returns a credentials provider for the specified account ID.
+func (c *Ctx) CredsProvider(accountID string) *creds.Provider {
+	cp := c.creds[accountID]
+	if cp != nil {
+		return cp
 	}
-	if r := ctx.Env[CommonRoleEnv]; r != "" {
-		gw.CommonRole = gw.CommonRole.WithPathName(r)
+	cp = c.proxy.AssumeRole(c.proxy.Role(accountID, c.CommonRole), 0)
+
+	// For the gateway account, try to assume the common role, but fall back
+	// to original creds if that role does not exist.
+	if accountID == c.proxy.Ident.Account {
+		commonRole := cp
+		var src *creds.Provider
+		cp = creds.RenewableProvider(func() (aws.Credentials, error) {
+			if src == nil {
+				if commonRole.Ensure(-1) == nil {
+					src = commonRole
+					return commonRole.Creds()
+				}
+				src = c.cfg.Credentials.(*creds.Provider)
+			}
+			src.Ensure(-1)
+			return src.Creds()
+		})
+	}
+	if c.creds == nil {
+		c.creds = make(map[string]*creds.Provider)
+	}
+	c.creds[accountID] = cp
+	return cp
+}
+
+// MasterExternalID derives the external id for the master role.
+func (c *Ctx) MasterExternalID() *string {
+	org := &c.dir.Org
+	if org.ID == "" {
+		return nil
+	}
+	var buf [64]byte
+	b := append(buf[:0], "oktapus:"...)
+	b = append(b, org.MasterID...)
+	b = append(b, ':')
+	b = append(b, org.MasterEmail...)
+	h := hmac.New(sha512.New512_256, []byte(org.ID))
+	h.Write(b)
+	b = h.Sum(b[:0])
+	return aws.String(hex.EncodeToString(b))
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (c *Ctx) MarshalBinary() ([]byte, error) {
+	return nil, nil
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (c *Ctx) UnmarshalBinary(b []byte) error {
+	return nil
+}
+
+// initClients initializes AWS configuration and creates service clients.
+func (c *Ctx) initClients(cfg *aws.Config) error {
+	if cfg == nil {
+		ext := external.Configs{
+			external.WithSharedConfigProfile(c.Profile),
+			c.EnvCfg,
+			nil,
+		}[:2]
+		sc, err := external.LoadSharedConfigIgnoreNotExist(ext)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		ext = append(ext, sc)
+		c.cfg, err = ext.ResolveAWSConfig(external.DefaultAWSConfigResolvers)
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	} else {
-		gw.CommonRole = gw.CommonRole.WithPath(IAMPath)
+		c.cfg = *cfg
 	}
-	ctx.gw = gw
-	return gw
+	// TODO: Okta creds
+	c.cfg.Credentials = creds.StaticProvider(c.cfg.Credentials.Retrieve())
+	c.proxy.Client = *sts.New(c.cfg)
+	c.dir.Client = *orgs.New(c.cfg)
+	return nil
 }
 
-// Accounts returns all accounts in the organization that match the spec.
-func (ctx *Ctx) Accounts(spec string) (Accounts, error) {
-	gw := ctx.Gateway()
-	if ctx.All == nil {
-		if ctx.InExec() {
-			// TODO: Forward creds expiration time when supported
-			ac := NewAccount(ctx.Env[AccountIDEnv], ctx.Env[AccountNameEnv])
-			ac.Init(ctx.Cfg(), creds.StaticProvider(aws.Credentials{
-				AccessKeyID:     ctx.Env[AccessKeyIDEnv],
-				SecretAccessKey: ctx.Env[SecretKeyEnv],
-				SessionToken:    ctx.Env[SessionTokenEnv],
-			}, nil))
-			ctx.All = Accounts{ac}
-		} else {
-			if err := gw.Refresh(); err != nil {
-				log.E("Failed to list accounts")
-				return nil, err
-			}
-			info := gw.Accounts()
-			ctx.All = make(Accounts, len(info))
-			for i, ac := range info {
-				n := NewAccount(ac.ID, ac.DisplayName())
-				n.Init(ctx.Cfg(), gw.CredsProvider(ac.ID))
-				ctx.All[i] = n
-			}
+// setEnvFields takes a struct pointer and sets field values from environment
+// variables, with variable names obtained from the "env" field tag.
+func setEnvFields(i interface{}) error {
+	v := reflect.ValueOf(i).Elem()
+	t := v.Type()
+	for i := t.NumField() - 1; i >= 0; i-- {
+		f := t.Field(i)
+		key := f.Tag.Get("env")
+		if key == "" {
+			continue
 		}
-	}
-	ctx.All.RequireCtl()
-	acs, err := ParseAccountSpec(spec, gw.CommonRole.Name()).Filter(ctx.All)
-	return acs.Sort(), err
-}
-
-// CallableCmd is a command that can be called remotely.
-type CallableCmd interface {
-	cli.Cmd
-	Call(ctx *Ctx) (interface{}, error)
-}
-
-// Call executes cmd locally or via a daemon process.
-func (ctx *Ctx) Call(cmd CallableCmd) (interface{}, error) {
-	if ctx.UseDaemon {
-		return daemon.Call(ctx, cmd)
-	}
-	return cmd.Call(ctx)
-}
-
-// EnvMap returns an environment map for generating daemon signature.
-func (ctx *Ctx) EnvMap() map[string]string {
-	uid := ""
-	if u, err := user.Current(); err == nil {
-		uid = u.Uid
-	}
-	akid := ""
-	if !ctx.UseOkta() {
-		if cfg, err := LoadConfig(); err == nil {
-			v, err := cfg.Credentials.Retrieve()
-			if err == nil && v.SessionToken == "" {
-				akid = v.AccessKeyID
-			}
+		val, ok := os.LookupEnv(key)
+		if !ok {
+			continue
 		}
-	}
-	keys := []string{
-		OktaHostEnv,
-		OktaSessEnv,
-		OktaUserEnv,
-		OktaAWSAppEnv,
-		OktaAWSRoleEnv,
-		MasterRoleEnv,
-		CommonRoleEnv,
-	}
-	m := map[string]string{
-		"VERSION":      internal.AppVersion,
-		"UID":          uid,
-		AccessKeyIDEnv: akid,
-	}
-	for _, k := range keys {
-		m[k] = ctx.Env[k]
-	}
-	return m
-}
-
-// StartDaemon configures and starts a new daemon process.
-func (ctx *Ctx) StartDaemon(c *exec.Cmd) error {
-	if ctx.UseOkta() {
-		s := ctx.Okta().Session()
-		c.Env = append(c.Env, OktaSessEnv+"="+s.ID)
-	}
-	return c.Start()
-}
-
-// newOktaCreds returns a credentials provider that obtains a SAML assertion
-// from Okta and exchanges it for temporary security credentials.
-func (ctx *Ctx) newOktaCreds(cfg *aws.Config) *creds.Provider {
-	c := sts.New(*cfg)
-	creds.Set(c.Client, aws.AnonymousCredentials)
-	awsAppLink := ctx.Env[OktaAWSAppEnv]
-	return creds.RenewableProvider(func() (aws.Credentials, error) {
-		var cr aws.Credentials
-		k := ctx.Okta()
-		if awsAppLink == "" {
-			apps, err := k.AppLinks()
-			if err != nil {
-				return cr, err
-			}
-			var app *okta.AppLink
-			multiple := false
-			for _, a := range apps {
-				if a.AppName == "amazon_aws" {
-					if app == nil {
-						app = a
-					} else {
-						multiple = true
-					}
+		switch f.Type.Kind() {
+		case reflect.String:
+			v.Field(i).Set(reflect.ValueOf(val))
+		case reflect.Bool:
+			b := val == ""
+			if !b {
+				var err error
+				if b, err = strconv.ParseBool(val); err != nil {
+					return errors.Wrapf(err, "invalid value for %q", key)
 				}
 			}
-			if app == nil {
-				return cr, errors.New("AWS app not found in Okta")
-			} else if multiple {
-				log.W("Multiple AWS apps found in Okta, using %q", app.Label)
-			}
-			awsAppLink = app.LinkURL
+			v.Field(i).Set(reflect.ValueOf(b))
+		default:
+			panic("unsupported field type " + f.Type.String())
 		}
-		auth, err := k.OpenAWS(awsAppLink, arn.ARN(ctx.Env[OktaAWSRoleEnv]))
-		if err != nil {
-			return cr, err
-		}
-		if len(auth.Roles) > 1 {
-			log.W("Multiple AWS roles available, using %q", auth.Roles[0].Role)
-		}
-		var in sts.AssumeRoleWithSAMLInput
-		auth.Use(auth.Roles[0], &in)
-		out, err := c.AssumeRoleWithSAMLRequest(&in).Send()
-		if err == nil {
-			cr = creds.FromSTS(out.Credentials)
-			cr.Source = "Okta"
-		}
-		return cr, err
-	})
-}
-
-// LoadConfig loads current AWS config.
-func LoadConfig() (aws.Config, error) {
-	return external.LoadDefaultAWSConfig(
-		external.WithSharedConfigProfile(os.Getenv(AWSProfileEnv)),
-	)
+	}
+	return nil
 }

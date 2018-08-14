@@ -63,6 +63,17 @@ func ParseTags(s string) (set, clr Tags, err error) {
 	return norm(tags[:i:j]), norm(tags[j:]), nil
 }
 
+// Sort returns sorted tags.
+func (t Tags) Sort() Tags {
+	sort.Strings(t)
+	return t
+}
+
+// String implements fmt.Stringer.
+func (t Tags) String() string {
+	return strings.Join(t, ",")
+}
+
 // Diff returns tags that are set and/or cleared in t relative to u. Calling
 // u.Apply(set, clr) would make u == t.
 func (t Tags) Diff(u Tags) (set, clr Tags) {

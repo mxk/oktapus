@@ -3,10 +3,10 @@ package op
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -197,11 +197,13 @@ func (acs accounts) get() Accounts {
 		if err != nil {
 			panic(err)
 		}
-		n := NewAccount(fmt.Sprintf("%012s", ac.id), ac.name)
-		n.Ctl = &Ctl{Owner: ac.owner, Tags: tags}
+		n := NewAccount(mock.AccountID(ac.id), ac.name)
+		n.Ctl = Ctl{Owner: ac.owner, Tags: tags}
+		n.HasCtl = true
 		all[i] = n
 		if ac.err != "" {
-			all[i].Ctl, all[i].Err = nil, errors.New(ac.err)
+			all[i].lostCtl()
+			all[i].Err = errors.New(ac.err)
 		}
 	}
 	return all

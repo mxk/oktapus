@@ -2,45 +2,43 @@ package op
 
 import (
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-// Account is an account in an AWS organization.
+// Account maintains control information and provides IAM access for one AWS
+// account.
 type Account struct {
-	*Ctl
-	ID   string
-	Name string
-	Err  error
+	ID     string
+	Name   string
+	IAM    iamx.Client
+	HasCtl bool // TODO: Replace with flags to also track access
+	Ctl    Ctl
+	Err    error
 
-	// TODO: Add partition here for GovCloud support?
-
-	iam iamx.Client
 	ref Ctl
+	key sortKey
 }
 
 // NewAccount creates a new account with the given id and name.
 func NewAccount(id, name string) *Account {
-	return &Account{ID: id, Name: name}
-}
-
-// Init initializes the account IAM client.
-func (ac *Account) Init(cfg *aws.Config, cp *creds.Provider) {
-	ac.iam = iamx.New(cfg)
-	creds.Set(ac.iam.Client, cp)
-}
-
-// IAM returns the account IAM client.
-func (ac *Account) IAM() iamx.Client {
-	return ac.iam
+	return &Account{ID: id, Name: name, key: natSortKey(name + "\x00" + id)}
 }
 
 // CredsProvider returns the credentials provider for account ac.
 func (ac *Account) CredsProvider() *creds.Provider {
-	return ac.iam.Credentials.(*creds.Provider)
+	return ac.IAM.Config.Credentials.(*creds.Provider)
+}
+
+// lostCtl resets account state to indicate missing control information.
+func (ac *Account) lostCtl() {
+	ac.HasCtl = false
+	ac.Ctl = Ctl{}
+	ac.ref = Ctl{}
 }
 
 // Accounts is a group of accounts that can be operated on concurrently.
@@ -48,41 +46,49 @@ type Accounts []*Account
 
 // Sort sorts accounts by name.
 func (s Accounts) Sort() Accounts {
-	// TODO: Natural number sorting
 	sort.Sort(byName(s))
+	return s
+}
+
+// Map concurrently executes fn for each account. Any error returned by fn is
+// stored in the associated account.
+func (s Accounts) Map(fn func(i int, ac *Account) error) Accounts {
+	fast.ForEachIO(len(s), func(i int) error {
+		ac := s[i]
+		if err := fn(i, ac); err != nil {
+			if err == ErrNoCtl {
+				ac.lostCtl()
+			}
+			ac.Err = err
+		}
+		return nil
+	})
+	return s
+}
+
+// ClearErr clears the error state of all accounts.
+func (s Accounts) ClearErr() Accounts {
+	for _, ac := range s {
+		ac.Err = nil
+	}
 	return s
 }
 
 // Filter removes those accounts for which fn evaluates to false. This is done
 // in-place without making a copy of the original slice.
 func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
-	var n, first, last int
-	for i, ac := range s {
+	i := 0
+	for _, ac := range s {
 		if fn(ac) {
-			n++
-			if last = i; n == 1 {
-				first = i
-			}
-		} else {
-			s[i] = nil
+			s[i] = ac
+			i++
 		}
 	}
-	f := s[:0]
-	if n > 0 {
-		//noinspection GoAssignmentToReceiver
-		if s = s[first : last+1]; n < len(s) {
-			for _, ac := range s {
-				if ac != nil {
-					f = append(f, ac)
-				}
-			}
-		} else if first > 0 {
-			f = append(f, s...)
-		} else {
-			f = s
-		}
+	s, x := s[:i], s[i:]
+	for i := range x {
+		x[i] = nil
 	}
-	return f
+	return s
 }
 
 // RequireCtl ensures that all accounts have control information. Existing
@@ -90,7 +96,7 @@ func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
 func (s Accounts) RequireCtl() Accounts {
 	var refresh Accounts
 	for i, ac := range s {
-		if ac.Ctl == nil && ac.Err == nil {
+		if !ac.HasCtl && ac.Err == nil {
 			if len(refresh) == 0 {
 				refresh = make(Accounts, 0, len(s)-i)
 			}
@@ -98,76 +104,114 @@ func (s Accounts) RequireCtl() Accounts {
 		}
 	}
 	if len(refresh) > 0 {
-		refresh.RefreshCtl()
+		refresh.Refresh()
 	}
 	return s
 }
 
-// RefreshCtl retrieves current control information for all accounts.
-func (s Accounts) RefreshCtl() Accounts {
-	return s.Apply(func(_ int, ac *Account) {
-		if ac.Err = ac.ref.Get(ac.iam); ac.Err != nil {
-			ac.Ctl = nil
-		} else {
-			if ac.Ctl == nil {
-				ac.Ctl = new(Ctl)
-			}
-			ac.Ctl.copy(&ac.ref)
+// Refresh retrieves current control information for all accounts.
+func (s Accounts) Refresh() Accounts {
+	return s.Map(func(_ int, ac *Account) error {
+		if err := ac.ref.Get(ac.IAM); err != nil {
+			ac.lostCtl()
+			return err
 		}
+		ac.HasCtl = true
+		ac.Ctl.copy(&ac.ref)
+		return nil
 	})
 }
 
-// Save updates control information for all accounts. When changing the owner,
-// the caller must refresh account control information after a delay to confirm
-// owner status.
+// Save saves control information for all accounts. When setting an owner, the
+// caller must refresh account control information after a delay to confirm
+// ownership.
 func (s Accounts) Save() Accounts {
-	return s.Apply(func(_ int, ac *Account) {
-		if ac.Ctl == nil {
-			if ac.Err == nil {
-				ac.Err = ErrNoCtl
-			}
-			return
+	return s.Map(func(_ int, ac *Account) error {
+		if !ac.HasCtl {
+			return ErrNoCtl
 		}
 
 		// Get current state and merge changes
 		var cur Ctl
-		if ac.Err = cur.Get(ac.iam); ac.Err != nil {
-			return
-		} else if ac.merge(&cur, &ac.ref); cur.eq(ac.Ctl) {
+		if err := cur.Get(ac.IAM); err != nil {
+			return err
+		}
+		if ac.Ctl.merge(&cur, &ac.ref); cur.eq(&ac.Ctl) {
 			ac.ref = cur
-			return // Nothing to do
+			return nil
 		}
 
 		// To change the owner, current and reference states must match
-		if cur.Owner != ac.Owner && cur.Owner != ac.ref.Owner {
-			ac.Err, ac.ref = errCtlUpdate, cur
-			return
+		if cur.Owner != ac.Ctl.Owner && cur.Owner != ac.ref.Owner {
+			ac.ref = cur
+			return errCtlUpdate
 		}
 
 		// Update state
-		if ac.Err = ac.Ctl.Set(ac.iam); ac.Err == nil {
-			ac.ref.copy(ac.Ctl)
+		if err := ac.Ctl.Set(ac.IAM); err != nil {
+			return err
 		}
-	})
-}
-
-// Apply executes fn on each account concurrently.
-func (s Accounts) Apply(fn func(i int, ac *Account)) Accounts {
-	fast.ForEachIO(len(s), func(i int) error {
-		fn(i, s[i])
+		ac.ref.copy(&ac.Ctl)
 		return nil
 	})
-	return s
 }
 
 // byName implements sort.Interface to sort accounts by name.
 type byName Accounts
 
-func (s byName) Len() int      { return len(s) }
-func (s byName) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s byName) Less(i, j int) bool {
-	if s[i].Name == s[j].Name {
-		return s[i].ID < s[j].ID
+func (s byName) Len() int           { return len(s) }
+func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byName) Less(i, j int) bool { return s[i].key.less(s[j].key) }
+
+// sortKey is a string representation used for natural sorting. The original
+// string is split into string-number pairs, with the string part converted to
+// upper case for case-insensitive comparison (good enough for our purposes).
+type sortKey [3]sortPair
+
+type sortPair struct {
+	s string
+	n uint64
+}
+
+func natSortKey(s string) (k sortKey) {
+	i, j, v, s := -1, 0, 0, strings.ToUpper(s)
+	for s != "" {
+		// Find the next run of digits s[i:j]
+		for ; j < len(s); j++ {
+			if s[j]-'0' <= 9 {
+				if i < 0 {
+					i = j
+				}
+			} else if i >= 0 {
+				break
+			}
+		}
+		if i < 0 {
+			k[v].s = s
+			break
+		}
+		if n, err := strconv.ParseUint(s[i:j], 10, 64); err == nil {
+			k[v] = sortPair{s[:i], n}
+			s, i, j = s[j:], -1, 0
+			if v++; v == len(k)-1 {
+				k[v].s = s
+				break
+			}
+		} else {
+			i = -1
+		}
 	}
-	return s[i].Name < s[j].Name
+	return
+}
+
+func (k sortKey) less(o sortKey) bool {
+	for i := range k {
+		if k[i].s != o[i].s {
+			return k[i].s < o[i].s
+		}
+		if k[i].n != o[i].n {
+			return k[i].n < o[i].n
+		}
+	}
+	return false
 }

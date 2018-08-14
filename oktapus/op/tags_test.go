@@ -35,8 +35,8 @@ func TestParseTags(t *testing.T) {
 	for _, test := range tests {
 		set, clr, err := ParseTags(test.tags)
 		require.NoError(t, err)
-		assert.Equal(t, test.set, strings.Join(set, ","), "tags=%q", test.tags)
-		assert.Equal(t, test.clr, strings.Join(clr, ","), "tags=%q", test.tags)
+		assert.Equal(t, test.set, set.Sort().String(), "tags=%q", test.tags)
+		assert.Equal(t, test.clr, clr.String(), "tags=%q", test.tags)
 	}
 	for _, tags := range []string{",", "x=y", "err", "a*", "*", "!"} {
 		_, _, err := ParseTags(tags)
@@ -89,8 +89,8 @@ func TestDiff(t *testing.T) {
 		u, _, err := ParseTags(test.u)
 		require.NoError(t, err)
 		set, clr := g.Diff(u)
-		assert.Equal(t, test.set, strings.Join(set, ","), "t=%q u=%q", test.t, test.u)
-		assert.Equal(t, test.clr, strings.Join(clr, ","), "t=%q u=%q", test.t, test.u)
+		assert.Equal(t, test.set, set.String(), "t=%q u=%q", test.t, test.u)
+		assert.Equal(t, test.clr, clr.String(), "t=%q u=%q", test.t, test.u)
 
 		u.Apply(set, clr)
 		assert.Equal(t, test.t, strings.Join(u, ","), "t=%q u=%q", test.t, test.u)
@@ -139,7 +139,7 @@ func TestApply(t *testing.T) {
 		clr, _, err := ParseTags(test.clr)
 		require.NoError(t, err)
 		u.Apply(set, clr)
-		assert.Equal(t, test.u, strings.Join(u, ","), "t=%q set=%q clr=%q",
+		assert.Equal(t, test.u, u.String(), "t=%q set=%q clr=%q",
 			test.t, test.set, test.clr)
 	}
 }
