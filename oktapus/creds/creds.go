@@ -3,6 +3,7 @@ package creds
 import (
 	"errors"
 	"path"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,9 +42,9 @@ func FromSTS(src *sts.Credentials) aws.Credentials {
 
 // Set is a convenience function to set client credentials. SDK v2 is a bit
 // confused about which field to use for this purpose.
-func Set(c *aws.Client, cr aws.CredentialsProvider) {
-	c.Credentials = cr
-	c.Config.Credentials = cr
+func Set(c *aws.Client, cp aws.CredentialsProvider) {
+	c.Credentials = cp
+	c.Config.Credentials = cp
 }
 
 // Ident contains the results of sts:GetCallerIdentity API call.
@@ -135,9 +136,9 @@ func (p *Proxy) Provider(in *sts.AssumeRoleInput) *Provider {
 type RenewFunc func() (aws.Credentials, error)
 
 // Provider is a replacement for aws.SafeCredentialsProvider. It allows clients
-// to ensure credential validity for a period of time in the future, and caches
-// error information to avoid unnecessary network traffic. Provider values must
-// not be copied.
+// to ensure credential validity for a period of time in the future. It also
+// caches errors to avoid unnecessary network traffic. Provider values must not
+// be copied.
 type Provider struct {
 	cr    atomic.Value
 	mu    sync.Mutex
@@ -147,20 +148,48 @@ type Provider struct {
 // StaticProvider returns an aws.CredentialsProvider that provides static
 // credentials or an error.
 func StaticProvider(cr aws.Credentials, err error) *Provider {
-	p := new(Provider)
 	if cr.Source == "" {
 		cr.Source = StaticProviderName
 	}
-	p.cr.Store(&creds{cr, err})
+	p := new(Provider)
+	p.Store(cr, err)
 	return p
 }
 
 // RenewableProvider returns an aws.CredentialsProvider that automatically
 // renews its credentials as they expire.
 func RenewableProvider(fn RenewFunc) *Provider {
-	p := &Provider{renew: fn}
-	p.cr.Store((*creds)(nil))
-	return p
+	return &Provider{renew: fn}
+}
+
+// Wrap converts an existing aws.CredentialsProvider to a Provider instance. If
+// cp is a SafeCredentialsProvider, it must not be used by other goroutines
+// during this call, and its RetrieveFn will no longer be protected by a single
+// mutex if the new and old providers are used concurrently.
+func Wrap(cp aws.CredentialsProvider) *Provider {
+	switch cp := cp.(type) {
+	case *Provider:
+		return cp
+	case aws.StaticCredentialsProvider:
+		return StaticProvider(cp.Retrieve())
+	case *aws.StaticCredentialsProvider:
+		return StaticProvider(cp.Retrieve())
+	case *aws.SafeCredentialsProvider:
+		// Temporarily swap out RetrieveFn to get cached creds
+		fn := cp.RetrieveFn
+		cp.RetrieveFn = func() (aws.Credentials, error) {
+			return aws.Credentials{}, ErrUnable
+		}
+		cr, err := cp.Retrieve()
+		cp.RetrieveFn = fn
+		p := RenewableProvider(fn)
+		if err != ErrUnable {
+			p.Store(cr, err)
+		}
+		return p
+	}
+	// TODO: Handle ChainProvider?
+	panic("creds: unsupported provider type " + reflect.TypeOf(cp).String())
 }
 
 // Retrieve implements aws.CredentialsProvider.
@@ -170,10 +199,15 @@ func (p *Provider) Retrieve() (aws.Credentials, error) {
 
 // Creds returns currently cached credentials and error without renewal.
 func (p *Provider) Creds() (aws.Credentials, error) {
-	if cr := p.cr.Load().(*creds); cr != nil {
+	if cr, _ := p.cr.Load().(*creds); cr != nil {
 		return cr.Credentials, cr.err
 	}
 	return aws.Credentials{}, nil
+}
+
+// Store replaces any cached credentials and/or error with the specified values.
+func (p *Provider) Store(cr aws.Credentials, err error) {
+	p.cr.Store(&creds{cr, err})
 }
 
 // Ensure ensures that credentials will remain valid for the specified duration,
@@ -185,14 +219,14 @@ func (p *Provider) Ensure(d time.Duration) error {
 }
 
 func (p *Provider) ensure(d time.Duration) (aws.Credentials, error) {
-	cr := p.cr.Load().(*creds)
+	cr, _ := p.cr.Load().(*creds)
 	if cr.keepCurrent(d) {
 		return cr.Credentials, cr.err
 	}
 	if p.renew != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		if cr = p.cr.Load().(*creds); cr.keepCurrent(d) {
+		if cr, _ = p.cr.Load().(*creds); cr.keepCurrent(d) {
 			return cr.Credentials, cr.err
 		}
 		cr = new(creds)

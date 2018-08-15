@@ -59,6 +59,23 @@ func TestProxy(t *testing.T) {
 	assert.Equal(t, want, cr)
 }
 
+func TestZeroProvider(t *testing.T) {
+	var p Provider
+	cr, err := p.Creds()
+	assert.NoError(t, err)
+	assert.Zero(t, cr)
+
+	cr, err = p.Retrieve()
+	assert.Equal(t, ErrUnable, err)
+	assert.Zero(t, cr)
+
+	want := aws.Credentials{Source: "external"}
+	p.Store(want, nil)
+	cr, err = p.Retrieve()
+	assert.NoError(t, err)
+	assert.Equal(t, want, cr)
+}
+
 func TestStaticProvider(t *testing.T) {
 	fast.MockTime(fast.Time())
 	defer fast.MockTime(time.Time{})
@@ -87,6 +104,32 @@ func TestStaticProvider(t *testing.T) {
 	cr, err = p.Retrieve()
 	assert.Equal(t, e, err)
 	assert.Equal(t, want, cr)
+}
+
+func TestWrap(t *testing.T) {
+	static := aws.NewStaticCredentialsProvider("key", "secret", "")
+	static.Value.Source = "test"
+
+	cr, err := Wrap(static).Retrieve()
+	assert.NoError(t, err)
+	assert.Equal(t, static.Value, cr)
+
+	cr, err = Wrap(Wrap(&static)).Retrieve()
+	assert.NoError(t, err)
+	assert.Equal(t, static.Value, cr)
+
+	safe := aws.SafeCredentialsProvider{RetrieveFn: func() (aws.Credentials, error) {
+		return static.Value, nil
+	}}
+	cr, err = Wrap(&safe).Retrieve()
+	assert.NoError(t, err)
+	assert.Equal(t, static.Value, cr)
+
+	cached, _ := safe.Retrieve()
+	safe.RetrieveFn = func() (aws.Credentials, error) { panic("fail") }
+	cr, err = Wrap(&safe).Retrieve()
+	assert.NoError(t, err)
+	assert.Equal(t, cached, cr)
 }
 
 func TestProvider(t *testing.T) {
