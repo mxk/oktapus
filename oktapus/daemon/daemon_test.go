@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/gob"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -13,36 +14,69 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testAddr = Addr("127.0.0.1:0")
+
+var skipAll bool
+
 func TestIsNotRunning(t *testing.T) {
-	_, err := Send("", nil)
+	defer func() { skipAll = t.Failed() }()
+
+	start := time.Now()
+	_, err := Addr("").Send(nil)
+	assert.True(t, time.Since(start) < time.Second)
+
 	assert.True(t, IsNotRunning(err))
 	assert.False(t, IsNotRunning(nil))
+	assert.False(t, IsNotRunning(io.EOF))
+}
+
+func TestKill(t *testing.T) {
+	defer func() { skipAll = t.Failed() }()
+	d, killFn := start(t, nil)
+	assert.NotEqual(t, string(testAddr), string(d))
+	killFn()
+
+	start := time.Now()
+	assert.NoError(t, d.Kill())
+	assert.True(t, time.Since(start) < time.Second)
+
+	_, err := d.Send(nil)
+	assert.True(t, IsNotRunning(err))
 }
 
 func TestFdDaemon(t *testing.T) {
-	addr, kill := runDaemon(t, true)
+	d, kill := start(t, nil)
 	defer kill()
 
-	out, err := Send(addr, nil)
+	out, err := d.Send(nil)
 	assert.NoError(t, err)
 	assert.Nil(t, out)
 
-	out, err = Send(addr, "hello, world")
+	out, err = d.Send("hello, world")
 	assert.NoError(t, err)
 	assert.Equal(t, "hello, world", out)
 
-	out, err = Send(addr, 123)
+	out, err = d.Send(123)
 	assert.NoError(t, err)
 	assert.Equal(t, 123, out)
 }
 
 func TestAddrDaemon(t *testing.T) {
-	addr, kill := runDaemon(t, false)
+	d, kill := start(t, echo)
 	defer kill()
 
-	out, err := Send(addr, addr)
+	out, err := d.Send(string(d))
 	assert.NoError(t, err)
-	assert.Equal(t, addr, out)
+	assert.Equal(t, string(d), out)
+}
+
+func TestClose(t *testing.T) {
+	d, kill := start(t, func(q *Request) { close(q.Rch) })
+	defer kill()
+
+	out, err := d.Send(nil)
+	assert.Equal(t, io.EOF, err)
+	assert.Nil(t, out)
 }
 
 type decErr string
@@ -51,55 +85,74 @@ func (e decErr) Error() string              { return string(e) }
 func (e decErr) GobEncode() ([]byte, error) { return []byte(e), nil }
 func (decErr) GobDecode(b []byte) error     { return decErr(b) }
 
-func TestDecodeError(t *testing.T) {
-	addr, kill := runDaemon(t, true)
+type encErr string
+
+func (e encErr) Error() string              { return string(e) }
+func (e encErr) GobEncode() ([]byte, error) { return nil, e }
+
+func TestGobError(t *testing.T) {
+	d, kill := start(t, func(q *Request) { q.Rch <- encErr(q.Msg.(string)) })
 	defer kill()
 
 	gob.Register(decErr(""))
-	out, err := Send(addr, decErr("fail"))
-	assert.EqualError(t, err, "fail")
-	assert.Nil(t, out)
+	assert.PanicsWithValue(t, "daemon decode: decErr", func() {
+		d.Send(decErr("decErr"))
+	})
+
+	gob.Register(encErr(""))
+	assert.PanicsWithValue(t, "daemon encode: encErr", func() {
+		d.Send("encErr")
+	})
 }
 
-func runDaemon(t *testing.T, useFd bool) (addr string, kill func()) {
-	done := make(chan struct{})
-	addr, err := Start("127.0.0.1:0", func(c *exec.Cmd) error {
-		if s := c.ExtraFiles[0]; useFd {
-			fd, err := syscall.Dup(int(s.Fd()))
+func start(t *testing.T, fn func(q *Request)) (d Addr, kill func()) {
+	if skipAll {
+		t.Skip("unable to kill daemon")
+	}
+	d = testAddr
+	term := make(chan struct{})
+	require.NoError(t, d.Start(func(c *exec.Cmd) error {
+		if f := c.ExtraFiles[0]; fn == nil {
+			// f is about to be closed, so need to dup and update fdEnv
+			fd, err := syscall.Dup(int(f.Fd()))
 			require.NoError(t, err)
 			os.Setenv(fdEnv, strconv.Itoa(fd))
 			defer os.Unsetenv(fdEnv)
 		} else {
-			s.Close()
+			f.Close()
 		}
-		qch, err := Serve(c.Args[len(c.Args)-1])
+		qch, err := d.Serve()
 		require.NoError(t, err)
-		go daemon(qch, done)
+		if fn == nil {
+			fn = echo
+		}
+		go daemon(qch, term, fn)
 		return nil
-	})
-	require.NoError(t, err)
-	return addr, func() {
-		assert.NoError(t, Kill(addr))
+	}))
+	return d, func() {
+		assert.NoError(t, d.Kill())
 		select {
-		case <-done:
+		case <-term:
 		case <-time.After(time.Second):
 			t.Fatal("daemon goroutine did not terminate")
 		}
 	}
 }
 
-func daemon(req <-chan *Request, done chan<- struct{}) {
-	defer close(done)
-	timeout := time.After(timeout + 1*time.Second)
+func daemon(qch <-chan *Request, term chan<- struct{}, fn func(q *Request)) {
+	defer close(term)
+	timeout := time.After(ioTimeout + 1*time.Second)
 	for {
 		select {
-		case q := <-req:
-			if q == nil {
+		case q, ok := <-qch:
+			if !ok {
 				return
 			}
-			q.Rch <- q.Msg
+			fn(q)
 		case <-timeout:
 			panic("daemon goroutine timeout")
 		}
 	}
 }
+
+func echo(q *Request) { q.Rch <- q.Msg }
