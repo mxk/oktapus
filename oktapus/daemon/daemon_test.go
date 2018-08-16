@@ -44,7 +44,7 @@ func TestKill(t *testing.T) {
 	assert.True(t, IsNotRunning(err))
 }
 
-func TestFdDaemon(t *testing.T) {
+func TestDaemonFd(t *testing.T) {
 	d, kill := start(t, nil)
 	defer kill()
 
@@ -61,7 +61,7 @@ func TestFdDaemon(t *testing.T) {
 	assert.Equal(t, 123, out)
 }
 
-func TestAddrDaemon(t *testing.T) {
+func TestDaemonAddr(t *testing.T) {
 	d, kill := start(t, echo)
 	defer kill()
 
@@ -103,6 +103,20 @@ func TestGobError(t *testing.T) {
 	assert.PanicsWithValue(t, "daemon encode: encErr", func() {
 		d.Send("encErr")
 	})
+}
+
+type errMsg string
+
+func (e errMsg) Error() string { return string(e) }
+
+func TestDaemonError(t *testing.T) {
+	d, kill := start(t, func(q *Request) { q.Rch <- errMsg(q.Msg.(string)) })
+	defer kill()
+
+	gob.Register(errMsg(""))
+	out, err := d.Send("daemon error")
+	assert.Equal(t, errMsg("daemon error"), err)
+	assert.Nil(t, out)
 }
 
 func start(t *testing.T, fn func(q *Request)) (d Addr, kill func()) {

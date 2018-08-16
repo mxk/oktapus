@@ -107,10 +107,16 @@ func (d Addr) Send(msg interface{}) (interface{}, error) {
 		return nil, err
 	}
 	var rsp interface{}
-	if err = gob.NewDecoder(c).Decode(&rsp); err != nil {
+	if err = gob.NewDecoder(c).Decode(&rsp); err == nil {
+		switch v := rsp.(type) {
+		case gobError:
+			panic(string(v))
+		case error:
+			rsp = nil
+			err = v
+		}
+	} else {
 		rsp = nil
-	} else if e, ok := rsp.(gobError); ok {
-		panic(string(e))
 	}
 	return rsp, err
 }
