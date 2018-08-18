@@ -36,9 +36,11 @@ type Addr string
 // adjustments to the command parameters.
 type StartFunc func(c *exec.Cmd) error
 
-// Request contains the message received by the daemon and the response channel.
-// Closing the channel without sending a response closes the network connection.
+// Request contains the client connection, the received message, and the
+// response channel. The handler must either send a response via Rch or close
+// it without sending anything, which will close the network connection.
 type Request struct {
+	net.Conn
 	Msg interface{}
 	Rch chan<- interface{}
 }
@@ -227,7 +229,7 @@ func (c *conn) serve(qch chan<- *Request) bool {
 	// Handle
 	if rsp == nil {
 		rch := make(chan interface{})
-		qch <- &Request{msg, rch} // TODO: Timeout?
+		qch <- &Request{c, msg, rch} // TODO: Timeout?
 		var ok bool
 		if rsp, ok = <-rch; !ok {
 			return true
