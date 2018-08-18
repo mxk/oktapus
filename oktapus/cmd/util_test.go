@@ -9,7 +9,7 @@ import (
 )
 
 func mockOrg(ctx arn.Ctx, accounts ...string) (*op.Ctx, *mock.AWS) {
-	c := new(op.Ctx)
+	c := op.NewCtx()
 	w := mock.NewAWS(ctx, mock.NewOrg(ctx, "master", accounts...))
 	for id := range w.Root().OrgRouter().Accounts {
 		*w.Account(id) = mock.ChainRouter{mock.UserRouter{}, mock.RoleRouter{}}

@@ -20,9 +20,9 @@ type listCmd struct {
 	Spec    string
 }
 
-func (cmd *listCmd) Info() *cli.Info { return listCli }
+func (*listCmd) Info() *cli.Info { return listCli }
 
-func (cmd *listCmd) Help(w *cli.Writer) {
+func (*listCmd) Help(w *cli.Writer) {
 	w.Text("List accounts.")
 	accountSpecHelp(w)
 }
