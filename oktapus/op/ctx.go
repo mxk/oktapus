@@ -209,9 +209,10 @@ func (c *Ctx) Refresh() error {
 	// TODO: Allow using "-" in alias file to remove org accounts?
 	// TODO: Reuse accounts?
 	c.acs = make(map[string]*Account)
-	set := func(ac *Account, id, name string) {
+	set := func(ac *Account, id, name string) *Account {
 		ac.ID = id
 		ac.Name = name
+		return ac
 	}
 	if c.AliasFile != "" {
 		m, err := account.LoadAliases(c.AliasFile, c.proxy.Ident.Partition())
@@ -234,7 +235,7 @@ func (c *Ctx) Refresh() error {
 	if len(c.dir.Accounts) > 0 {
 		i, acs := 0, make([]Account, len(c.dir.Accounts))
 		for _, info := range c.dir.Accounts {
-			set(&acs[i], info.ID, info.Name)
+			set(&acs[i], info.ID, info.Name).Set(OrgFlag)
 			i++
 		}
 		c.Register(initAccounts(acs))

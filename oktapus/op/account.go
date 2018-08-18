@@ -21,6 +21,7 @@ const (
 	LoadFlag  Flags = 1 << iota // Control information load was attempted
 	CredsFlag                   // Credentials are valid
 	CtlFlag                     // Control information is valid
+	OrgFlag                     // Account belongs to an organization
 )
 
 // Set sets the specified flag bits.
