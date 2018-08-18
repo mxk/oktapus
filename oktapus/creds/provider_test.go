@@ -11,6 +11,31 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestValid(t *testing.T) {
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
+
+	assert.False(t, ValidFor(nil, 0))
+
+	// No creds
+	cr := aws.Credentials{}
+	cr.Expires = fast.Time().Add(time.Minute)
+	assert.False(t, ValidFor(&cr, time.Hour))
+
+	// Permanent creds
+	cr.AccessKeyID = "id"
+	cr.SecretAccessKey = "secret"
+	assert.True(t, ValidFor(&cr, time.Hour))
+	assert.False(t, ValidFor(&cr, -1))
+
+	// Temporary creds
+	cr.CanExpire = true
+	assert.True(t, ValidUntil(&cr, cr.Expires))
+	assert.False(t, ValidUntil(&cr, cr.Expires.Add(1)))
+	assert.True(t, ValidFor(&cr, time.Minute))
+	assert.False(t, ValidFor(&cr, time.Minute+1))
+}
+
 func TestZeroProvider(t *testing.T) {
 	var p Provider
 	cr, err := p.Creds()

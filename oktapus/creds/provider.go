@@ -27,6 +27,16 @@ var ErrUnable = errors.New("creds: unable to satisfy minimum expiration time")
 // automatically caches the error for a limited amount of time.
 type RenewFunc func() (aws.Credentials, error)
 
+// ValidUntil returns true if credentials cr will remain valid until time t.
+func ValidUntil(cr *aws.Credentials, t time.Time) bool {
+	return cr != nil && cr.HasKeys() && !(cr.CanExpire && cr.Expires.Before(t))
+}
+
+// ValidFor returns true if credentials cr will remain valid for duration d.
+func ValidFor(cr *aws.Credentials, d time.Duration) bool {
+	return d >= 0 && ValidUntil(cr, fast.Time().Add(d))
+}
+
 // Provider is a replacement for aws.SafeCredentialsProvider. It allows clients
 // to ensure credential validity for a period of time in the future. It also
 // caches errors to avoid unnecessary network traffic. Provider values must not
