@@ -7,6 +7,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ec2rolecreds"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -75,6 +76,9 @@ func TestWrap(t *testing.T) {
 	cr, err = WrapProvider(&safe).Retrieve()
 	assert.NoError(t, err)
 	assert.Equal(t, static.Value, cr)
+
+	ec2cr := ec2rolecreds.NewProvider(nil)
+	assert.NotPanics(t, func() { WrapProvider(ec2cr) })
 
 	cached, _ := safe.Retrieve()
 	safe.RetrieveFn = func() (aws.Credentials, error) { panic("fail") }

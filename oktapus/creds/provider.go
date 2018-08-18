@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ec2rolecreds"
 )
 
 // Source names of credentials providers.
@@ -78,6 +79,8 @@ func WrapProvider(cp aws.CredentialsProvider) *Provider {
 			p.Store(cr, err)
 		}
 		return p
+	case *ec2rolecreds.Provider:
+		return WrapProvider(&cp.SafeCredentialsProvider)
 	}
 	// TODO: Handle ChainProvider?
 	panic("creds: unsupported provider type " + reflect.TypeOf(cp).String())
