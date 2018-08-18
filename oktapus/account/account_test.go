@@ -83,7 +83,7 @@ func TestDirectory(t *testing.T) {
 			panic("unsupported api: " + q.Operation.Name)
 		}
 	})
-	d := NewDirectory(&cfg)
+	d := Directory{Client: NewClient(&cfg)}
 	require.NoError(t, d.Init())
 	assert.Equal(t, Org{MasterID: "000000000000"}, d.Org)
 

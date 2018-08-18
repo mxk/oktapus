@@ -42,7 +42,7 @@ func TestProxy(t *testing.T) {
 			}
 		}
 	})
-	p := NewProxy(&cfg)
+	p := Proxy{Client: NewClient(&cfg)}
 	require.NoError(t, p.Init())
 
 	cr, err := p.AssumeRole(p.Role("", "testrole"), 0).Retrieve()

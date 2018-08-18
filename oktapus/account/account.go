@@ -119,16 +119,23 @@ func (o *Org) Set(src *orgs.Organization) {
 	o.MasterID = aws.StringValue(src.MasterAccountId)
 }
 
+// Client extends Organizations API client.
+type Client struct{ orgs.Organizations }
+
+// NewClient returns a new Organizations client.
+func NewClient(cfg *aws.Config) Client { return Client{*orgs.New(*cfg)} }
+
+// GobEncode prevents the client from being encoded by gob.
+func (Client) GobEncode() ([]byte, error) { return nil, nil }
+
+// GobDecode prevents the client from being decoded by gob.
+func (Client) GobDecode([]byte) error { return nil }
+
 // Directory retrieves account information from AWS Organizations API.
 type Directory struct {
-	Client   orgs.Organizations
+	Client   Client
 	Org      Org
 	Accounts map[string]*Info
-}
-
-// NewDirectory returns a new account directory.
-func NewDirectory(cfg *aws.Config) *Directory {
-	return &Directory{Client: *orgs.New(*cfg)}
 }
 
 // Init initializes organization information.

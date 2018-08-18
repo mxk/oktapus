@@ -57,16 +57,23 @@ func (id Ident) SessName() string {
 	return id.UserID
 }
 
+// Client extends STS API client.
+type Client struct{ sts.STS }
+
+// NewClient returns a new STS client.
+func NewClient(cfg *aws.Config) Client { return Client{*sts.New(*cfg)} }
+
+// GobEncode prevents the client from being encoded by gob.
+func (Client) GobEncode() ([]byte, error) { return nil, nil }
+
+// GobDecode prevents the client from being decoded by gob.
+func (Client) GobDecode([]byte) error { return nil }
+
 // Proxy provides IAM role credentials via sts:AssumeRole API.
 type Proxy struct {
-	Client   sts.STS
+	Client   Client
 	Ident    Ident
 	SessName string
-}
-
-// NewProxy returns a new credentials proxy.
-func NewProxy(cfg *aws.Config) *Proxy {
-	return &Proxy{Client: *sts.New(*cfg)}
 }
 
 // Init initializes client identity information and role session name.
