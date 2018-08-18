@@ -63,7 +63,7 @@ func (d *Addr) Start(fn StartFunc) error {
 	}
 	defer f.Close()
 	s.Close() // Ensure that only one socket descriptor remains open for fn
-	return fn(initCmd(&exec.Cmd{
+	cmd := initCmd(&exec.Cmd{
 		Path:       path,
 		Args:       []string{filepath.Base(path), "daemon", string(*d)},
 		Env:        append(os.Environ(), fdEnv+"=3"),
@@ -71,7 +71,11 @@ func (d *Addr) Start(fn StartFunc) error {
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
 		ExtraFiles: []*os.File{f},
-	}))
+	})
+	if fn == nil {
+		return cmd.Start()
+	}
+	return fn(cmd)
 }
 
 // Serve returns the channel on which the daemon will send incoming messages.
