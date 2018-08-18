@@ -1,8 +1,10 @@
 package op
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha512"
+	"encoding/gob"
 	"encoding/hex"
 	"io/ioutil"
 	"os"
@@ -37,7 +39,8 @@ func TestCtx(t *testing.T) {
 
 func TestMasterExternalID(t *testing.T) {
 	var ctx Ctx
-	assert.Nil(t, ctx.MasterExternalID())
+	assert.Panics(t, func() { ctx.MasterExternalID() })
+	ctx.mode = IAM
 	ctx.dir.Org = account.Org{
 		ID:          "o-test",
 		MasterID:    "000000000000",
@@ -46,6 +49,13 @@ func TestMasterExternalID(t *testing.T) {
 	h := hmac.New(sha512.New512_256, []byte("o-test"))
 	h.Write([]byte("oktapus:000000000000:master@example.com"))
 	assert.Equal(t, hex.EncodeToString(h.Sum(nil)), *ctx.MasterExternalID())
+}
+
+func TestSavedCtx(t *testing.T) {
+	var b bytes.Buffer
+	require.NoError(t, gob.NewEncoder(&b).Encode(new(SavedCtx)))
+	var v SavedCtx
+	require.NoError(t, gob.NewDecoder(&b).Decode(&v))
 }
 
 func TestSetEnvFields(t *testing.T) {

@@ -58,7 +58,24 @@ func NewAccount(id, name string) *Account {
 	if !account.IsID(id) {
 		panic("op: invalid account id: " + id)
 	}
-	return &Account{ID: id, Name: name, key: natSortKey(name + "\x00" + id)}
+	ac := &Account{ID: id, Name: name}
+	ac.updateSortKey()
+	return ac
+}
+
+// initAccounts initializes multiple accounts in an pre-allocated pool.
+func initAccounts(pool []Account) Accounts {
+	if len(pool) == 0 {
+		return nil
+	}
+	acs := make(Accounts, len(pool))
+	for i := range pool {
+		ac := &pool[i]
+		ac.ref = ac.Ctl
+		ac.updateSortKey()
+		acs[i] = ac
+	}
+	return acs
 }
 
 // CredsProvider returns the credentials provider for account ac.
@@ -80,11 +97,22 @@ func (ac *Account) CtlUpdate(err error) error {
 	return err
 }
 
+// updateSortKey updates account sort-by-name key.
+func (ac *Account) updateSortKey() {
+	ac.key = natSortKey(ac.Name + "\x00" + ac.ID)
+}
+
 // Accounts is a group of accounts that can be operated on concurrently.
 type Accounts []*Account
 
-// Sort sorts accounts by name.
-func (s Accounts) Sort() Accounts {
+// SortByID sorts accounts by ID.
+func (s Accounts) SortByID() Accounts {
+	sort.Sort(byID(s))
+	return s
+}
+
+// SortByName sorts accounts by name.
+func (s Accounts) SortByName() Accounts {
 	sort.Sort(byName(s))
 	return s
 }
@@ -193,6 +221,13 @@ func (s Accounts) StoreCtl() Accounts {
 		return err
 	})
 }
+
+// byID implements sort.Interface to sort accounts by ID.
+type byID Accounts
+
+func (s byID) Len() int           { return len(s) }
+func (s byID) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byID) Less(i, j int) bool { return s[i].ID < s[j].ID }
 
 // byName implements sort.Interface to sort accounts by name.
 type byName Accounts
