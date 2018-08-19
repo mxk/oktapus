@@ -39,8 +39,8 @@ func TestCtl(t *testing.T) {
 
 	set = Ctl{Owner: "bob"}
 	get = set
-	c.err = errCtlUpdate
-	require.EqualError(t, set.Store(c.iam), errCtlUpdate.Error())
+	c.err = ErrCtlUpdate
+	require.EqualError(t, set.Store(c.iam), ErrCtlUpdate.Error())
 	assert.Equal(t, set, get)
 
 	c.err = nil
@@ -180,7 +180,7 @@ func (c *ctlIAM) getRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
 func (c *ctlIAM) updateRoleDescription(in *iam.UpdateRoleDescriptionInput) (*iam.UpdateRoleDescriptionOutput, error) {
 	if c.err == nil {
 		c.desc = in.Description
-	} else if c.err != errCtlUpdate {
+	} else if c.err != ErrCtlUpdate {
 		return new(iam.UpdateRoleDescriptionOutput), c.err
 	}
 	return &iam.UpdateRoleDescriptionOutput{Role: &iam.Role{

@@ -32,6 +32,7 @@ import (
 func init() {
 	gob.Register((*GetCtx)(nil))
 	gob.Register((*SavedCtx)(nil))
+	gob.Register(Error(""))
 }
 
 // Paths for managed IAM users and roles.
@@ -40,10 +41,16 @@ const (
 	IAMTmpPath = IAMPath + "tmp/"
 )
 
-// cmd is a cli command that requires a context.
+// cmd is a CLI command that requires a context.
 type cmd interface {
 	cli.Cmd
-	Run(ctx *Ctx) (interface{}, error)
+	Run(*Ctx) (interface{}, error)
+}
+
+// printCmd is a CLI command that can print its output.
+type printCmd interface {
+	cmd
+	Print(interface{}) error
 }
 
 // Run executes the specified command with a local context.
@@ -57,6 +64,16 @@ func Run(c cmd) (interface{}, error) {
 		err = err2
 	}
 	return out, err
+}
+
+// RunAndPrint executes the specified command with a local context and prints
+// its output.
+func RunAndPrint(c printCmd) error {
+	out, err := Run(c)
+	if err == nil {
+		err = c.Print(out)
+	}
+	return err
 }
 
 // AuthMode is the context authentication mode.
@@ -86,6 +103,12 @@ type GetCtx struct {
 	Ver
 	Sig string
 }
+
+// Error is an error type that can be encoded by gob.
+type Error string
+
+// Error implements error interface.
+func (e Error) Error() string { return string(e) }
 
 // Oktapus environment variables. Okta variables use same names as:
 // https://github.com/oktadeveloper/okta-aws-cli-assume-role/
@@ -539,24 +562,33 @@ func (c *Ctx) setMasterCreds() {
 	}
 }
 
-// saveCreds returns serializable copies of all valid credentials that expire
-// after exp.
-func (c *Ctx) saveCreds(exp time.Time) map[string]*aws.Credentials {
+type savedCreds struct {
+	Account string
+	Creds   aws.Credentials
+	Err     error
+}
+
+// saveCreds returns serializable copies of all credentials that are either
+// valid until time t or have an unexpired error.
+func (c *Ctx) saveCreds(t time.Time) []savedCreds {
 	if len(c.creds) == 0 {
 		return nil
 	}
-	crs := make(map[string]*aws.Credentials, len(c.creds))
+	i, crs := 0, make([]savedCreds, len(c.creds))
 	for id, cp := range c.creds {
-		cr, err := cp.Creds()
-		// TODO: Save errors?
-		if err == nil && cr.HasKeys() && (!cr.CanExpire || cr.Expires.After(exp)) {
-			crs[id] = &cr
+		sc := &crs[i]
+		if sc.Creds, sc.Err = cp.Creds(); sc.Err != nil {
+			sc.Err = Error(sc.Err.Error())
+		} else if !creds.ValidUntil(&sc.Creds, t) {
+			continue
 		}
+		sc.Account = id
+		i++
 	}
-	if len(crs) == 0 {
+	if i == 0 {
 		crs = nil
 	}
-	return crs
+	return crs[:i]
 }
 
 // saveAccounts returns serializable copies of all accounts.
@@ -585,7 +617,7 @@ type SavedCtx struct {
 	ProxyIdent    creds.Ident
 	ProxySessName string
 	DirOrg        account.Org
-	Creds         map[string]*aws.Credentials
+	Creds         []savedCreds
 	Accounts      []Account
 }
 
@@ -603,7 +635,7 @@ func newSavedCtx(c *Ctx) *SavedCtx {
 		ProxyIdent:    c.proxy.Ident,
 		ProxySessName: c.proxy.SessName,
 		DirOrg:        c.dir.Org,
-		Creds:         c.saveCreds(fast.Time().Add(time.Minute)),
+		Creds:         c.saveCreds(fast.Time().Add(5 * time.Minute)),
 		Accounts:      c.saveAccounts(),
 	}
 	c = &sc.Ctx
@@ -637,8 +669,9 @@ func (sc *SavedCtx) restore(c *Ctx) {
 	if len(sc.Accounts) > 0 {
 		c.Register(initAccounts(sc.Accounts))
 	}
-	for id, cr := range sc.Creds {
-		c.CredsProvider(id).Store(*cr, nil)
+	for i := range sc.Creds {
+		cr := &sc.Creds[i]
+		c.CredsProvider(cr.Account).Store(cr.Creds, cr.Err)
 	}
 }
 

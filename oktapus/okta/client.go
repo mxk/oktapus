@@ -256,7 +256,7 @@ type Error struct {
 	Causes  []*Error `json:"errorCauses"`
 }
 
-// Error implements the error interface.
+// Error implements error interface.
 func (e *Error) Error() string {
 	return internal.JSON(e)
 }

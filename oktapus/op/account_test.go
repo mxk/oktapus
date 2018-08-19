@@ -10,20 +10,21 @@ import (
 )
 
 func TestFlags(t *testing.T) {
-	f := LoadFlag | CredsFlag | CtlFlag
+	f := CredsFlag | LoadFlag | CtlFlag
 	assert.True(t, f.CredsValid())
 	assert.True(t, f.CtlValid())
 
-	f.Clear(CtlFlag)
-	assert.True(t, f.CredsValid())
-	assert.False(t, f.CtlValid())
-
-	f.Clear(LoadFlag)
+	f.Clear(CredsFlag | CtlFlag)
 	assert.False(t, f.CredsValid())
 	assert.False(t, f.CtlValid())
 
-	f.Set(LoadFlag | CtlFlag)
+	f.Set(CredsFlag | CtlFlag)
+	f.Clear(LoadFlag)
 	assert.True(t, f.CredsValid())
+	assert.True(t, f.CtlValid())
+
+	f.Set(LoadFlag | CtlFlag)
+	assert.True(t, f.Test(CredsFlag))
 	assert.True(t, f.CtlValid())
 }
 
@@ -149,7 +150,7 @@ func TestAccountCtlErr(t *testing.T) {
 	require.NoError(t, other.Store(c.iam))
 	ac.Ctl.Owner = "me"
 	acs.StoreCtl()
-	assert.Equal(t, errCtlUpdate, ac.Err)
+	assert.Equal(t, ErrCtlUpdate, ac.Err)
 	assert.NotEqual(t, ac.Ctl, &ac.ref)
 	assert.Equal(t, other, &ac.ref)
 }

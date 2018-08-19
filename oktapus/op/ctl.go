@@ -3,7 +3,6 @@ package op
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,12 +17,6 @@ import (
 // CtlRole is the IAM role that stores account control information in its
 // description.
 const CtlRole = "OktapusAccountControl"
-
-// ErrNoCtl indicates missing account control information.
-var ErrNoCtl = errors.New("account control not initialized")
-
-// errCtlUpdate indicates that new account control information was not saved.
-var errCtlUpdate = errors.New("account control information update interrupted")
 
 // Ctl contains account control information.
 type Ctl struct {
@@ -168,7 +161,7 @@ func (ctl *Ctl) exec(c iamx.Client, fn func(c iamx.Client, b64 string) (*iam.Rol
 	}
 	r, err := fn(c, b64)
 	if err == nil && aws.StringValue(r.Description) != b64 {
-		err = errCtlUpdate
+		err = ErrCtlUpdate
 	}
 	return err
 }

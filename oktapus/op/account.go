@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
@@ -13,13 +14,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 )
 
+const (
+	// ErrNoAccess indicates missing or invalid account credentials.
+	ErrNoAccess = Error("account access denied")
+
+	// ErrNoCtl indicates missing account control information.
+	ErrNoCtl = Error("account control not initialized")
+
+	// ErrCtlUpdate indicates that account control information was not saved.
+	ErrCtlUpdate = Error("account control update interrupted")
+)
+
 // Flags contains account state flags.
 type Flags uint32
 
 // Flag bits.
 const (
-	LoadFlag  Flags = 1 << iota // Control information load was attempted
-	CredsFlag                   // Credentials are valid
+	CredsFlag Flags = 1 << iota // Credentials are valid
+	LoadFlag                    // Control information load was attempted
 	CtlFlag                     // Control information is valid
 	OrgFlag                     // Account belongs to an organization
 )
@@ -34,10 +46,10 @@ func (f *Flags) Clear(b Flags) { *f &^= b }
 func (f Flags) Test(b Flags) bool { return f&b == b }
 
 // CredsValid returns true if the account credentials are valid.
-func (f Flags) CredsValid() bool { return f.Test(LoadFlag | CredsFlag) }
+func (f Flags) CredsValid() bool { return f&CredsFlag != 0 }
 
 // CtlValid returns true if the account control information is valid.
-func (f Flags) CtlValid() bool { return f.Test(LoadFlag | CtlFlag) }
+func (f Flags) CtlValid() bool { return f&CtlFlag != 0 }
 
 // Account maintains control information and provides IAM access for one AWS
 // account.
@@ -86,7 +98,7 @@ func (ac *Account) CredsProvider() *creds.Provider {
 
 // CtlUpdate updates account flags after control init/load/store operation.
 func (ac *Account) CtlUpdate(err error) error {
-	if ac.Set(LoadFlag | CredsFlag | CtlFlag); err != nil {
+	if ac.Set(CredsFlag | LoadFlag | CtlFlag); err != nil {
 		e, ok := err.(awserr.RequestFailure)
 		if ok && e.StatusCode() == http.StatusForbidden {
 			// TODO: What if denied by IAM policy?
@@ -115,14 +127,6 @@ func (s Accounts) SortByID() Accounts {
 // SortByName sorts accounts by name.
 func (s Accounts) SortByName() Accounts {
 	sort.Sort(byName(s))
-	return s
-}
-
-// ClearErr clears the error state of all accounts.
-func (s Accounts) ClearErr() Accounts {
-	for _, ac := range s {
-		ac.Err = nil
-	}
 	return s
 }
 
@@ -158,13 +162,47 @@ func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
 	return s
 }
 
+// EnsureCreds ensures that credentials of all accounts will remain valid for
+// the specified duration, renewing them if necessary.
+func (s Accounts) EnsureCreds(d time.Duration) Accounts {
+	var ensure Accounts
+	if d >= 0 {
+		t := fast.Time().Add(d)
+		for i, ac := range s {
+			if cr, err := ac.CredsProvider().Creds(); err == nil {
+				if creds.ValidUntil(&cr, t) {
+					ac.Set(CredsFlag)
+				} else {
+					if ensure == nil {
+						ensure = make(Accounts, 0, len(s)-i)
+					}
+					ensure = append(ensure, ac)
+				}
+			} else {
+				ac.Clear(CredsFlag)
+				ac.Err = err
+			}
+		}
+	} else {
+		ensure = s
+	}
+	ensure.Map(func(_ int, ac *Account) error {
+		err := ac.CredsProvider().Ensure(d)
+		if err == nil {
+			ac.Set(CredsFlag)
+		} else {
+			ac.Clear(CredsFlag)
+		}
+		return err
+	})
+	return s
+}
+
 // LoadCtl loads control information for accounts without LoadFlag set. If
 // reload is true, the flag is ignored.
 func (s Accounts) LoadCtl(reload bool) Accounts {
 	var load Accounts
-	if reload {
-		load = s
-	} else {
+	if !reload {
 		for i := range s {
 			if s[i].Test(LoadFlag) {
 				continue
@@ -177,6 +215,8 @@ func (s Accounts) LoadCtl(reload bool) Accounts {
 			}
 			break
 		}
+	} else {
+		load = s
 	}
 	load.Map(func(_ int, ac *Account) error {
 		err := ac.CtlUpdate(ac.ref.Load(ac.IAM))
@@ -186,9 +226,9 @@ func (s Accounts) LoadCtl(reload bool) Accounts {
 	return s
 }
 
-// StoreCtl stores modified control information for all accounts. When setting
-// an owner, the caller must refresh account control information after a delay
-// to confirm ownership.
+// StoreCtl stores modified control information of all accounts. When setting an
+// owner, the caller must refresh account control information after a delay to
+// confirm ownership.
 func (s Accounts) StoreCtl() Accounts {
 	return s.Map(func(_ int, ac *Account) error {
 		if !ac.CtlValid() {
@@ -211,7 +251,7 @@ func (s Accounts) StoreCtl() Accounts {
 		// To change the owner, current and reference states must match
 		if cur.Owner != ac.Ctl.Owner && cur.Owner != ac.ref.Owner {
 			ac.ref = cur
-			return errCtlUpdate
+			return ErrCtlUpdate
 		}
 
 		// Update state
@@ -221,6 +261,40 @@ func (s Accounts) StoreCtl() Accounts {
 		}
 		return err
 	})
+}
+
+// ClearErr clears the error state of all accounts.
+func (s Accounts) ClearErr() Accounts {
+	for _, ac := range s {
+		ac.Err = nil
+	}
+	return s
+}
+
+// CredsOrErr sets the Err field of all accounts without valid credentials or an
+// an existing error.
+func (s Accounts) CredsOrErr() Accounts {
+	for _, ac := range s {
+		if !ac.CredsValid() && ac.Err == nil {
+			ac.Err = ErrNoAccess
+		}
+	}
+	return s
+}
+
+// CtlOrErr sets the Err field of all accounts without control information or an
+// existing error.
+func (s Accounts) CtlOrErr() Accounts {
+	for _, ac := range s {
+		if !ac.CtlValid() && ac.Err == nil {
+			if !ac.CredsValid() {
+				ac.Err = ErrNoCtl
+			} else {
+				ac.Err = ErrNoAccess
+			}
+		}
+	}
+	return s
 }
 
 // byID implements sort.Interface to sort accounts by ID.
