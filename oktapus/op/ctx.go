@@ -200,9 +200,7 @@ func (c *Ctx) Init(cfg *aws.Config) error {
 		if err != nil && !account.IsErrorNoOrg(err) {
 			return errors.WithStack(err)
 		}
-	}
-	if c.CommonRole == "" {
-		c.CommonRole = IAMPath + c.proxy.SessName
+		c.setCommonRole()
 	}
 	c.setMasterCreds()
 	return nil
@@ -509,7 +507,6 @@ func (c *Ctx) sig() string {
 	if c.secret == "" {
 		return ""
 	}
-	// TODO: Should this include CommonRole and MasterRole?
 	sig := map[string]string{
 		"SECRET":     c.secret,
 		AliasFileEnv: c.AliasFile,
@@ -544,6 +541,13 @@ func (c *Ctx) sig() string {
 	}
 	sum := sha512.Sum512_256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// setCommonRole sets the default common role if one was not specified.
+func (c *Ctx) setCommonRole() {
+	if c.CommonRole == "" {
+		c.CommonRole = IAMPath + c.proxy.SessName
+	}
 }
 
 // setMasterCreds updates account directory credentials if the current account
@@ -608,6 +612,8 @@ func (c *Ctx) saveAccounts() []Account {
 	return acs
 }
 
+// TODO: Save/restore c.cfg creds in Okta mode
+
 // SavedCtx is a serializable context representation.
 type SavedCtx struct {
 	Ver
@@ -660,18 +666,34 @@ func (sc *SavedCtx) Restore() (*Ctx, error) {
 	return &c, nil
 }
 
-// restore restores saved state into an existing context.
+// restore restores saved state into an existing context. There are two modes of
+// operation. The first is restoring a non-local context on the daemon, which
+// restores all exported Ctx fields. The second is restoring into a new local
+// context, which should keep all existing values for exported fields. It does
+// not make sense for a cached context to override local environment variables,
+// but this means that the cached accounts and creds may no longer be 100%
+// correct for the current config.
 func (sc *SavedCtx) restore(c *Ctx) {
 	c.proxy.Ident = sc.ProxyIdent
 	c.proxy.SessName = sc.ProxySessName
 	c.dir.Org = sc.DirOrg
 	c.newClients()
+	c.setCommonRole()
+
+	// Common role is not part of context signature because it does not affect
+	// what the user has access to in general, but it does change the current
+	// identity. It's fine to restore cached account information that the
+	// current common role may not have access to, but cached creds can only be
+	// restored for the same role. Account CredsFlag is not modified because any
+	// command that requires explicit credentials should call EnsureCreds first.
 	if len(sc.Accounts) > 0 {
 		c.Register(initAccounts(sc.Accounts))
 	}
-	for i := range sc.Creds {
-		cr := &sc.Creds[i]
-		c.CredsProvider(cr.Account).Store(cr.Creds, cr.Err)
+	if c.CommonRole == sc.Ctx.CommonRole {
+		for i := range sc.Creds {
+			cr := &sc.Creds[i]
+			c.CredsProvider(cr.Account).Store(cr.Creds, cr.Err)
+		}
 	}
 }
 
