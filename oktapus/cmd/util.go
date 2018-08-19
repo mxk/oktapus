@@ -27,18 +27,9 @@ func explainError(err error) string {
 	switch err := err.(type) {
 	case awserr.RequestFailure:
 		if err.StatusCode() == http.StatusForbidden {
-			return "account access denied"
+			return op.ErrNoAccess.Error()
 		}
-		return err.Code() + ": " + err.Message()
-	case awserr.Error:
-		// TODO: Probably no longer needed
-		if err.Code() == "NoCredentialProviders" {
-			errs := err.(awserr.BatchedErrors).OrigErrs()
-			if n := len(errs); n > 0 {
-				return explainError(errs[n-1])
-			}
-		}
-		return err.Code() + ": " + err.Message()
+		return err.Error()
 	case error:
 		return err.Error()
 	}
@@ -73,67 +64,19 @@ type resultsOutput struct {
 }
 
 func listResults(acs op.Accounts) []*resultsOutput {
-	out := make([]*resultsOutput, 0, len(acs))
-	for _, ac := range acs {
+	out := make([]*resultsOutput, len(acs))
+	for i, ac := range acs {
 		result := "OK"
 		if ac.Err != nil {
 			result = "ERROR: " + explainError(ac.Err)
 		}
-		out = append(out, &resultsOutput{
+		out[i] = &resultsOutput{
 			Account: ac.ID,
 			Name:    ac.Name,
 			Result:  result,
-		})
+		}
 	}
 	return out
-}
-
-// credsOutput provides account credentials to the user.
-type credsOutput struct {
-	Account         string
-	Name            string
-	Expires         expTime
-	AccessKeyID     string
-	SecretAccessKey string
-	SessionToken    string `printer:",width=1,last"`
-	Error           string
-}
-
-func listCreds(acs op.Accounts, renew bool) []*credsOutput {
-	out := make([]*credsOutput, len(acs))
-	acs.Map(func(i int, ac *op.Account) error {
-		cp := ac.CredsProvider()
-		d := 10 * time.Minute
-		if renew {
-			d = -1
-		}
-		err := cp.Ensure(d)
-		cr, _ := cp.Creds()
-		co := &credsOutput{
-			Account: ac.ID,
-			Name:    ac.Name,
-			Error:   explainError(err),
-		}
-		if err == nil {
-			co.Expires = expTime{cr.Expires}
-			co.AccessKeyID = cr.AccessKeyID
-			co.SecretAccessKey = cr.SecretAccessKey
-			co.SessionToken = cr.SessionToken
-		}
-		out[i] = co
-		return nil
-	})
-	return out
-}
-
-func (o *credsOutput) PrintRow(p *internal.Printer) {
-	if o.Error == "" {
-		internal.PrintRow(p, o)
-	} else {
-		p.PrintCol(0, o.Account, true)
-		p.PrintCol(1, o.Name, true)
-		p.PrintErr(o.Error)
-	}
 }
 
 // expTime handles credential expiration time encoding for JSON and printer

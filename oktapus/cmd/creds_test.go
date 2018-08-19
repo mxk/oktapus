@@ -15,36 +15,37 @@ func TestCreds(t *testing.T) {
 	exp := expTime{now.Add(time.Hour)}
 	defer fast.MockTime(time.Time{})
 
-	ctx, _ := newCtx()
-	cmd := credsCmd{Spec: "test1,test2"}
+	ctx, w := mockOrg(mock.Ctx, "test1", "test2")
+	cmd := credsCli.New().(*credsCmd)
+	cmd.Spec = "test1,test2"
 
 	// Get temporary creds
-	out, err := cmd.Call(ctx)
+	out, err := cmd.Run(ctx)
 	require.NoError(t, err)
 	want := []*credsOutput{{
-		AccountID:       "000000000001",
+		Account:         "000000000001",
 		Name:            "test1",
 		Expires:         exp,
 		AccessKeyID:     mock.AccessKeyID,
 		SecretAccessKey: mock.SecretAccessKey,
-		SessionToken:    mock.AssumedRoleARN("1", "user@example.com", "user@example.com"),
+		SessionToken:    w.SessionToken("1", "alice", ""),
 	}, {
-		AccountID:       "000000000002",
+		Account:         "000000000002",
 		Name:            "test2",
 		Expires:         exp,
 		AccessKeyID:     mock.AccessKeyID,
 		SecretAccessKey: mock.SecretAccessKey,
-		SessionToken:    mock.AssumedRoleARN("2", "user@example.com", "user@example.com"),
+		SessionToken:    w.SessionToken("2", "alice", ""),
 	}}
 	assert.Equal(t, want, out)
 
 	// Create new user
 	cmd.User = "creds_user"
 	cmd.Spec = "test1"
-	out, err = cmd.Call(ctx)
+	out, err = cmd.Run(ctx)
 	require.NoError(t, err)
 	want = []*credsOutput{{
-		AccountID:       "000000000001",
+		Account:         "000000000001",
 		Name:            "test1",
 		AccessKeyID:     mock.AccessKeyID,
 		SecretAccessKey: mock.SecretAccessKey,
@@ -52,18 +53,18 @@ func TestCreds(t *testing.T) {
 	assert.Equal(t, want, out)
 
 	// Create second key
-	out, err = cmd.Call(ctx)
+	out, err = cmd.Run(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, want, out)
 
 	// Path must match
 	cmd.User = "path/creds_user"
-	out, err = cmd.Call(ctx)
+	out, err = cmd.Run(ctx)
 	require.NoError(t, err)
 	want = []*credsOutput{{
-		AccountID: "000000000001",
-		Name:      "test1",
-		Error:     "user already exists under a different path",
+		Account: "000000000001",
+		Name:    "test1",
+		Error:   "user path mismatch",
 	}}
 	assert.Equal(t, want, out)
 }

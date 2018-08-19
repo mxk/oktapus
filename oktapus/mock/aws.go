@@ -76,6 +76,18 @@ func (w *AWS) UserCreds(account, user string) aws.StaticCredentialsProvider {
 	)
 }
 
+// SessionToken returns the session token for the specified account/role.
+func (w *AWS) SessionToken(account, role, sessName string) string {
+	ctx := w.Ctx
+	if account != "" {
+		ctx.Account = AccountID(account)
+	}
+	if sessName == "" {
+		sessName = role
+	}
+	return string(ctx.New("sts", "assumed-role/", role, "/", sessName))
+}
+
 // newRequest creates a new mock request and performs basic validations.
 func (w *AWS) newRequest(r *aws.Request) *Request {
 	ctx := arn.Ctx{
