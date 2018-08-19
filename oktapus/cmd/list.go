@@ -7,7 +7,7 @@ import (
 )
 
 var listCli = cli.Main.Add(&cli.Info{
-	Name:    "list|ls",
+	Name:    "ls",
 	Usage:   "[options] [account-spec]",
 	Summary: "List accounts",
 	MaxArgs: 1,
@@ -23,17 +23,21 @@ type listCmd struct {
 func (*listCmd) Info() *cli.Info { return listCli }
 
 func (*listCmd) Help(w *cli.Writer) {
-	w.Text("List accounts.")
+	w.Text(`
+	List accounts.
+
+	By default, this command lists only accessible and initialized accounts. Use
+	"all" to list all known accounts.
+
+	In rare circumstances, it may be helpful to run 'kill-daemon' command to
+	reset cache when diagnosing access problems.
+	`)
 	accountSpecHelp(w)
 }
 
 func (cmd *listCmd) Main(args []string) error {
 	cmd.Spec = get(args, 0)
-	out, err := op.Run(cmd)
-	if err == nil {
-		err = cmd.Print(out)
-	}
-	return err
+	return op.RunAndPrint(cmd)
 }
 
 func (cmd *listCmd) Run(ctx *op.Ctx) (interface{}, error) {
@@ -52,24 +56,20 @@ type listOutput struct {
 	Owner       string
 	Description string
 	Tags        string `printer:",last"`
-	Error       string
+	Error       string `json:",omitempty"`
 }
 
 func listAccounts(acs op.Accounts) []*listOutput {
-	out := make([]*listOutput, 0, len(acs))
-	for _, ac := range acs {
-		err := ac.Err
-		if err == nil && !ac.CtlValid() {
-			err = op.ErrNoCtl
-		}
-		out = append(out, &listOutput{
+	out := make([]*listOutput, len(acs))
+	for i, ac := range acs.CtlOrErr() {
+		out[i] = &listOutput{
 			Account:     ac.ID,
 			Name:        ac.Name,
 			Owner:       ac.Ctl.Owner,
 			Description: ac.Ctl.Desc,
 			Tags:        ac.Ctl.Tags.String(),
-			Error:       explainError(err),
-		})
+			Error:       explainError(ac.Err),
+		}
 	}
 	return out
 }
