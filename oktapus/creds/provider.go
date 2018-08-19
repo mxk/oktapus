@@ -104,7 +104,12 @@ func (p *Provider) Retrieve() (aws.Credentials, error) {
 // Creds returns currently cached credentials and error without renewal.
 func (p *Provider) Creds() (aws.Credentials, error) {
 	if cr, _ := p.cr.Load().(*creds); cr != nil {
-		return cr.Credentials, cr.err
+		err := cr.err
+		if err != nil && cr.Credentials.CanExpire &&
+			!cr.Credentials.Expires.After(fast.Time()) {
+			err = nil
+		}
+		return cr.Credentials, err
 	}
 	return aws.Credentials{}, nil
 }
@@ -150,7 +155,7 @@ func (p *Provider) ensure(d time.Duration) (aws.Credentials, error) {
 	if d < 0 {
 		d = 0
 	}
-	if cr.keepCurrent(d) || cr.err != nil {
+	if cr.keepCurrent(d) {
 		return cr.Credentials, cr.err
 	}
 	return cr.Credentials, ErrUnable

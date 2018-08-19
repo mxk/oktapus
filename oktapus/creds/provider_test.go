@@ -112,11 +112,10 @@ func TestWrap(t *testing.T) {
 	assert.Equal(t, cached, cr)
 }
 
-func TestProvider(t *testing.T) {
+func TestPermanent(t *testing.T) {
 	fast.MockTime(fast.Time())
 	defer fast.MockTime(time.Time{})
 
-	// Permanent creds
 	calls := 0
 	p := RenewableProvider(func() (aws.Credentials, error) {
 		calls++
@@ -136,10 +135,14 @@ func TestProvider(t *testing.T) {
 	cr, err = p.Creds()
 	assert.NoError(t, err)
 	assert.Equal(t, aws.Credentials{AccessKeyID: "key1"}, cr)
+}
 
-	// Temporary creds
-	calls = 0
-	p = RenewableProvider(func() (aws.Credentials, error) {
+func TestTemporary(t *testing.T) {
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
+
+	calls := 0
+	p := RenewableProvider(func() (aws.Credentials, error) {
 		calls++
 		return aws.Credentials{
 			AccessKeyID: "key2",
@@ -147,7 +150,7 @@ func TestProvider(t *testing.T) {
 			Expires:     fast.Time().Add(time.Hour),
 		}, nil
 	})
-	cr, err = p.Creds()
+	cr, err := p.Creds()
 	assert.Equal(t, 0, calls)
 	assert.NoError(t, err)
 	assert.Equal(t, aws.Credentials{}, cr)
@@ -165,7 +168,7 @@ func TestProvider(t *testing.T) {
 	}
 	assert.Equal(t, want, cr)
 
-	// Renewal
+	// Renew
 	fast.MockTime(fast.Time().Add(30 * time.Minute))
 	assert.NoError(t, p.Ensure(30*time.Minute))
 	assert.Equal(t, 2, calls)
@@ -185,20 +188,24 @@ func TestProvider(t *testing.T) {
 	cr, err = p.Creds()
 	assert.NoError(t, err)
 	assert.Equal(t, want, cr)
+}
 
-	// Error caching
+func TestError(t *testing.T) {
+	fast.MockTime(fast.Time())
+	defer fast.MockTime(time.Time{})
+
 	e := errors.New("temporary error")
-	calls = 0
-	p = RenewableProvider(func() (cr aws.Credentials, err error) {
+	calls := 0
+	p := RenewableProvider(func() (cr aws.Credentials, err error) {
 		if calls++; calls == 1 {
 			err = e
 		}
 		return
 	})
-	cr, err = p.Retrieve()
+	cr, err := p.Retrieve()
 	assert.Equal(t, 1, calls)
 	assert.Equal(t, e, err)
-	want = aws.Credentials{
+	want := aws.Credentials{
 		CanExpire: true,
 		Expires:   fast.Time().Add(2 * time.Hour),
 	}
@@ -208,10 +215,16 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, 1, calls)
 
 	fast.MockTime(fast.Time().Add(2*time.Hour - 1))
+	cr, err = p.Creds()
+	assert.Equal(t, e, err)
+	assert.Equal(t, want, cr)
 	assert.Equal(t, e, p.Ensure(24*time.Hour))
 	assert.Equal(t, 1, calls)
 
 	fast.MockTime(fast.Time().Add(1))
+	cr, err = p.Creds()
+	assert.NoError(t, err)
+	assert.Equal(t, want, cr)
 	assert.NoError(t, p.Ensure(0))
 	assert.Equal(t, 2, calls)
 
