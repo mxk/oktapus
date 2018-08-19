@@ -11,7 +11,7 @@ import (
 
 func TestList(t *testing.T) {
 	ctx, w := mockOrg(mock.Ctx, "test1", "test2")
-	setCtl(w, "1", op.Ctl{})
+	setCtl(w, op.Ctl{}, "1")
 
 	cmd := listCmd{}
 	out, err := cmd.Run(ctx)

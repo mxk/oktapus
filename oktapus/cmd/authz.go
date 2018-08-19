@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
@@ -16,27 +17,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
-var authzCli = register(&cli.Info{
+var authzCli = cli.Main.Add(&cli.Info{
 	Name:    "authz",
 	Usage:   "[options] account-spec role-name [role-name ...]",
 	Summary: "Authorize account access",
 	MinArgs: 2,
-	New:     func() cli.Cmd { return &authzCmd{} },
+	New:     func() cli.Cmd { return &authzCmd{Policy: "AdministratorAccess"} },
 })
 
 type authzCmd struct {
 	OutFmt
 	Desc      *string `flag:"Set role <description>"`
-	Policy    string  `flag:"Set attached role policy <ARN> (default is AdministratorAccess)"`
+	Policy    string  `flag:"Set attached role policy <name> or ARN"`
 	Principal string  `flag:"Set principal <ARN> for AssumeRole policy (default is current user or gateway account)"`
 	Tmp       bool    `flag:"Delete this role automatically when the account is freed"`
 	Spec      string
 	Roles     []string
 }
 
-func (cmd *authzCmd) Info() *cli.Info { return authzCli }
+func (*authzCmd) Info() *cli.Info { return authzCli }
 
-func (cmd *authzCmd) Help(w *cli.Writer) {
+func (*authzCmd) Help(w *cli.Writer) {
 	w.Text(`
 	Authorize account access by creating or updating IAM roles.
 
@@ -66,32 +67,24 @@ func (cmd *authzCmd) Help(w *cli.Writer) {
 }
 
 func (cmd *authzCmd) Main(args []string) error {
-	return cmd.Run(op.NewCtx(), args)
-}
-
-func (cmd *authzCmd) Run(ctx *op.Ctx, args []string) error {
 	cmd.Spec = args[0]
 	cmd.Roles = args[1:]
-	out, err := ctx.Call(cmd)
-	if err == nil {
-		err = cmd.Print(out)
-	}
-	return err
+	return op.RunAndPrint(cmd)
 }
 
-func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
-	acs, err := ctx.Accounts(cmd.Spec)
+func (cmd *authzCmd) Run(ctx *op.Ctx) (interface{}, error) {
+	acs, err := ctx.Match(cmd.Spec)
 	if err != nil {
 		return nil, err
 	}
 
 	// Validate principal
-	user := ctx.Gateway().Ident().ARN
+	user := ctx.Ident().ARN
 	if cmd.Principal == "" {
 		if t := user.Type(); t != "user" && t != "assumed-role" {
 			return nil, errors.New("-principal required")
 		}
-	} else if !awsx.IsAccountID(cmd.Principal) &&
+	} else if !account.IsID(cmd.Principal) &&
 		!arn.ARN(cmd.Principal).Valid() {
 		return nil, fmt.Errorf("invalid principal %q", cmd.Principal)
 	}
@@ -113,18 +106,17 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			out = append(out, r)
 		}
 	}()
-	acs.Apply(func(_ int, ac *op.Account) {
+	acs.Map(func(_ int, ac *op.Account) error {
 		if ac.Err != nil {
 			ch <- &roleOutput{
 				AccountID: ac.ID,
 				Name:      ac.Name,
 				Result:    "ERROR: " + explainError(ac.Err),
 			}
-			return
+			return nil
 		}
-		c := ac.IAM()
 		for _, r := range roles {
-			create, err := r.createOrUpdate(c)
+			create, err := r.createOrUpdate(ac.IAM)
 			out := &roleOutput{
 				AccountID: ac.ID,
 				Name:      ac.Name,
@@ -140,6 +132,7 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 			}
 			ch <- out
 		}
+		return nil
 	})
 	close(ch)
 	mu.Lock()
@@ -150,13 +143,11 @@ func (cmd *authzCmd) Call(ctx *op.Ctx) (interface{}, error) {
 	return out, nil
 }
 
-const adminAccess = arn.ARN("arn:aws:iam::aws:policy/AdministratorAccess")
-
 func (cmd *authzCmd) newRole(pathName string, user arn.ARN) *role {
 	r := (arn.Base + "role/").WithPathName(pathName)
 	path, name := r.Path(), r.Name()
 	if cmd.Tmp {
-		path = op.TmpIAMPath + path[1:]
+		path = op.IAMTmpPath + path[1:]
 	} else if strings.IndexByte(pathName, '/') == -1 {
 		path = op.IAMPath
 	}
@@ -167,11 +158,7 @@ func (cmd *authzCmd) newRole(pathName string, user arn.ARN) *role {
 		principal = string(user.WithName(name))
 	}
 	assumeRolePolicy := iamx.AssumeRolePolicy(principal)
-
-	policy := cmd.Policy
-	if policy == "" {
-		policy = string(adminAccess.WithPartition(user.Partition()))
-	}
+	attachPolicy := iamx.ManagedPolicyARN(user.Partition(), cmd.Policy)
 	return &role{
 		get: iam.GetRoleInput{RoleName: roleName},
 		create: iam.CreateRoleInput{
@@ -181,13 +168,14 @@ func (cmd *authzCmd) newRole(pathName string, user arn.ARN) *role {
 			RoleName:                 roleName,
 		},
 		attach: iam.AttachRolePolicyInput{
-			PolicyArn: aws.String(policy),
+			PolicyArn: arn.String(attachPolicy),
 			RoleName:  roleName,
 		},
 		assume: assumeRolePolicy.Statement[0],
 	}
 }
 
+// TODO: Output ARN
 type roleOutput struct{ AccountID, Name, Path, Role, Result string }
 
 type role struct {

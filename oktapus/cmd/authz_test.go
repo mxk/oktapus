@@ -3,14 +3,19 @@ package cmd
 import (
 	"testing"
 
+	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAuthz(t *testing.T) {
-	ctx, _ := newCtx("1", "2")
-	cmd := authzCmd{Spec: "test1", Roles: []string{"user1"}}
-	out, err := cmd.Call(ctx)
+	ctx, w := mockOrg(mock.Ctx, "test1", "test2", "test3")
+	setCtl(w, op.Ctl{}, "1", "2") // TODO: Should not be required
+	cmd := authzCli.New().(*authzCmd)
+	cmd.Spec = "test1"
+	cmd.Roles = []string{"user1"}
+
+	out, err := cmd.Run(ctx)
 	require.NoError(t, err)
 	want := []*roleOutput{{
 		AccountID: "000000000001",
@@ -23,7 +28,7 @@ func TestAuthz(t *testing.T) {
 
 	cmd.Spec = "test1,test2,test3"
 	cmd.Roles = []string{"user1", "/user2"}
-	out, err = cmd.Call(ctx)
+	out, err = cmd.Run(ctx)
 	require.NoError(t, err)
 	want = []*roleOutput{{
 		AccountID: "000000000001",

@@ -20,15 +20,19 @@ func mockOrg(ctx arn.Ctx, accounts ...string) (*op.Ctx, *mock.AWS) {
 	return c, w
 }
 
-func setCtl(w *mock.AWS, id string, ctl op.Ctl) {
+func setCtl(w *mock.AWS, ctl op.Ctl, ids ...string) {
 	s, err := ctl.Encode()
 	if err != nil {
 		panic(err)
 	}
-	w.Account(id).RoleRouter()[op.CtlRole] = &mock.Role{Role: iam.Role{
-		Arn:         arn.String(w.Ctx.New("iam", "role", op.IAMPath, op.CtlRole)),
-		Description: aws.String(s),
-		Path:        aws.String(op.IAMPath),
-		RoleName:    aws.String(op.CtlRole),
-	}}
+	role := w.Ctx.New("iam", "role", op.IAMPath, op.CtlRole)
+	for _, id := range ids {
+		id := mock.AccountID(id)
+		w.Account(id).RoleRouter()[op.CtlRole] = &mock.Role{Role: iam.Role{
+			Arn:         arn.String(role.WithAccount(id)),
+			Description: aws.String(s),
+			Path:        aws.String(op.IAMPath),
+			RoleName:    aws.String(op.CtlRole),
+		}}
+	}
 }
