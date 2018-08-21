@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	cli.DebugFromEnv("OKTAPUS_DEBUG")
 	cli.Main.Summary = "AWS account management and creation tool"
 	cli.Main.Run(os.Args[1:])
 }
