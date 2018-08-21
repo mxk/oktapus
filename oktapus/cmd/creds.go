@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
@@ -64,28 +63,26 @@ func (cmd *credsCmd) Main(args []string) error {
 }
 
 func (cmd *credsCmd) Run(ctx *op.Ctx) (interface{}, error) {
+	path, name, err := splitPathName(cmd.User, cmd.Tmp)
+	if err != nil {
+		return nil, err
+	}
+	attachPolicy, err := getManagedPolicy(ctx.Ident().Partition(), cmd.Policy)
+	if err != nil {
+		return nil, err
+	}
 	acs, err := ctx.Match(cmd.Spec)
 	if err != nil {
 		return nil, err
 	}
 	if cmd.User != "" {
-		cmd.Dur = time.Minute
+		cmd.Dur = minDur
 	}
 	out := listCreds(acs.EnsureCreds(cmd.Dur))
 	if cmd.User == "" {
 		return out, nil
 	}
-
-	// Create user access keys
-	user := (arn.Base + "user/").WithPathName(cmd.User)
-	if cmd.Tmp {
-		user = user.WithPath(op.IAMTmpPath + user.Path())
-	}
-	policy := iamx.ManagedPolicyARN(ctx.Ident().Partition(), cmd.Policy)
-	if policy == "" && cmd.Policy != "" {
-		return nil, errors.New("invalid policy name")
-	}
-	km := newKeyMaker(user, policy)
+	km := newKeyMaker(path, name, attachPolicy)
 	acs.Map(func(i int, ac *op.Account) error {
 		co := out[i]
 		if co.Error != "" {
@@ -94,15 +91,15 @@ func (cmd *credsCmd) Run(ctx *op.Ctx) (interface{}, error) {
 			co.Error = explainError(op.ErrNoAccess)
 			return nil
 		}
+		out, err := km.exec(ac.IAM)
 		*co = credsOutput{
 			Account: co.Account,
 			Name:    co.Name,
+			Error:   explainError(err),
 		}
-		if out, err := km.newKey(ac.IAM); err == nil {
+		if err == nil {
 			co.AccessKeyID = aws.StringValue(out.AccessKey.AccessKeyId)
 			co.SecretAccessKey = aws.StringValue(out.AccessKey.SecretAccessKey)
-		} else {
-			co.Error = explainError(err)
 		}
 		return nil
 	})
@@ -161,35 +158,34 @@ type keyMaker struct {
 	key  iam.CreateAccessKeyInput
 }
 
-func newKeyMaker(user, policy arn.ARN) *keyMaker {
-	name := aws.String(user.Name())
-	var pol *string
-	if policy != "" {
-		pol = arn.String(policy)
-	}
+func newKeyMaker(path, name string, attachPolicy arn.ARN) *keyMaker {
+	userName := aws.String(name)
 	return &keyMaker{
-		iam.CreateUserInput{Path: aws.String(user.Path()), UserName: name},
-		iam.AttachUserPolicyInput{PolicyArn: pol, UserName: name},
-		iam.CreateAccessKeyInput{UserName: name},
+		iam.CreateUserInput{Path: aws.String(path), UserName: userName},
+		iam.AttachUserPolicyInput{
+			PolicyArn: arn.String(attachPolicy),
+			UserName:  userName,
+		},
+		iam.CreateAccessKeyInput{UserName: userName},
 	}
 }
 
-func (m *keyMaker) newKey(c iamx.Client) (*iam.CreateAccessKeyOutput, error) {
+func (m *keyMaker) exec(c iamx.Client) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUserRequest(&m.user).Send(); err != nil {
 		if !awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
 			return nil, err
 		}
-		// Existing user path must match to create a new access key
+		// Existing user must have identical path to create new access key
 		in := iam.GetUserInput{UserName: m.user.UserName}
 		u, err := c.GetUserRequest(&in).Send()
 		if err != nil {
 			return nil, err
 		}
 		if aws.StringValue(u.User.Path) != aws.StringValue(m.user.Path) {
-			return nil, errors.New("user path mismatch")
+			return nil, op.Error("user path mismatch")
 		}
 	}
-	if m.pol.PolicyArn != nil {
+	if arn.Value(m.pol.PolicyArn) != "" {
 		if _, err := c.AttachUserPolicyRequest(&m.pol).Send(); err != nil {
 			return nil, err
 		}
