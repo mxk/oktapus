@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"testing"
+
 	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/stretchr/testify/assert"
 )
 
 func mockOrg(ctx arn.Ctx, accounts ...string) (*op.Ctx, *mock.AWS) {
@@ -35,4 +38,29 @@ func setCtl(w *mock.AWS, ctl op.Ctl, ids ...string) {
 			RoleName:    aws.String(op.CtlRole),
 		}}
 	}
+}
+
+func TestSplitPathName(t *testing.T) {
+	tests := []struct {
+		in         string
+		tmp        bool
+		path, name string
+	}{
+		{"", false, op.IAMPath, ""},
+		{"", true, op.IAMTmpPath, ""},
+		{"x", false, op.IAMPath, "x"},
+		{"x", true, op.IAMTmpPath, "x"},
+		{"/x", false, "/", "x"},
+		{"/x", true, op.IAMTmpPath, "x"},
+		{"/x/y", false, "/x/", "y"},
+		{"/x/y", true, op.IAMTmpPath + "x/", "y"},
+	}
+	for _, tc := range tests {
+		path, name, err := splitPathName(tc.in, tc.tmp)
+		assert.NoError(t, err, "%+v", tc)
+		assert.Equal(t, tc.path, path, "%+v", tc)
+		assert.Equal(t, tc.name, name, "%+v", tc)
+	}
+	_, _, err := splitPathName(":", false)
+	assert.Error(t, err)
 }

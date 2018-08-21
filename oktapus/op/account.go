@@ -288,9 +288,9 @@ func (s Accounts) CtlOrErr() Accounts {
 	for _, ac := range s {
 		if !ac.CtlValid() && ac.Err == nil {
 			if !ac.CredsValid() {
-				ac.Err = ErrNoCtl
-			} else {
 				ac.Err = ErrNoAccess
+			} else {
+				ac.Err = ErrNoCtl
 			}
 		}
 	}

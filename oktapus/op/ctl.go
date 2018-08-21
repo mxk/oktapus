@@ -28,8 +28,9 @@ type Ctl struct {
 // Init creates account control information in an uncontrolled account.
 func (ctl *Ctl) Init(c iamx.Client) error {
 	return ctl.exec(c, func(c iamx.Client, b64 string) (*iam.Role, error) {
+		pol := iamx.AssumeRolePolicy(iamx.Deny, "*").Doc()
 		in := iam.CreateRoleInput{
-			AssumeRolePolicyDocument: iamx.AssumeRolePolicy("").Doc(),
+			AssumeRolePolicyDocument: pol,
 			Description:              aws.String(b64),
 			Path:                     aws.String(IAMPath),
 			RoleName:                 aws.String(CtlRole),

@@ -3,16 +3,23 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/pkg/errors"
 )
+
+// minDur is minimum credential validity duration for internal operations.
+const minDur = 2 * time.Minute
 
 // get returns v[i] or an empty string if i is out of bounds.
 func get(v []string, i int) string {
@@ -20,6 +27,39 @@ func get(v []string, i int) string {
 		return v[i]
 	}
 	return ""
+}
+
+// splitPathName splits a user or role "[path/]name" string into its components.
+// If the path is missing, it defaults to op.IAMPath or op.IAMTmpPath, depending
+// on tmp. Otherwise, the original path is used, but op.IAMTmpPath prefix is
+// forced if tmp is true.
+func splitPathName(pathName string, tmp bool) (path, name string, err error) {
+	if strings.IndexByte(pathName, ':') != -1 {
+		err = fmt.Errorf("invalid path/name %q", pathName)
+		return
+	}
+	r := (arn.Base + "/").WithPathName(pathName)
+	if name = r.Name(); strings.IndexByte(pathName, '/') != -1 {
+		if path = r.Path(); tmp {
+			path = op.IAMTmpPath + path[1:]
+		}
+	} else if tmp {
+		path = op.IAMTmpPath
+	} else {
+		path = op.IAMPath
+	}
+	return
+}
+
+// getManagedPolicy returns the ARN of the requested managed policy or an error
+// if the policy name is invalid.
+func getManagedPolicy(partition, policy string) (arn.ARN, error) {
+	if policy == "" {
+		return "", nil
+	} else if p := iamx.ManagedPolicyARN(partition, policy); p != "" {
+		return p, nil
+	}
+	return "", fmt.Errorf("invalid policy name %q", policy)
 }
 
 // explainError returns a user-friendly representation of err.
