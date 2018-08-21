@@ -198,7 +198,7 @@ func (c *Ctx) Init(cfg *aws.Config) error {
 		c.newClients()
 		err := fast.Call(c.proxy.Init, c.dir.Init)
 		if err != nil && !account.IsErrorNoOrg(err) {
-			return errors.WithStack(err)
+			return errors.Wrap(err, "client init failed")
 		}
 		c.setCommonRole()
 	}
@@ -239,7 +239,7 @@ func (c *Ctx) Refresh() error {
 		m, err := account.LoadAliases(c.AliasFile, c.proxy.Ident.Partition())
 		if err != nil {
 			if !os.IsNotExist(err) {
-				return errors.WithStack(err)
+				return errors.Wrap(err, "failed to load account aliases")
 			}
 		} else if len(m) > 0 {
 			i, acs := 0, make([]Account, len(m))
@@ -251,7 +251,7 @@ func (c *Ctx) Refresh() error {
 		}
 	}
 	if err := c.dir.Refresh(); err != nil && !account.IsErrorNoOrg(err) {
-		return errors.WithStack(err)
+		return errors.Wrap(err, "failed to refresh accounts")
 	}
 	if len(c.dir.Accounts) > 0 {
 		i, acs := 0, make([]Account, len(c.dir.Accounts))
@@ -404,7 +404,7 @@ func (c *Ctx) loadSecret() error {
 	if err == nil {
 		c.secret = string(b)
 	}
-	return errors.WithStack(err)
+	return errors.Wrap(err, "failed to get client secret")
 }
 
 // resolveCfg applies the specified client config or resolves a new one from
@@ -420,13 +420,13 @@ func (c *Ctx) resolveCfg(cfg *aws.Config) error {
 		if c.local {
 			sc, err := external.LoadSharedConfigIgnoreNotExist(ext)
 			if err != nil {
-				return errors.WithStack(err)
+				return errors.Wrap(err, "failed to load shared config")
 			}
 			ext = append(ext, sc)
 		}
 		tmp, err := ext.ResolveAWSConfig(external.DefaultAWSConfigResolvers)
 		if err != nil {
-			return errors.WithStack(err)
+			return errors.Wrap(err, "failed to resolve client config")
 		}
 		c.cfg = tmp
 	} else if cfg != &c.cfg {
@@ -474,7 +474,7 @@ func (c *Ctx) restoreState() (error, bool) {
 	if err == io.EOF || daemon.IsNotRunning(err) {
 		err = nil
 	}
-	return errors.WithStack(err), false
+	return errors.Wrap(err, "failed to restore state from daemon"), false
 }
 
 // saveState sends context state to the daemon. The daemon is started if not
@@ -490,14 +490,14 @@ func (c *Ctx) saveState() error {
 	_, err := c.Daemon.Send(sc)
 	if daemon.IsNotRunning(err) {
 		if err = c.Daemon.Start(nil); err != nil {
-			return err
+			return errors.Wrapf(err, "failed to start daemon")
 		}
 		_, err = c.Daemon.Send(sc)
 	}
 	if err == io.EOF {
 		err = nil
 	}
-	return errors.WithStack(err)
+	return errors.Wrap(err, "failed to save state to daemon")
 }
 
 // sig returns a hash of context config and client credentials. Two contexts
