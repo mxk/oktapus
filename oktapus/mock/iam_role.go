@@ -38,8 +38,12 @@ func (r RoleRouter) CreateRole(q *Request, in *iam.CreateRoleInput) {
 	if _, ok := r[name]; ok {
 		panic("mock: role exists: " + name)
 	}
+	path := aws.StringValue(in.Path)
+	if path == "" {
+		path = "/"
+	}
 	role := &Role{Role: iam.Role{
-		Arn: arn.String(q.Ctx.New("iam", "role/", name)),
+		Arn: arn.String(q.Ctx.New("iam", "role/", name).WithPath(path)),
 		AssumeRolePolicyDocument: in.AssumeRolePolicyDocument,
 		Description:              in.Description,
 		Path:                     in.Path,

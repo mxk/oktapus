@@ -60,8 +60,12 @@ func (r UserRouter) CreateUser(q *Request, in *iam.CreateUserInput) {
 			"user exists: "+name, nil)
 		return
 	}
+	path := aws.StringValue(in.Path)
+	if path == "" {
+		path = "/"
+	}
 	user := &User{User: iam.User{
-		Arn:      arn.String(q.Ctx.New("iam", "user/", name)),
+		Arn:      arn.String(q.Ctx.New("iam", "user/", name).WithPath(path)),
 		Path:     in.Path,
 		UserName: in.UserName,
 	}}
