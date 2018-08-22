@@ -612,7 +612,7 @@ func (c *Ctx) saveAccounts() []Account {
 		ac.Flags = src.Flags
 		ac.ID = src.ID
 		ac.Name = src.Name
-		ac.Ctl = src.Ctl
+		ac.Ctl = src.ref
 		i++
 	}
 	return acs
