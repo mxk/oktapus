@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -35,7 +34,7 @@ func get(v []string, i int) string {
 // forced if tmp is true.
 func splitPathName(pathName string, tmp bool) (path, name string, err error) {
 	if strings.IndexByte(pathName, ':') != -1 {
-		err = fmt.Errorf("invalid path/name %q", pathName)
+		err = errors.Errorf("invalid path/name %q", pathName)
 		return
 	}
 	r := (arn.Base + "/").WithPathName(pathName)
@@ -59,7 +58,7 @@ func getManagedPolicy(partition, policy string) (arn.ARN, error) {
 	} else if p := iamx.ManagedPolicyARN(partition, policy); p != "" {
 		return p, nil
 	}
-	return "", fmt.Errorf("invalid policy name %q", policy)
+	return "", errors.Errorf("invalid policy name %q", policy)
 }
 
 // explainError returns a user-friendly representation of err.
@@ -89,7 +88,7 @@ func (f OutFmt) Print(v interface{}) error {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "\t")
 		enc.SetEscapeHTML(false)
-		return errors.WithStack(enc.Encode(v))
+		return errors.Wrap(enc.Encode(v), "failed to encode JSON output")
 	}
 	internal.NewPrinter(v).Print(w, nil)
 	return nil
