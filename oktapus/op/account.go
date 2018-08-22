@@ -84,7 +84,7 @@ func initAccounts(pool []Account) Accounts {
 	acs := make(Accounts, len(pool))
 	for i := range pool {
 		ac := &pool[i]
-		ac.ref = ac.Ctl
+		ac.ref.copy(&ac.Ctl)
 		ac.updateSortKey()
 		acs[i] = ac
 	}
