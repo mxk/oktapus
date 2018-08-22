@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -157,6 +156,7 @@ type Ctx struct {
 	cfg    aws.Config
 	proxy  creds.Proxy
 	dir    account.Directory
+	role   arn.ARN
 	creds  map[string]*creds.Provider
 	acs    map[string]*Account
 }
@@ -217,6 +217,9 @@ func (c *Ctx) Ident() creds.Ident { return c.proxy.Ident }
 
 // Org returns organization info.
 func (c *Ctx) Org() account.Org { return c.dir.Org }
+
+// Role returns the common role ARN with an empty account field.
+func (c *Ctx) Role() arn.ARN { return c.role }
 
 // Save returns a serializable context representation.
 func (c *Ctx) Save() *SavedCtx { return newSavedCtx(c) }
@@ -312,7 +315,7 @@ func (c *Ctx) Match(spec string) (Accounts, error) {
 		}
 	}
 	all := c.Accounts().LoadCtl(false)
-	return ParseAccountSpec(spec, path.Base(c.CommonRole)).Filter(all)
+	return ParseAccountSpec(spec, c.role.Name()).Filter(all)
 }
 
 // CredsProvider returns a credentials provider for the specified account ID.
@@ -548,6 +551,9 @@ func (c *Ctx) setCommonRole() {
 	if c.CommonRole == "" {
 		c.CommonRole = IAMPath + c.proxy.SessName
 	}
+	ac := c.proxy.Ident.Ctx()
+	ac.Account = ""
+	c.role = ac.New("iam", "role/").WithPathName(c.CommonRole)
 }
 
 // setMasterCreds updates account directory credentials if the current account
