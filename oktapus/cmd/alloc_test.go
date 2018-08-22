@@ -20,13 +20,15 @@ func TestAlloc(t *testing.T) {
 	cmd := allocCmd{Spec: "test"}
 	out, err := cmd.Run(ctx)
 	require.NoError(t, err)
-	want := []*resultsOutput{{
+	want := []*ownerOutput{{
 		Account: "000000000001",
 		Name:    "test1",
+		Owner:   "alice",
 		Result:  "OK",
 	}, {
 		Account: "000000000002",
 		Name:    "test2",
+		Owner:   "alice",
 		Result:  "OK",
 	}}
 	assert.Equal(t, want, out)

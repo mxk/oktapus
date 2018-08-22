@@ -120,5 +120,29 @@ func (cmd *allocCmd) Run(ctx *op.Ctx) (interface{}, error) {
 		}
 		out = append(out, batch...)
 	}
-	return listResults(out.SortByName()), nil
+	return listOwners(out.SortByName()), nil
+}
+
+type ownerOutput struct {
+	Account string
+	Name    string
+	Owner   string
+	Result  string
+}
+
+func listOwners(acs op.Accounts) []*ownerOutput {
+	out := make([]*ownerOutput, len(acs))
+	for i, ac := range acs {
+		result := "OK"
+		if ac.Err != nil {
+			result = "ERROR: " + explainError(ac.Err)
+		}
+		out[i] = &ownerOutput{
+			Account: ac.ID,
+			Name:    ac.Name,
+			Owner:   ac.Ctl.Owner,
+			Result:  result,
+		}
+	}
+	return out
 }
