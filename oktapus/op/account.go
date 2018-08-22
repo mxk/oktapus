@@ -145,21 +145,19 @@ func (s Accounts) Map(fn func(i int, ac *Account) error) Accounts {
 	return s
 }
 
-// Filter returns only those accounts for which fn evaluates to true. This
-// modifies the original slice.
+// Filter returns a new slice containing only those accounts for which fn
+// evaluates to true.
 func (s Accounts) Filter(fn func(ac *Account) bool) Accounts {
-	i := 0
-	for _, ac := range s {
+	var acs Accounts
+	for i, ac := range s {
 		if fn(ac) {
-			s[i] = ac
-			i++
+			if acs == nil {
+				acs = make(Accounts, 0, len(s)-i)
+			}
+			acs = append(acs, ac)
 		}
 	}
-	s, x := s[:i], s[i:]
-	for i := range x {
-		x[i] = nil
-	}
-	return s
+	return acs
 }
 
 // EnsureCreds ensures that credentials of all accounts will remain valid for
