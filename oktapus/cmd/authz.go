@@ -161,7 +161,7 @@ func (cmd *authzCmd) checkPrincipals(ctx arn.Ctx) error {
 	for i, p := range cmd.Principals {
 		if account.IsID(p) {
 			if cmd.Role == "" {
-				return cli.UsageError("-role required for account ID principal")
+				return cli.Error("-role required for account ID principal")
 			}
 			continue
 		}
