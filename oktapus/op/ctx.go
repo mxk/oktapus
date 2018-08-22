@@ -554,6 +554,9 @@ func (c *Ctx) setCommonRole() {
 	ac := c.proxy.Ident.Ctx()
 	ac.Account = ""
 	c.role = ac.New("iam", "role/").WithPathName(c.CommonRole)
+	if c.role.Name() == "" {
+		panic("op: invalid common role: " + c.CommonRole)
+	}
 }
 
 // setMasterCreds updates account directory credentials if the current account
