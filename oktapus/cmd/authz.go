@@ -24,9 +24,9 @@ var authzCli = cli.Main.Add(&cli.Info{
 
 type authzCmd struct {
 	OutFmt
-	Role       string  `flag:"Role <name> with optional path"`
 	Desc       *string `flag:"Role <description>"`
 	Policy     string  `flag:"Attach managed policy <name> or ARN"`
+	Role       string  `flag:"Role <name> with optional path"`
 	Tmp        bool    `flag:"Delete role(s) automatically when the account is freed"`
 	Spec       string
 	Principals []string

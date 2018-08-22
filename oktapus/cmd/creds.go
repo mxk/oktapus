@@ -30,9 +30,9 @@ var credsCli = cli.Main.Add(&cli.Info{
 type credsCmd struct {
 	OutFmt
 	Dur    time.Duration `flag:"Minimum credential validity <duration>"`
-	User   string        `flag:"Create new access keys for the <name>d IAM user"`
 	Policy string        `flag:"Attach managed policy <name> or ARN to user"`
 	Tmp    bool          `flag:"Delete user automatically when the account is freed"`
+	User   string        `flag:"Create new access keys for the <name>d IAM user"`
 	Spec   string
 }
 
