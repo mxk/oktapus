@@ -27,7 +27,8 @@ func (*listCmd) Help(w *cli.Writer) {
 	List accounts.
 
 	By default, this command lists only accessible and initialized accounts. Use
-	"all" to list all known accounts.
+	"all" to list all known accounts. Use the 'tag' command to initialize
+	account control (-init option) and set account tags.
 
 	In rare circumstances, it may be helpful to run 'kill-daemon' command to
 	reset cache when diagnosing access problems.

@@ -196,6 +196,19 @@ func (s Accounts) EnsureCreds(d time.Duration) Accounts {
 	return s
 }
 
+// InitCtl initializes control information of all accounts.
+func (s Accounts) InitCtl() Accounts {
+	return s.Map(func(_ int, ac *Account) error {
+		if !ac.CtlValid() {
+			// The error is always set to clear ErrNoCtl
+			if ac.Err = ac.CtlUpdate(ac.Ctl.Init(ac.IAM)); ac.Err == nil {
+				ac.ref.copy(&ac.Ctl)
+			}
+		}
+		return nil
+	})
+}
+
 // LoadCtl loads control information for accounts without LoadFlag set. If
 // reload is true, the flag is ignored.
 func (s Accounts) LoadCtl(reload bool) Accounts {

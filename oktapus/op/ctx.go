@@ -615,7 +615,9 @@ func (c *Ctx) saveAccounts() []Account {
 		ac.Flags = src.Flags
 		ac.ID = src.ID
 		ac.Name = src.Name
-		ac.Ctl.copy(&src.ref)
+		if src.CtlValid() {
+			ac.Ctl.copy(&src.ref)
+		}
 		i++
 	}
 	return acs
