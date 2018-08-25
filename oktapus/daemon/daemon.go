@@ -48,7 +48,7 @@ type Request struct {
 // Start starts the daemon process. Address is updated to reflect the actual
 // listening socket address.
 func (d *Addr) Start(fn StartFunc) error {
-	path, err := filepath.Abs(os.Args[0])
+	path, err := exec.LookPath(os.Args[0])
 	if err != nil {
 		return err
 	}
