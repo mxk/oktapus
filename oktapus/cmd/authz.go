@@ -208,8 +208,8 @@ func newRoleAuthz(path, name string, attachPolicy arn.ARN, principals ...string)
 		iam.GetRoleInput{RoleName: roleName},
 		iam.CreateRoleInput{
 			AssumeRolePolicyDocument: assumeRolePolicy.Doc(),
-			Path:     aws.String(path),
-			RoleName: roleName,
+			Path:                     aws.String(path),
+			RoleName:                 roleName,
 		},
 		iam.AttachRolePolicyInput{
 			PolicyArn: arn.String(attachPolicy),

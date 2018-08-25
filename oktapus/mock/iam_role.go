@@ -43,7 +43,7 @@ func (r RoleRouter) CreateRole(q *Request, in *iam.CreateRoleInput) {
 		path = "/"
 	}
 	role := &Role{Role: iam.Role{
-		Arn: arn.String(q.Ctx.New("iam", "role/", name).WithPath(path)),
+		Arn:                      arn.String(q.Ctx.New("iam", "role/", name).WithPath(path)),
 		AssumeRolePolicyDocument: in.AssumeRolePolicyDocument,
 		Description:              in.Description,
 		Path:                     in.Path,
