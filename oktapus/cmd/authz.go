@@ -113,6 +113,7 @@ func (cmd *authzCmd) Run(ctx *op.Ctx) (interface{}, error) {
 	if len(out) == 0 {
 		return nil, nil
 	}
+	compact := false
 	acs.EnsureCreds(minDur).Map(func(i int, ac *op.Account) error {
 		i *= len(roles)
 		out := out[i : i+len(roles)]
@@ -122,6 +123,7 @@ func (cmd *authzCmd) Run(ctx *op.Ctx) (interface{}, error) {
 				Name:    ac.Name,
 				Result:  "ERROR: " + explainError(ac.Err),
 			}
+			compact = true
 			return nil
 		}
 		return fast.ForEachIO(len(roles), func(i int) error {
@@ -144,14 +146,17 @@ func (cmd *authzCmd) Run(ctx *op.Ctx) (interface{}, error) {
 			return nil
 		})
 	})
-	i := 0
-	for _, r := range out {
-		if r != nil {
-			out[i] = r
-			i++
+	if compact {
+		i := 0
+		for _, r := range out {
+			if r != nil {
+				out[i] = r
+				i++
+			}
 		}
+		out = out[:i]
 	}
-	return out[:i], nil
+	return out, nil
 }
 
 type roleOutput struct{ Account, Name, Role, Result string }
