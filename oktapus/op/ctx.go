@@ -69,7 +69,7 @@ func Run(c cmd) (interface{}, error) {
 // its output.
 func RunAndPrint(c printCmd) error {
 	out, err := Run(c)
-	if err == nil {
+	if out != nil && err == nil {
 		err = c.Print(out)
 	}
 	return err
