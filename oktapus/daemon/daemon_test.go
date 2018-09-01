@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
@@ -23,7 +22,7 @@ func TestIsNotRunning(t *testing.T) {
 
 	start := time.Now()
 	_, err := Addr("").Send(nil)
-	assert.True(t, time.Since(start) < time.Second)
+	assert.True(t, time.Since(start) < dialTimeout)
 
 	assert.True(t, IsNotRunning(err))
 	assert.False(t, IsNotRunning(nil))
@@ -38,7 +37,7 @@ func TestKill(t *testing.T) {
 
 	start := time.Now()
 	assert.NoError(t, d.Kill())
-	assert.True(t, time.Since(start) < time.Second)
+	assert.True(t, time.Since(start) < dialTimeout)
 
 	_, err := d.Send(nil)
 	assert.True(t, IsNotRunning(err))
@@ -126,14 +125,14 @@ func start(t *testing.T, fn func(q *Request)) (d Addr, kill func()) {
 	d = testAddr
 	term := make(chan struct{})
 	require.NoError(t, d.Start(func(c *exec.Cmd) error {
-		if f := c.ExtraFiles[0]; fn == nil {
-			// f is about to be closed, so need to dup and update fdEnv
-			fd, err := syscall.Dup(int(f.Fd()))
-			require.NoError(t, err)
-			os.Setenv(fdEnv, strconv.Itoa(fd))
-			defer os.Unsetenv(fdEnv)
-		} else {
-			f.Close()
+		if len(c.ExtraFiles) > 0 {
+			if f := c.ExtraFiles[0]; fn == nil {
+				// f is about to be closed, so need to dup and update fdEnv
+				os.Setenv(fdEnv, strconv.Itoa(dup(f)))
+				defer os.Unsetenv(fdEnv)
+			} else {
+				f.Close()
+			}
 		}
 		qch, err := d.Serve()
 		require.NoError(t, err)

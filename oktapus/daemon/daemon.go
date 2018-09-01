@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -52,51 +53,42 @@ func (d *Addr) Start(fn StartFunc) error {
 	if err != nil {
 		return err
 	}
-	var s *net.TCPListener
-	var f *os.File
-	if s, err = d.listen(); err != nil {
+	l, err := d.listen()
+	if err != nil {
 		return err
 	}
-	defer s.Close()
-	if f, err = s.File(); err != nil {
-		return err
-	}
-	defer f.Close()
-	s.Close() // Ensure that only one socket descriptor remains open for fn
-	cmd := initCmd(&exec.Cmd{
-		Path:       path,
-		Args:       []string{filepath.Base(path), "daemon", string(*d)},
-		Env:        append(os.Environ(), fdEnv+"=3"),
-		Dir:        filepath.Dir(path),
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
-		ExtraFiles: []*os.File{f},
-	})
+	defer l.Close()
 	if fn == nil {
-		return cmd.Start()
+		fn = func(c *exec.Cmd) error { return c.Start() }
 	}
-	return fn(cmd)
+	return startDaemon(l, fn, &exec.Cmd{
+		Path:   path,
+		Args:   []string{filepath.Base(path), "daemon", string(*d)},
+		Env:    os.Environ(),
+		Dir:    filepath.Dir(path),
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	})
 }
 
 // Serve returns the channel on which the daemon will send incoming messages.
 // Address is updated to reflect the actual listening socket address.
 func (d *Addr) Serve() (<-chan *Request, error) {
-	var s *net.TCPListener
+	var l *net.TCPListener
 	var err error
-	// TODO: Windows (https://github.com/golang/go/issues/21085)
-	if v, ok := os.LookupEnv(fdEnv); ok {
+	if v, ok := os.LookupEnv(fdEnv); ok && runtime.GOOS != "windows" {
 		var fd int
 		if fd, err = strconv.Atoi(v); err == nil {
-			s, err = d.inherit(fd)
+			l, err = d.inherit(fd)
 		}
 	} else {
-		s, err = d.listen()
+		l, err = d.listen()
 	}
 	if err != nil {
 		return nil, err
 	}
 	qch := make(chan *Request)
-	go accept(s, qch)
+	go accept(l, qch)
 	return qch, nil
 }
 
@@ -146,28 +138,28 @@ func (d Addr) addr() string {
 }
 
 func (d *Addr) listen() (*net.TCPListener, error) {
-	s, err := net.Listen("tcp", d.addr())
+	l, err := net.Listen("tcp", d.addr())
 	if err != nil {
 		return nil, err
 	}
-	*d = Addr(s.Addr().String())
-	return s.(*net.TCPListener), nil
+	*d = Addr(l.Addr().String())
+	return l.(*net.TCPListener), nil
 }
 
 func (d *Addr) inherit(fd int) (*net.TCPListener, error) {
 	f := os.NewFile(uintptr(fd), string(*d))
 	defer f.Close()
-	s, err := net.FileListener(f)
+	l, err := net.FileListener(f)
 	if err != nil {
 		return nil, err
 	}
-	*d = Addr(s.Addr().String())
-	return s.(*net.TCPListener), nil
+	*d = Addr(l.Addr().String())
+	return l.(*net.TCPListener), nil
 }
 
-func accept(s *net.TCPListener, qch chan<- *Request) {
+func accept(l *net.TCPListener, qch chan<- *Request) {
 	for {
-		c, err := s.Accept()
+		c, err := l.Accept()
 		if err != nil {
 			panic(err)
 		}
@@ -175,7 +167,7 @@ func accept(s *net.TCPListener, qch chan<- *Request) {
 			c.Close()
 			continue
 		}
-		s.Close()
+		l.Close()
 		c.Close()
 		close(qch)
 		return
