@@ -1,4 +1,4 @@
-package internal
+package table
 
 import (
 	"bufio"
@@ -47,7 +47,6 @@ func NewPrinter(v interface{}) *Printer {
 	// Calculate column widths unless all are fixed
 	for i := range p.Cols {
 		if !p.Cols[i].FixedWidth {
-			//noinspection GoPlaceholderCount
 			p.Print(nil, calcWidths)
 			break
 		}

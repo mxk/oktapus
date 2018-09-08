@@ -73,6 +73,7 @@ func (cmd *allocCmd) Run(ctx *op.Ctx) (interface{}, error) {
 	acs = acs.Filter(func(ac *op.Account) bool {
 		return ac.CtlValid() && ac.Ctl.Owner == "" && ac.Err == nil
 	})
+	rand.Seed(int64(fast.RandUint64()))
 	rand.Shuffle(len(acs), func(i, j int) { acs[i], acs[j] = acs[j], acs[i] })
 
 	// Allocate in batches

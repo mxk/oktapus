@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/table"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
@@ -90,7 +90,7 @@ func (f OutFmt) Print(v interface{}) error {
 		enc.SetEscapeHTML(false)
 		return errors.Wrap(enc.Encode(v), "failed to encode JSON output")
 	}
-	internal.NewPrinter(v).Print(w, nil)
+	table.NewPrinter(v).Print(w, nil)
 	return nil
 }
 

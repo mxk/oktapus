@@ -127,6 +127,19 @@ func (t Tags) alias(u Tags) bool {
 		&t[0:cap(t)][cap(t)-1] == &u[0:cap(u)][cap(u)-1]
 }
 
+// eq returns true if t and u contain identical tags.
+func (t Tags) eq(u Tags) bool {
+	if len(t) != len(u) {
+		return false
+	}
+	for i := range t {
+		if t[i] != u[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // parseTag returns the name and negation state of tag t. An error is returned
 // if t is not a valid tag.
 func parseTag(t string, negOK bool) (name string, neg bool, err error) {

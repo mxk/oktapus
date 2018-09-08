@@ -1,7 +1,9 @@
 package okta
 
 import (
+	"bytes"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
@@ -32,9 +34,9 @@ func TestClientAuthenticate(t *testing.T) {
 		mock.WriteJSON(w, sess)
 	}
 
-	assert.Nil(t, c.Session())
+	assert.Empty(t, c.Session().ID)
 	require.NoError(t, c.Authenticate(auth))
-	assert.NotNil(t, c.Session())
+	assert.NotEmpty(t, c.Session().ID)
 	assert.Equal(t, "sid="+sess.ID, c.sidCookie)
 }
 
@@ -50,9 +52,9 @@ func TestClientRefresh(t *testing.T) {
 		sess.ExpiresAt = sess.ExpiresAt.Add(time.Hour)
 		mock.WriteJSON(w, sess)
 	}
-	sid, exp := sess.ID, c.session.ExpiresAt
+	sid, exp := sess.ID, c.sess.ExpiresAt
 	require.NoError(t, c.RefreshSession(""))
-	assert.True(t, c.session.ExpiresAt.After(exp))
+	assert.True(t, c.sess.ExpiresAt.After(exp))
 	assert.Equal(t, "sid="+sid, c.sidCookie)
 	assert.Equal(t, sid, c.Session().ID)
 
@@ -88,16 +90,16 @@ func TestClientEncodeDecode(t *testing.T) {
 	c = NewClient("localhost")
 	c.Client = cc
 	require.NoError(t, c.GobDecode(b))
-	assert.NotNil(t, c.Session())
+	assert.NotEmpty(t, c.Session().ID)
 
 	sess := s.Response["/api/v1/sessions"].(*Session)
 	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
 		sess.ExpiresAt = sess.ExpiresAt.Add(time.Hour)
 		mock.WriteJSON(w, sess)
 	}
-	exp := c.session.ExpiresAt
+	exp := c.sess.ExpiresAt
 	require.NoError(t, c.RefreshSession(""))
-	assert.True(t, c.session.ExpiresAt.After(exp))
+	assert.True(t, c.sess.ExpiresAt.After(exp))
 }
 
 func TestClientError(t *testing.T) {
@@ -162,6 +164,12 @@ func TestClientOpenAWS(t *testing.T) {
 		SessionDuration: 43200 * time.Second,
 	}
 	assert.Equal(t, want, auth)
+}
+
+func TestCloseBody(t *testing.T) {
+	b := bytes.NewReader(make([]byte, 4097))
+	closeBody(ioutil.NopCloser(b))
+	assert.Equal(t, 1, b.Len())
 }
 
 type auth struct {

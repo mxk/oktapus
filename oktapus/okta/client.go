@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 )
@@ -27,7 +26,7 @@ type Client struct {
 	BaseURL url.URL
 	Client  *http.Client
 
-	session   Session
+	sess      Session
 	sidCookie string
 }
 
@@ -69,21 +68,20 @@ func (c *Client) Authenticate(authn Authenticator) error {
 	return authenticate(c, authn)
 }
 
-// Session returns current session information or nil if the client is not
-// authenticated.
-func (c *Client) Session() *Session {
-	if c.sidCookie != "" && fast.Time().Before(c.session.ExpiresAt) {
-		s := c.session
-		return &s
+// Session returns current session information. Zero value is returned if the
+// client is not authenticated.
+func (c *Client) Session() Session {
+	if c.sidCookie != "" && fast.Time().Before(c.sess.ExpiresAt) {
+		return c.sess
 	}
-	return nil
+	return Session{}
 }
 
 // RefreshSession extends the expiration time of an existing session. If sid is
 // empty, the current session is refreshed.
 func (c *Client) RefreshSession(sid string) error {
 	if sid == "" {
-		sid = c.session.ID
+		sid = c.sess.ID
 	}
 	prev := c.sidCookie
 	c.sidCookie = sidCookie(sid)
@@ -114,7 +112,7 @@ func (c *Client) CloseSession() error {
 // AppLinks returns links for all applications assigned to the current user.
 func (c *Client) AppLinks() ([]*AppLink, error) {
 	var out []*AppLink
-	ref := url.URL{Path: "users/" + c.session.UserID + "/appLinks"}
+	ref := url.URL{Path: "users/" + c.sess.UserID + "/appLinks"}
 	err := c.do(http.MethodGet, &ref, nil, &out)
 	return out, err
 }
@@ -135,7 +133,7 @@ func (c *Client) OpenAWS(appLink string, role arn.ARN) (*AWSAuth, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer internal.CloseBody(rsp.Body)
+	defer closeBody(rsp.Body)
 	if rsp.StatusCode != http.StatusOK {
 		if rsp.StatusCode == http.StatusTooManyRequests {
 			return nil, ErrRateLimit
@@ -158,7 +156,7 @@ type state struct {
 // GobEncode implements gob.GobEncoder interface.
 func (c *Client) GobEncode() ([]byte, error) {
 	var buf bytes.Buffer
-	s := state{BaseURL: &c.BaseURL, Session: &c.session}
+	s := state{BaseURL: &c.BaseURL, Session: &c.sess}
 	err := gob.NewEncoder(&buf).Encode(&s)
 	return buf.Bytes(), err
 }
@@ -194,11 +192,11 @@ func (c *Client) setSession(s *Session) error {
 		if s.Status != "ACTIVE" {
 			return fmt.Errorf("okta: inactive session (%s)", s.Status)
 		}
-		c.session = *s
+		c.sess = *s
 	} else {
-		c.session = Session{}
+		c.sess = Session{}
 	}
-	c.sidCookie = sidCookie(c.session.ID)
+	c.sidCookie = sidCookie(c.sess.ID)
 	return nil
 }
 
@@ -238,7 +236,7 @@ func (c *Client) newReq(method string, ref *url.URL, body interface{}) (*http.Re
 		h.Set("Cache-Control", "no-cache")
 		h.Set("User-Agent", "Oktapus/1.0")
 		if body != nil {
-			h.Set("Content-Type", "application/json;charset=UTF-8")
+			h.Set("Content-Type", "application/json; charset=UTF-8")
 		}
 		if c.sidCookie != "" {
 			h.Set("Cookie", c.sidCookie)
@@ -258,15 +256,20 @@ type Error struct {
 
 // Error implements error interface.
 func (e *Error) Error() string {
-	return internal.JSON(e)
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(e); err != nil {
+		panic(err)
+	}
+	return b.String()
 }
-
-const responseDebug = false
 
 // readResponse reads JSON response from the server and decodes it into out.
 // Server error codes (4xx/5xx) are returned as an *Error instance.
 func readResponse(rsp *http.Response, out interface{}) error {
-	defer internal.CloseBody(rsp.Body)
+	defer closeBody(rsp.Body)
 	if rsp.StatusCode == http.StatusNoContent {
 		return nil
 	} else if rsp.StatusCode == http.StatusTooManyRequests {
@@ -280,22 +283,7 @@ func readResponse(rsp *http.Response, out interface{}) error {
 	} else if cs, ok := p["charset"]; ok && !strings.EqualFold(cs, "UTF-8") {
 		return fmt.Errorf("okta: unexpected charset (%s)", cs)
 	}
-	var dec *json.Decoder
-	//noinspection GoBoolExpressions
-	if responseDebug {
-		b, err := ioutil.ReadAll(rsp.Body)
-		if err != nil {
-			return err
-		}
-		var buf bytes.Buffer
-		if err = json.Indent(&buf, bytes.TrimSpace(b), "", "  "); err != nil {
-			return err
-		}
-		fmt.Printf("%s\n%s\n", rsp.Status, buf.Bytes())
-		dec = json.NewDecoder(bytes.NewReader(b))
-	} else {
-		dec = json.NewDecoder(rsp.Body)
-	}
+	dec := json.NewDecoder(rsp.Body)
 	if rsp.StatusCode >= 400 {
 		e := new(Error)
 		err := dec.Decode(e)
@@ -308,6 +296,14 @@ func readResponse(rsp *http.Response, out interface{}) error {
 		out = &struct{}{}
 	}
 	return dec.Decode(out)
+}
+
+// closeBody attempts to drain http.Response body before closing it to allow
+// connection reuse (see https://github.com/google/go-github/pull/317 and
+// https://github.com/golang/go/issues/20528).
+func closeBody(body io.ReadCloser) {
+	io.CopyN(ioutil.Discard, body, 4096)
+	body.Close()
 }
 
 // sidCookie encodes sid for use in the Cookie header.

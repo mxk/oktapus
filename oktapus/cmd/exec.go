@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
@@ -91,7 +91,7 @@ func (cmd *execCmd) Run(ctx *op.Ctx) (interface{}, error) {
 			credsErr++
 		} else if err = run(tpl, ac); err != nil {
 			log.Println("ERROR:", err)
-			if runErr++; runErr == 1 && internal.ExitCode(err) == 2 {
+			if runErr++; runErr == 1 && exitCode(err) == 2 {
 				return nil, errors.New("abort due to command usage error")
 			}
 		}
@@ -133,4 +133,13 @@ func run(c exec.Cmd, ac *op.Account) error {
 		external.AWSSessionTokenEnvVar+"="+cr.SessionToken,
 	)
 	return c.Run()
+}
+
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	} else if e, ok := err.(*exec.ExitError); ok {
+		return e.Sys().(syscall.WaitStatus).ExitStatus()
+	}
+	return -1
 }

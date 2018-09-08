@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -122,7 +121,7 @@ func (ctl *Ctl) Decode(b64 string) error {
 func (ctl *Ctl) eq(other *Ctl) bool {
 	return ctl == other || (ctl != nil && other != nil &&
 		ctl.Owner == other.Owner && ctl.Desc == other.Desc &&
-		internal.StringsEq(ctl.Tags, other.Tags))
+		ctl.Tags.eq(other.Tags))
 }
 
 // copy performs a deep copy of other to ctl.

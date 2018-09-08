@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -44,7 +47,8 @@ func TestExec(t *testing.T) {
 		Stdout: &b,
 		Stderr: &b,
 	}
-	os.Setenv(testEnv, "1")
+	os.Setenv(testEnv, "exec")
+	defer os.Unsetenv(testEnv)
 	_, err := cmd.Run(ctx)
 	require.Equal(t, cli.ExitCode(1), err)
 	want := cli.Dedent(`
@@ -62,4 +66,23 @@ func TestExec(t *testing.T) {
 		==> TOTAL ERRORS: 1 (0 due to invalid credentials)
 	`)[1:]
 	assert.Equal(t, want, b.String())
+}
+
+func TestExitCode(t *testing.T) {
+	if v := os.Getenv(testEnv); v != "" {
+		code, _ := strconv.Atoi(v)
+		os.Exit(code)
+	}
+	env := os.Environ()
+	run := func(code int) error {
+		cmd := exec.Command(os.Args[0], "-test.run=TestExitCode")
+		cmd.Env = append(env, fmt.Sprintf(testEnv+"=%d", code))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	assert.Equal(t, -1, exitCode(errors.New("")))
+	assert.Equal(t, 0, exitCode(run(0)))
+	assert.Equal(t, 1, exitCode(run(1)))
+	assert.Equal(t, 2, exitCode(run(2)))
 }

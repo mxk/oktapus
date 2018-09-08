@@ -44,7 +44,7 @@ func TestParseTags(t *testing.T) {
 	}
 }
 
-func TestDiff(t *testing.T) {
+func TestTagsDiff(t *testing.T) {
 	tests := []*struct {
 		t, u, set, clr string
 	}{{
@@ -97,7 +97,7 @@ func TestDiff(t *testing.T) {
 	}
 }
 
-func TestApply(t *testing.T) {
+func TestTagsApply(t *testing.T) {
 	tests := []*struct {
 		t, set, clr, u string
 	}{{
@@ -141,5 +141,23 @@ func TestApply(t *testing.T) {
 		u.Apply(set, clr)
 		assert.Equal(t, test.u, u.String(), "t=%q set=%q clr=%q",
 			test.t, test.set, test.clr)
+	}
+}
+
+func TestTagsEq(t *testing.T) {
+	tests := []*struct {
+		a, b Tags
+		eq   bool
+	}{
+		{Tags{}, Tags{}, true},
+		{Tags{"a"}, Tags{}, false},
+		{Tags{"a"}, Tags{"b", "c"}, false},
+		{Tags{"a"}, Tags{"b"}, false},
+		{Tags{"a"}, Tags{"a"}, true},
+		{Tags{"a", "b"}, Tags{"a", "B"}, false},
+		{Tags{"a", "b"}, Tags{"a", "b"}, true},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.eq, tc.a.eq(tc.b), "%+v", tc)
 	}
 }

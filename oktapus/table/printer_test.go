@@ -1,4 +1,4 @@
-package internal
+package table
 
 import (
 	"bufio"
@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//noinspection GoInvalidCompositeLiteral (GoLand bug GO-5283)
 func TestPrinter(t *testing.T) {
 	tests := []struct {
 		in  interface{}

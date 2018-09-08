@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/LuminalHQ/cloudcover/oktapus/internal"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/oktapus/table"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 )
 
@@ -75,9 +75,9 @@ func listAccounts(acs op.Accounts) []*listOutput {
 	return out
 }
 
-func (o *listOutput) PrintRow(p *internal.Printer) {
+func (o *listOutput) PrintRow(p *table.Printer) {
 	if o.Error == "" {
-		internal.PrintRow(p, o)
+		table.PrintRow(p, o)
 	} else {
 		p.PrintCol(0, o.Account, true)
 		p.PrintCol(1, o.Name, true)
