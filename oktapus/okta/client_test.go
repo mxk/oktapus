@@ -34,10 +34,9 @@ func TestClientAuthenticate(t *testing.T) {
 		mock.WriteJSON(w, sess)
 	}
 
-	assert.Empty(t, c.Session().ID)
+	assert.Empty(t, c.Sess.ID)
 	require.NoError(t, c.Authenticate(auth))
-	assert.NotEmpty(t, c.Session().ID)
-	assert.Equal(t, "sid="+sess.ID, c.sidCookie)
+	assert.Equal(t, sess.ID, c.Sess.ID)
 }
 
 func TestClientRefresh(t *testing.T) {
@@ -52,11 +51,10 @@ func TestClientRefresh(t *testing.T) {
 		sess.ExpiresAt = sess.ExpiresAt.Add(time.Hour)
 		mock.WriteJSON(w, sess)
 	}
-	sid, exp := sess.ID, c.sess.ExpiresAt
-	require.NoError(t, c.RefreshSession(""))
-	assert.True(t, c.sess.ExpiresAt.After(exp))
-	assert.Equal(t, "sid="+sid, c.sidCookie)
-	assert.Equal(t, sid, c.Session().ID)
+	sid, exp := sess.ID, c.Sess.ExpiresAt
+	require.NoError(t, c.RefreshSession())
+	assert.True(t, c.Sess.ExpiresAt.After(exp))
+	assert.Equal(t, sid, c.Sess.ID)
 
 	restore := "oldsession"
 	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
@@ -64,9 +62,9 @@ func TestClientRefresh(t *testing.T) {
 		assert.Equal(t, restore, sid.Value)
 		mock.WriteJSON(w, sess)
 	}
-	require.NoError(t, c.RefreshSession(restore))
-	assert.Equal(t, "sid="+restore, c.sidCookie)
-	assert.Equal(t, restore, c.Session().ID)
+	c.Sess.ID = restore
+	require.NoError(t, c.RefreshSession())
+	assert.Equal(t, restore, c.Sess.ID)
 }
 
 func TestClientClose(t *testing.T) {
@@ -79,27 +77,6 @@ func TestClientClose(t *testing.T) {
 	}
 	require.NoError(t, c.CloseSession())
 	assert.True(t, called)
-}
-
-func TestClientEncodeDecode(t *testing.T) {
-	c, s := newClientServer(true)
-	b, err := c.GobEncode()
-	require.NoError(t, err)
-
-	cc := c.Client
-	c = NewClient("localhost")
-	c.Client = cc
-	require.NoError(t, c.GobDecode(b))
-	assert.NotEmpty(t, c.Session().ID)
-
-	sess := s.Response["/api/v1/sessions"].(*Session)
-	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
-		sess.ExpiresAt = sess.ExpiresAt.Add(time.Hour)
-		mock.WriteJSON(w, sess)
-	}
-	exp := c.sess.ExpiresAt
-	require.NoError(t, c.RefreshSession(""))
-	assert.True(t, c.sess.ExpiresAt.After(exp))
 }
 
 func TestClientError(t *testing.T) {
@@ -115,13 +92,13 @@ func TestClientError(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		mock.WriteJSON(w, err)
 	}
-	assert.Equal(t, err, c.RefreshSession(""))
+	assert.Equal(t, err, c.RefreshSession())
 	assert.NotEmpty(t, err.Error())
 
 	s.Response["/api/v1/sessions/me/lifecycle/refresh"] = func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusTooManyRequests)
 	}
-	assert.Equal(t, ErrRateLimit, c.RefreshSession(""))
+	assert.Equal(t, ErrRateLimit, c.RefreshSession())
 }
 
 func TestClientOpenAWS(t *testing.T) {
@@ -155,13 +132,11 @@ func TestClientOpenAWS(t *testing.T) {
 	auth, err := c.OpenAWS(links[0].LinkURL, "")
 	require.NoError(t, err)
 	want := &AWSAuth{
-		SAML: assertion,
+		Assertion: assertion,
 		Roles: []awsRole{{
 			Principal: "arn:aws:iam::000000000000:saml-provider/Okta",
 			Role:      "arn:aws:iam::000000000000:role/OktapusGateway",
 		}},
-		RoleSessionName: "user@example.com",
-		SessionDuration: 43200 * time.Second,
 	}
 	assert.Equal(t, want, auth)
 }

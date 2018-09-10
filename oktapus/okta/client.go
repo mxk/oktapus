@@ -2,7 +2,6 @@ package okta
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,19 +24,17 @@ var ErrRateLimit = errors.New("okta: request rate limit exceeded")
 type Client struct {
 	BaseURL url.URL
 	Client  *http.Client
-
-	sess      Session
-	sidCookie string
+	Sess    Session
 }
 
 // Session contains Okta session information.
 type Session struct {
-	ID        string    `json:"id"`
-	Login     string    `json:"login"`
-	UserID    string    `json:"userId"`
-	CreatedAt time.Time `json:"createdAt"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	Status    string    `json:"status"`
+	ID        string
+	Login     string
+	UserID    string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Status    string
 }
 
 // AppLink is an app that the user can access.
@@ -65,38 +62,26 @@ func NewClient(host string) *Client {
 
 // Authenticate performs user authentication and creates a new session.
 func (c *Client) Authenticate(authn Authenticator) error {
+	c.Sess = Session{}
 	return authenticate(c, authn)
 }
 
-// Session returns current session information. Zero value is returned if the
-// client is not authenticated.
-func (c *Client) Session() Session {
-	if c.sidCookie != "" && fast.Time().Before(c.sess.ExpiresAt) {
-		return c.sess
-	}
-	return Session{}
+// ValidSession returns true if the client has a valid Okta session ID.
+func (c *Client) ValidSession() bool {
+	return c.Sess.ID != "" && c.Sess.ExpiresAt.After(
+		fast.Time().Add(time.Minute))
 }
 
-// RefreshSession extends the expiration time of an existing session. If sid is
-// empty, the current session is refreshed.
-func (c *Client) RefreshSession(sid string) error {
-	if sid == "" {
-		sid = c.sess.ID
-	}
-	prev := c.sidCookie
-	c.sidCookie = sidCookie(sid)
-	var out Session
+// RefreshSession extends the expiration time of the current session.
+func (c *Client) RefreshSession() error {
+	var s Session
 	ref := url.URL{Path: "sessions/me/lifecycle/refresh"}
-	err := c.do(http.MethodPost, &ref, nil, &out)
-	if err != nil {
-		c.sidCookie = prev
-		return err
-	}
-	// The returned ID is an ExternalSessionID that does not replace the
-	// original sid cookie.
-	out.ID = sid
-	if err = c.setSession(&out); err != nil {
-		c.sidCookie = prev
+	err := c.do(http.MethodPost, &ref, nil, &s)
+	if err == nil {
+		// The returned ID is an ExternalSessionID that does not replace the
+		// original sid cookie.
+		s.ID = c.Sess.ID
+		c.Sess = s
 	}
 	return err
 }
@@ -105,16 +90,16 @@ func (c *Client) RefreshSession(sid string) error {
 func (c *Client) CloseSession() error {
 	ref := url.URL{Path: "sessions/me"}
 	err := c.do(http.MethodDelete, &ref, nil, nil)
-	c.setSession(nil)
+	c.Sess = Session{}
 	return err
 }
 
 // AppLinks returns links for all applications assigned to the current user.
 func (c *Client) AppLinks() ([]*AppLink, error) {
-	var out []*AppLink
-	ref := url.URL{Path: "users/" + c.sess.UserID + "/appLinks"}
-	err := c.do(http.MethodGet, &ref, nil, &out)
-	return out, err
+	var links []*AppLink
+	ref := url.URL{Path: "users/" + c.Sess.UserID + "/appLinks"}
+	err := c.do(http.MethodGet, &ref, nil, &links)
+	return links, err
 }
 
 // OpenAWS returns SAML authentication data for the AWS app specified by
@@ -124,7 +109,7 @@ func (c *Client) OpenAWS(appLink string, role arn.ARN) (*AWSAuth, error) {
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.newReq(http.MethodGet, ref, nil)
+	req, err := c.req(http.MethodGet, ref, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -147,62 +132,23 @@ func (c *Client) OpenAWS(appLink string, role arn.ARN) (*AWSAuth, error) {
 	return newAWSAuth(sa, role)
 }
 
-// state contains serialized Client state.
-type state struct {
-	BaseURL *url.URL
-	Session *Session
-}
-
-// GobEncode implements gob.GobEncoder interface.
-func (c *Client) GobEncode() ([]byte, error) {
-	var buf bytes.Buffer
-	s := state{BaseURL: &c.BaseURL, Session: &c.sess}
-	err := gob.NewEncoder(&buf).Encode(&s)
-	return buf.Bytes(), err
-}
-
-// GobDecode implements gob.GobDecoder interface.
-func (c *Client) GobDecode(b []byte) error {
-	r := bytes.NewReader(b)
-	s := state{}
-	err := gob.NewDecoder(r).Decode(&s)
-	if err == nil && c.BaseURL == *s.BaseURL {
-		c.setSession(s.Session)
-	}
-	return err
-}
-
 // createSession converts session token into a cookie.
 func (c *Client) createSession(sessionToken string) error {
 	type in struct {
 		SessionToken string `json:"sessionToken"`
 	}
-	var out Session
+	var s Session
 	ref := url.URL{Path: "sessions"}
-	err := c.do(http.MethodPost, &ref, &in{sessionToken}, &out)
+	err := c.do(http.MethodPost, &ref, &in{sessionToken}, &s)
 	if err == nil {
-		err = c.setSession(&out)
+		c.Sess = s
 	}
 	return err
 }
 
-// setSession updates client session state.
-func (c *Client) setSession(s *Session) error {
-	if s != nil {
-		if s.Status != "ACTIVE" {
-			return fmt.Errorf("okta: inactive session (%s)", s.Status)
-		}
-		c.sess = *s
-	} else {
-		c.sess = Session{}
-	}
-	c.sidCookie = sidCookie(c.sess.ID)
-	return nil
-}
-
 // do executes an Okta API call and decodes the response.
 func (c *Client) do(method string, ref *url.URL, in, out interface{}) error {
-	req, err := c.newReq(method, ref, in)
+	req, err := c.req(method, ref, in)
 	if err == nil {
 		var rsp *http.Response
 		if rsp, err = c.Client.Do(req); err == nil {
@@ -212,8 +158,8 @@ func (c *Client) do(method string, ref *url.URL, in, out interface{}) error {
 	return err
 }
 
-// newReq creates and configures a new API request.
-func (c *Client) newReq(method string, ref *url.URL, body interface{}) (*http.Request, error) {
+// req creates and configures a new API request.
+func (c *Client) req(method string, ref *url.URL, body interface{}) (*http.Request, error) {
 	if (ref.Scheme != "" && ref.Scheme != c.BaseURL.Scheme) ||
 		(ref.Host != "" && ref.Host != c.BaseURL.Host) {
 		return nil, fmt.Errorf("okta: invalid reference url (%s)", ref)
@@ -238,8 +184,8 @@ func (c *Client) newReq(method string, ref *url.URL, body interface{}) (*http.Re
 		if body != nil {
 			h.Set("Content-Type", "application/json; charset=UTF-8")
 		}
-		if c.sidCookie != "" {
-			h.Set("Cookie", c.sidCookie)
+		if c.Sess.ID != "" {
+			req.AddCookie(&http.Cookie{Name: "sid", Value: c.Sess.ID})
 		}
 	}
 	return req, err
@@ -304,13 +250,4 @@ func readResponse(rsp *http.Response, out interface{}) error {
 func closeBody(body io.ReadCloser) {
 	io.CopyN(ioutil.Discard, body, 4096)
 	body.Close()
-}
-
-// sidCookie encodes sid for use in the Cookie header.
-func sidCookie(sid string) string {
-	if sid == "" {
-		return ""
-	}
-	c := http.Cookie{Name: "sid", Value: sid}
-	return c.String()
 }
