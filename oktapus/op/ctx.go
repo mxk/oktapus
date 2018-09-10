@@ -18,10 +18,12 @@ import (
 	"github.com/LuminalHQ/cloudcover/oktapus/account"
 	"github.com/LuminalHQ/cloudcover/oktapus/creds"
 	"github.com/LuminalHQ/cloudcover/oktapus/daemon"
+	"github.com/LuminalHQ/cloudcover/oktapus/okta"
 	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
+	"github.com/LuminalHQ/cloudcover/x/region"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -120,7 +122,6 @@ const (
 	CommonRoleEnv = "OKTAPUS_COMMON_ROLE"
 
 	OktaHostEnv    = "OKTA_ORG"
-	OktaSIDEnv     = "OKTA_SID"
 	OktaUserEnv    = "OKTA_USERNAME"
 	OktaAWSAppEnv  = "OKTA_AWS_APP_URL"
 	OktaAWSRoleEnv = "OKTA_AWS_ROLE_TO_ASSUME"
@@ -142,7 +143,6 @@ type Ctx struct {
 
 	// Okta environment config
 	OktaHost    string `env:"OKTA_ORG"`
-	OktaSID     string `env:"OKTA_SID"`
 	OktaUser    string `env:"OKTA_USERNAME"`
 	OktaAWSApp  string `env:"OKTA_AWS_APP_URL"`
 	OktaAWSRole string `env:"OKTA_AWS_ROLE_TO_ASSUME"`
@@ -153,6 +153,7 @@ type Ctx struct {
 	local  bool
 	secret string
 	mode   AuthMode
+	okta   *okta.Client
 	cfg    aws.Config
 	proxy  creds.Proxy
 	dir    account.Directory
@@ -195,6 +196,11 @@ func (c *Ctx) Init(cfg *aws.Config) error {
 	if err, ok := c.restoreState(); err != nil {
 		return err
 	} else if !ok {
+		if c.mode == Okta {
+			if err := c.oktaAuth(); err != nil {
+				return err
+			}
+		}
 		c.newClients()
 		err := fast.Call(c.proxy.Init, c.dir.Init)
 		if err != nil && !account.IsErrorNoOrg(err) {
@@ -208,6 +214,9 @@ func (c *Ctx) Init(cfg *aws.Config) error {
 
 // AuthMode returns the context authentication mode.
 func (c *Ctx) AuthMode() AuthMode { return c.mode }
+
+// Okta returns the Okta client if the current AuthMode is Okta.
+func (c *Ctx) Okta() *okta.Client { return c.okta }
 
 // Cfg returns the active AWS client config.
 func (c *Ctx) Cfg() aws.Config { return c.cfg }
@@ -435,6 +444,8 @@ func (c *Ctx) resolveCfg(cfg *aws.Config) error {
 	} else if cfg != &c.cfg {
 		c.cfg = *cfg
 	}
+
+	// Ensure that c.cfg.Credentials is a *creds.Provider and detect creds type
 	if c.OktaHost == "" {
 		cp := creds.WrapProvider(c.cfg.Credentials)
 		c.cfg.Credentials = cp
@@ -445,12 +456,62 @@ func (c *Ctx) resolveCfg(cfg *aws.Config) error {
 			// TODO: How to handle EC2 instance role creds?
 			c.mode = STS
 		}
-	} else {
-		// TODO: Okta creds; non-interactive if non-local
-		c.mode = Okta
-		panic("op: okta mode not implemented")
+		return nil
 	}
+
+	// Create Okta client and *creds.Provider
+	if c.OktaUser == "" {
+		return errors.New(OktaUserEnv + " not set")
+	}
+	if c.OktaAWSApp == "" {
+		return errors.New(OktaAWSAppEnv + " not set")
+	}
+	c.okta = okta.NewClient(c.OktaHost)
+	stsc := sts.New(c.cfg)
+	creds.Set(stsc.Client, aws.AnonymousCredentials)
+	c.cfg.Credentials = creds.RenewableProvider(func() (cr aws.Credentials, err error) {
+		auth, err := c.okta.OpenAWS(c.OktaAWSApp, arn.ARN(c.OktaAWSRole))
+		if err != nil {
+			return
+		}
+		r := auth.Roles[0]
+		if part := r.Role.Partition(); part != region.Partition(c.cfg.Region) {
+			err = errors.Errorf("invalid region %q for %q partition",
+				c.cfg.Region, part)
+			return
+		}
+		in := sts.AssumeRoleWithSAMLInput{
+			PrincipalArn:  arn.String(r.Principal),
+			RoleArn:       arn.String(r.Role),
+			SAMLAssertion: aws.String(auth.Assertion.Encode()),
+		}
+		out, err := stsc.AssumeRoleWithSAMLRequest(&in).Send()
+		if err == nil {
+			cr = creds.FromSTS(out.Credentials)
+			cr.Source = "Okta"
+		}
+		return
+	})
+	c.mode = Okta
 	return nil
+}
+
+// oktaAuth performs Okta authentication and validates AWS app selection.
+func (c *Ctx) oktaAuth() error {
+	c.requireLocal()
+	if err := c.okta.Authenticate(newTermAuthn(c.OktaUser)); err != nil {
+		return errors.Wrap(err, "Okta authentication failed")
+	}
+	apps, err := c.okta.AppLinks()
+	if err != nil {
+		return errors.Wrap(err, "failed to get Okta apps")
+	}
+	for _, app := range apps {
+		if app.LinkURL == c.OktaAWSApp && app.AppName == "amazon_aws" {
+			return nil
+		}
+	}
+	return errors.Errorf("AWS app not found: %s", c.OktaAWSApp)
 }
 
 // newClients creates new AWS service clients.
@@ -472,6 +533,11 @@ func (c *Ctx) restoreState() (error, bool) {
 			panic("op: context signature mismatch")
 		}
 		sc.restore(c)
+		part := c.proxy.Ident.Partition()
+		if part != region.Partition(c.cfg.Region) {
+			return errors.Errorf("invalid region %q for %q partition",
+				c.cfg.Region, part), false
+		}
 		return nil, true
 	}
 	if err == io.EOF || daemon.IsNotRunning(err) {
@@ -623,14 +689,14 @@ func (c *Ctx) saveAccounts() []Account {
 	return acs
 }
 
-// TODO: Save/restore c.cfg creds in Okta mode
-
 // SavedCtx is a serializable context representation.
 type SavedCtx struct {
 	Ver
 	Ctx           Ctx
 	Sig           string
 	Secret        string
+	OktaSess      *okta.Session
+	OktaCreds     *aws.Credentials // TODO: Save creds in other modes?
 	ProxyIdent    creds.Ident
 	ProxySessName string
 	DirOrg        account.Org
@@ -656,6 +722,17 @@ func newSavedCtx(c *Ctx) *SavedCtx {
 		Accounts:      c.saveAccounts(),
 	}
 	c = &sc.Ctx
+	if c.okta != nil {
+		if c.okta == nil || !c.okta.ValidSession() {
+			return nil
+		}
+		sess := c.okta.Sess
+		sc.OktaSess = &sess
+		if cr, err := c.cfg.Credentials.(*creds.Provider).Creds(); err == nil {
+			sc.OktaCreds = &cr
+		}
+		c.okta = nil
+	}
 	envFromCfg(&c.EnvCfg, &c.cfg)
 	c.local = false
 	c.mode = Unknown
@@ -685,6 +762,12 @@ func (sc *SavedCtx) Restore() (*Ctx, error) {
 // but this means that the cached accounts and creds may no longer be 100%
 // correct for the current config.
 func (sc *SavedCtx) restore(c *Ctx) {
+	if c.mode == Okta {
+		c.okta.Sess = *sc.OktaSess
+		if sc.OktaCreds != nil {
+			c.cfg.Credentials.(*creds.Provider).Store(*sc.OktaCreds, nil)
+		}
+	}
 	c.proxy.Ident = sc.ProxyIdent
 	c.proxy.SessName = sc.ProxySessName
 	c.dir.Org = sc.DirOrg
