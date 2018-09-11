@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
+	"github.com/LuminalHQ/cloudcover/x/awsx"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/LuminalHQ/cloudcover/x/iamx"

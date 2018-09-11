@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
+	"github.com/LuminalHQ/cloudcover/x/awsx"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"

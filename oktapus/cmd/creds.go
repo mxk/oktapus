@@ -3,10 +3,10 @@ package cmd
 import (
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/awsx"
 	"github.com/LuminalHQ/cloudcover/oktapus/op"
 	"github.com/LuminalHQ/cloudcover/oktapus/table"
 	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/LuminalHQ/cloudcover/x/awsx"
 	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
