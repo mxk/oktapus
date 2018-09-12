@@ -172,7 +172,7 @@ func newKeyMaker(path, name string, attachPolicy arn.ARN) *keyMaker {
 
 func (m *keyMaker) exec(c iamx.Client) (*iam.CreateAccessKeyOutput, error) {
 	if _, err := c.CreateUserRequest(&m.user).Send(); err != nil {
-		if !awsx.IsCode(err, iam.ErrCodeEntityAlreadyExistsException) {
+		if awsx.ErrCode(err) != iam.ErrCodeEntityAlreadyExistsException {
 			return nil, err
 		}
 		// Existing user must have identical path to create new access key

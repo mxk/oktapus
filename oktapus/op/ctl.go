@@ -53,7 +53,7 @@ func (ctl *Ctl) Load(c iamx.Client) error {
 	if err == nil {
 		return ctl.Decode(aws.StringValue(out.Role.Description))
 	}
-	if *ctl = (Ctl{}); awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
+	if *ctl = (Ctl{}); awsx.ErrCode(err) == iam.ErrCodeNoSuchEntityException {
 		err = ErrNoCtl
 	}
 	return err
@@ -70,7 +70,7 @@ func (ctl *Ctl) Store(c iamx.Client) error {
 		if err == nil {
 			return out.Role, nil
 		}
-		if awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
+		if awsx.ErrCode(err) == iam.ErrCodeNoSuchEntityException {
 			err = ErrNoCtl
 		}
 		return nil, err

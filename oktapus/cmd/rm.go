@@ -75,7 +75,7 @@ func (cmd *rmCmd) Run(ctx *op.Ctx) (interface{}, error) {
 			}
 			if err := rm(ac.IAM, cmd.Names[i]); err == nil {
 				ro.Result = "OK"
-			} else if awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
+			} else if awsx.ErrCode(err) == iam.ErrCodeNoSuchEntityException {
 				ro.Result = "NOT FOUND"
 			} else {
 				ro.Result = "ERROR: " + explainError(err)

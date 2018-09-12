@@ -227,7 +227,7 @@ func newRoleAuthz(path, name string, attachPolicy arn.ARN, principals ...string)
 func (r *roleAuthz) exec(c iamx.Client) (role *iam.Role, created bool, err error) {
 	out, err := c.GetRoleRequest(&r.get).Send()
 	if err != nil {
-		if !awsx.IsCode(err, iam.ErrCodeNoSuchEntityException) {
+		if awsx.ErrCode(err) != iam.ErrCodeNoSuchEntityException {
 			return nil, false, err
 		}
 		out, err := c.CreateRoleRequest(&r.create).Send()
