@@ -57,30 +57,3 @@ func TestSavedCtx(t *testing.T) {
 	var v SavedCtx
 	require.NoError(t, gob.NewDecoder(&b).Decode(&v))
 }
-
-func TestSetEnvFields(t *testing.T) {
-	type V struct {
-		S1 string `env:"_S1"`
-		S2 string `env:"_S2"`
-		B1 bool   `env:"_B1"`
-		B2 bool   `env:"_B2"`
-		B3 bool   `env:"_B3"`
-	}
-	env := map[string]string{
-		"_S2": "s2",
-		"_B2": "",
-		"_B3": "0",
-	}
-	defer func() {
-		for k := range env {
-			os.Unsetenv(k)
-		}
-	}()
-	for k, v := range env {
-		os.Setenv(k, v)
-	}
-	var have V
-	setEnvFields(&have)
-	want := V{S2: "s2", B2: true}
-	assert.Equal(t, want, have)
-}

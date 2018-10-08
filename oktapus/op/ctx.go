@@ -10,9 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/LuminalHQ/cloudcover/oktapus/account"
@@ -174,7 +172,7 @@ func EnvCtx() *Ctx {
 		AliasFile:  filepath.Join(awsDir, "oktapus.accounts"),
 		local:      true,
 	}
-	if err := setEnvFields(c); err != nil {
+	if err := cli.SetEnvFields(c); err != nil {
 		panic(err)
 	}
 	c.EnvCfg, _ = external.NewEnvConfig()
@@ -789,45 +787,6 @@ func (sc *SavedCtx) restore(c *Ctx) {
 			c.CredsProvider(cr.Account).Store(cr.Creds, cr.Err)
 		}
 	}
-}
-
-// setEnvFields populates struct pointer field values from environment
-// variables, with variable names obtained from the "env" field tag.
-func setEnvFields(i interface{}) error {
-	v := reflect.ValueOf(i).Elem()
-	t := v.Type()
-	stringType := reflect.TypeOf("")
-	for i := t.NumField() - 1; i >= 0; i-- {
-		f := t.Field(i)
-		key := f.Tag.Get("env")
-		if key == "" {
-			continue
-		}
-		val, ok := os.LookupEnv(key)
-		if !ok {
-			continue
-		}
-		switch f.Type.Kind() {
-		case reflect.String:
-			src := reflect.ValueOf(val)
-			if f.Type != stringType {
-				src = src.Convert(f.Type)
-			}
-			v.Field(i).Set(src)
-		case reflect.Bool:
-			b := val == ""
-			if !b {
-				var err error
-				if b, err = strconv.ParseBool(val); err != nil {
-					return errors.Wrapf(err, "invalid value for %q", key)
-				}
-			}
-			v.Field(i).Set(reflect.ValueOf(b))
-		default:
-			panic("unsupported field type " + f.Type.String())
-		}
-	}
-	return nil
 }
 
 // envFromCfg updates AWS environment config with relevant values extracted from
