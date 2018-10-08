@@ -77,7 +77,7 @@ func explainError(err error) string {
 
 // OutFmt implements the common -json flag.
 type OutFmt struct {
-	JSON bool `flag:",Write JSON output"`
+	JSON bool `flag:"Write output in JSON format"`
 }
 
 // Print writes command output to stdout.
