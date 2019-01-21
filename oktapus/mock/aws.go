@@ -5,10 +5,10 @@ import (
 	"path"
 	"sync"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/LuminalHQ/cloudcover/x/awsmock"
-	"github.com/LuminalHQ/cloudcover/x/region"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/awsmock"
+	"github.com/mxk/cloudcover/x/region"
 )
 
 // Mock STS credentials.

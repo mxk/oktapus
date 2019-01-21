@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/account"
+	"github.com/mxk/cloudcover/oktapus/account"
 )
 
 type specType byte

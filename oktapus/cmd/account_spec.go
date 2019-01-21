@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/x/cli"
 )
 
 var accountSpecCli = cli.Main.Add(&cli.Info{

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/x/cli"
 	"github.com/stretchr/testify/assert"
 )
 

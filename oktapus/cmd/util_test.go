@@ -3,11 +3,11 @@ package cmd
 import (
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/mxk/cloudcover/oktapus/mock"
+	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/cloudcover/x/arn"
 	"github.com/stretchr/testify/assert"
 )
 

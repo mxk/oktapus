@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/mxk/cloudcover/oktapus/mock"
+	"github.com/mxk/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

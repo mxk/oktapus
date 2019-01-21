@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/fast"
 )
 
 // STSRouter handles STS API calls. Key is SessionToken, which is the assumed

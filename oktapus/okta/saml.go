@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/arn"
 	"golang.org/x/net/html"
 )
 

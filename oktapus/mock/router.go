@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/arn"
 )
 
 // Router simulates AWS responses by populating request Data and Error fields.

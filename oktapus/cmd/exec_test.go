@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
-	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/oktapus/mock"
+	"github.com/mxk/cloudcover/x/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

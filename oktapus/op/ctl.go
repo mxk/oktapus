@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/x/awsx"
-	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/mxk/cloudcover/x/awsx"
+	"github.com/mxk/cloudcover/x/iamx"
 )
 
 // CtlRole is the IAM role that stores account control information in its

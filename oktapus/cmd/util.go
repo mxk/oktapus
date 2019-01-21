@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/LuminalHQ/cloudcover/oktapus/table"
-	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/cloudcover/oktapus/table"
+	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/cloudcover/x/iamx"
 	"github.com/pkg/errors"
 )
 

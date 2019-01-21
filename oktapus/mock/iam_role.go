@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/mxk/cloudcover/x/arn"
 )
 
 // Role is a mock IAM role.

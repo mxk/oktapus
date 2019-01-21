@@ -3,7 +3,7 @@ package mock
 import (
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/arn"
 	"github.com/stretchr/testify/assert"
 )
 

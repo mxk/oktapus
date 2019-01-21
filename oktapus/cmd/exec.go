@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/LuminalHQ/cloudcover/x/cli"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
+	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/cloudcover/x/cli"
 )
 
 // TODO: Okta mode

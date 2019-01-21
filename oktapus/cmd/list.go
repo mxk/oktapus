@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/LuminalHQ/cloudcover/oktapus/table"
-	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/cloudcover/oktapus/table"
+	"github.com/mxk/cloudcover/x/cli"
 )
 
 var listCli = cli.Main.Add(&cli.Info{

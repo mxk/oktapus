@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/fast"
 )
 
 // User is a mock IAM user.

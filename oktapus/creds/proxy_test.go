@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/x/awsmock"
-	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/mxk/cloudcover/x/awsmock"
+	"github.com/mxk/cloudcover/x/fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

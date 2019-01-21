@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/LuminalHQ/cloudcover/oktapus/op"
-	"github.com/LuminalHQ/cloudcover/x/cli"
-	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/x/fast"
 )
 
 var freeCli = cli.Main.Add(&cli.Info{

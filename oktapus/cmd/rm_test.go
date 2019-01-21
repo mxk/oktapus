@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/mxk/cloudcover/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

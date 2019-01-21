@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/account"
-	"github.com/LuminalHQ/cloudcover/oktapus/creds"
-	"github.com/LuminalHQ/cloudcover/x/fast"
-	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
+	"github.com/mxk/cloudcover/oktapus/account"
+	"github.com/mxk/cloudcover/oktapus/creds"
+	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/cloudcover/x/iamx"
 )
 
 const (

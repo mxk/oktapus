@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/okta"
+	"github.com/mxk/cloudcover/oktapus/okta"
 	"golang.org/x/crypto/ssh/terminal"
 )
 

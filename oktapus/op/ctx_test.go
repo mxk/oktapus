@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/oktapus/account"
-	"github.com/LuminalHQ/cloudcover/oktapus/mock"
+	"github.com/mxk/cloudcover/oktapus/account"
+	"github.com/mxk/cloudcover/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

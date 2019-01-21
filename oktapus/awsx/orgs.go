@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/x/fast"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/mxk/cloudcover/x/fast"
 )
 
 // CreateAccountResult contains the values returned by createAccount. If err is

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/x/awsmock"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/mxk/cloudcover/x/awsmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

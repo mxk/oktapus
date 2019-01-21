@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	"github.com/LuminalHQ/cloudcover/x/cli"
+	"github.com/mxk/cloudcover/x/cli"
 
 	// CLI registration
-	_ "github.com/LuminalHQ/cloudcover/oktapus/cmd"
+	_ "github.com/mxk/cloudcover/oktapus/cmd"
 )
 
 func main() {

@@ -3,11 +3,11 @@ package op
 import (
 	"testing"
 
-	"github.com/LuminalHQ/cloudcover/x/awsmock"
-	"github.com/LuminalHQ/cloudcover/x/iamx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/mxk/cloudcover/x/awsmock"
+	"github.com/mxk/cloudcover/x/iamx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

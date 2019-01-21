@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LuminalHQ/cloudcover/x/arn"
-	"github.com/LuminalHQ/cloudcover/x/fast"
+	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/cloudcover/x/fast"
 )
 
 // ErrRateLimit is returned when too many requests are sent.
