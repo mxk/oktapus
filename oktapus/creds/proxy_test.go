@@ -6,8 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/mxk/cloudcover/x/awsmock"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-cloud/aws/awsmock"
+	"github.com/mxk/go-fast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

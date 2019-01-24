@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mxk/cloudcover/x/arn"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-cloud/aws/arn"
+	"github.com/mxk/go-fast"
 )
 
 // ErrRateLimit is returned when too many requests are sent.

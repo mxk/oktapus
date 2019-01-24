@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
 )
 
 var accountSpecCli = cli.Main.Add(&cli.Info{

@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/go-cloud/aws/arn"
 )
 
 // OrgRouter handles Organizations API calls.

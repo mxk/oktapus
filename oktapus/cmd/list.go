@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/mxk/cloudcover/oktapus/op"
-	"github.com/mxk/cloudcover/oktapus/table"
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/oktapus/op"
+	"github.com/mxk/oktapus/table"
 )
 
 var listCli = cli.Main.Add(&cli.Info{

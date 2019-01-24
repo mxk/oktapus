@@ -10,8 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/mxk/cloudcover/x/arn"
-	"github.com/mxk/cloudcover/x/region"
+	"github.com/mxk/go-cloud/aws/arn"
+	"github.com/mxk/go-cloud/aws/region"
 )
 
 var errNoOrg = awserr.New(orgs.ErrCodeAWSOrganizationsNotInUseException,

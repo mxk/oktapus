@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
-	"github.com/mxk/cloudcover/oktapus/account"
-	"github.com/mxk/cloudcover/oktapus/creds"
-	"github.com/mxk/cloudcover/x/fast"
-	"github.com/mxk/cloudcover/x/iamx"
+	"github.com/mxk/go-cloud/aws/iamx"
+	"github.com/mxk/go-fast"
+	"github.com/mxk/oktapus/account"
+	"github.com/mxk/oktapus/creds"
 )
 
 const (

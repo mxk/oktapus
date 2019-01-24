@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-fast"
 )
 
 // Authenticator implements the user interface for multi-factor authentication.

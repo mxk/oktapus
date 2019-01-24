@@ -6,8 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/mxk/cloudcover/oktapus/mock"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-fast"
+	"github.com/mxk/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 )
 

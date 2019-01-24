@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
-	"github.com/mxk/cloudcover/oktapus/op"
-	"github.com/mxk/cloudcover/oktapus/table"
-	"github.com/mxk/cloudcover/x/arn"
-	"github.com/mxk/cloudcover/x/fast"
-	"github.com/mxk/cloudcover/x/iamx"
+	"github.com/mxk/go-cloud/aws/arn"
+	"github.com/mxk/go-cloud/aws/iamx"
+	"github.com/mxk/go-fast"
+	"github.com/mxk/oktapus/op"
+	"github.com/mxk/oktapus/table"
 	"github.com/pkg/errors"
 )
 

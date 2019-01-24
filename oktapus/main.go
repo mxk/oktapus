@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
 
 	// CLI registration
-	_ "github.com/mxk/cloudcover/oktapus/cmd"
+	_ "github.com/mxk/oktapus/cmd"
 )
 
 func main() {

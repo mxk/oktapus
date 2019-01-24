@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mxk/cloudcover/oktapus/mock"
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/oktapus/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

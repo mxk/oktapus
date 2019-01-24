@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/mxk/cloudcover/x/arn"
-	"github.com/mxk/cloudcover/x/awsmock"
-	"github.com/mxk/cloudcover/x/region"
+	"github.com/mxk/go-cloud/aws/arn"
+	"github.com/mxk/go-cloud/aws/awsmock"
+	"github.com/mxk/go-cloud/aws/region"
 )
 
 // Mock STS credentials.

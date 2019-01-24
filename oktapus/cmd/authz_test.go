@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/mxk/cloudcover/oktapus/mock"
-	"github.com/mxk/cloudcover/oktapus/op"
+	"github.com/mxk/oktapus/mock"
+	"github.com/mxk/oktapus/op"
 	"github.com/stretchr/testify/require"
 )
 

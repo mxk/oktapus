@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	orgs "github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-fast"
 )
 
 // CreateAccountResult contains the values returned by createAccount. If err is

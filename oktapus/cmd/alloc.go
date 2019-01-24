@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mxk/cloudcover/oktapus/op"
-	"github.com/mxk/cloudcover/x/cli"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/go-fast"
+	"github.com/mxk/oktapus/op"
 	"github.com/pkg/errors"
 )
 

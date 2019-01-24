@@ -9,8 +9,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/mxk/cloudcover/x/awsx"
-	"github.com/mxk/cloudcover/x/iamx"
+	"github.com/mxk/go-cloud/aws/awsx"
+	"github.com/mxk/go-cloud/aws/iamx"
 )
 
 // CtlRole is the IAM role that stores account control information in its

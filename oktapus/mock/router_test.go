@@ -3,7 +3,7 @@ package mock
 import (
 	"testing"
 
-	"github.com/mxk/cloudcover/x/arn"
+	"github.com/mxk/go-cloud/aws/arn"
 	"github.com/stretchr/testify/assert"
 )
 

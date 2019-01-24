@@ -5,9 +5,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/mxk/cloudcover/oktapus/daemon"
-	"github.com/mxk/cloudcover/oktapus/op"
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/oktapus/daemon"
+	"github.com/mxk/oktapus/op"
 )
 
 var daemonCli = cli.Main.Add(&cli.Info{

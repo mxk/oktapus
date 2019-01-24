@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/external"
-	"github.com/mxk/cloudcover/oktapus/op"
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/oktapus/op"
 )
 
 // TODO: Okta mode

@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/mxk/cloudcover/oktapus/daemon"
-	"github.com/mxk/cloudcover/x/cli"
+	"github.com/mxk/go-cli"
+	"github.com/mxk/oktapus/daemon"
 )
 
 var killDaemonCli = cli.Main.Add(&cli.Info{

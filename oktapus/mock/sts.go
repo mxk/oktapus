@@ -6,8 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/mxk/cloudcover/x/arn"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-cloud/aws/arn"
+	"github.com/mxk/go-fast"
 )
 
 // STSRouter handles STS API calls. Key is SessionToken, which is the assumed

@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/ec2rolecreds"
-	"github.com/mxk/cloudcover/x/fast"
+	"github.com/mxk/go-fast"
 )
 
 // Source names of credentials providers.
